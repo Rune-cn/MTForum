@@ -1,0 +1,94 @@
+name: Build APK
+
+on:
+  push:
+    branches: ["main"]
+    paths-ignore: ["**.md"]
+  pull_request:
+  workflow_dispatch:
+
+# Run one build at a time (private-repo plan concurrency is limited).
+concurrency:
+  group: build-apk
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Stable debug & release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: write
+
+    steps:
+      - name: Checkout
+        # Full history: versionCode is derived from the git commit count, and a
+        # shallow clone always reports 1, which breaks upgrade installs.
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      # miuix is consumed from Maven Central, so no GitHub Packages credentials are
+      # needed here.
+
+
+      # Note: android-actions/setup-android is avoided (its `sdkmanager tools`
+      # call fails on new cmdline-tools). Runner-shipped SDK + AGP auto-download
+      # is used instead; licenses are accepted best-effort below.
+      - name: Accept licenses & ensure SDK 37 (best effort)
+        run: |
+          SDKMANAGER=""
+          for c in latest 16.0 15.0 14.0 13.0 12.0 11.0 10.0 9.0 8.0; do
+            if [ -x "$ANDROID_HOME/cmdline-tools/$c/bin/sdkmanager" ]; then
+              SDKMANAGER="$ANDROID_HOME/cmdline-tools/$c/bin/sdkmanager"
+              break
+            fi
+          done
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(command -v sdkmanager || true)"
+          fi
+          echo "SDKMANAGER=$SDKMANAGER"
+          if [ -n "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+            "$SDKMANAGER" "platforms;android-37" "build-tools;37.0.0" || true
+          fi
+          ls "$ANDROID_HOME/platforms" || true
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        run: ./gradlew :app:assembleStableDebug --no-daemon
+
+      - name: Build release APK (signed with example/debug keystore, not published)
+        run: ./gradlew :app:assembleStableRelease --no-daemon
+
+      - name: Locate APK outputs
+        run: find app/build/outputs -type f \( -name "*.apk" -o -name "*.aab" \) | sort
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-stable-debug
+          path: app/build/outputs/apk/**/*debug*.apk
+          if-no-files-found: error
+          # Debug APKs are ~25 MB each; without a cap the artifact quota
+          # fills up and every later upload fails.
+          retention-days: 7
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-stable-release
+          path: app/build/outputs/apk/**/*release*.apk
+          if-no-files-found: error
+          # Debug APKs are ~25 MB each; without a cap the artifact quota
+          # fills up and every later upload fails.
+          retention-days: 7

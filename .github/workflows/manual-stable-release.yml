@@ -1,0 +1,235 @@
+name: Manual Stable Release
+
+# Manual-only: a release must be an explicit decision, never a side effect of a push.
+on:
+  workflow_dispatch:
+    inputs:
+      version_tag:
+        description: "Release version tag, e.g. 1.4 or 1.4.0"
+        required: true
+        type: string
+      version_code:
+        description: "Optional versionCode override (default: git commit count)"
+        required: false
+        type: string
+      draft:
+        description: "Create as draft (publish manually after writing the changelog)"
+        required: false
+        type: boolean
+        default: true
+
+# Never let two releases race: both would target the same tag and artifact names.
+concurrency:
+  group: stable-release-${{ inputs.version_tag }}
+  cancel-in-progress: false
+
+# Least privilege: only contents:write is required (create the release and upload
+# the APK). miuix resolves from Maven Central, so packages:read is not needed.
+permissions:
+  contents: write
+
+jobs:
+  build_and_release:
+    name: Build and publish Stable release
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Validate inputs
+        env:
+          VERSION_TAG: ${{ inputs.version_tag }}
+          VERSION_CODE: ${{ inputs.version_code }}
+        run: |
+          if ! printf '%s' "$VERSION_TAG" | grep -Eq '^[0-9]+\.[0-9]+(\.[0-9]+)?$'; then
+            echo "::error::version_tag must look like 1.4 or 1.4.0 (got: '$VERSION_TAG')"
+            exit 1
+          fi
+          if [ -n "$VERSION_CODE" ] && ! printf '%s' "$VERSION_CODE" | grep -Eq '^[1-9][0-9]*$'; then
+            # A versionCode of 0 or a non-integer silently breaks upgrade paths.
+            echo "::error::version_code must be a positive integer (got: '$VERSION_CODE')"
+            exit 1
+          fi
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Full history so the git commit count is a real, monotonic versionCode.
+          fetch-depth: 0
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      # miuix comes from Maven Central; no GitHub Packages credentials needed.
+
+
+      - name: Accept licenses & ensure SDK 37 (best effort)
+        # Runner-shipped SDK plus AGP auto-download is used instead of
+        # android-actions/setup-android, whose `sdkmanager tools` call fails on
+        # current cmdline-tools.
+        run: |
+          SDKMANAGER=""
+          for c in latest 16.0 15.0 14.0 13.0 12.0 11.0; do
+            if [ -x "$ANDROID_HOME/cmdline-tools/$c/bin/sdkmanager" ]; then
+              SDKMANAGER="$ANDROID_HOME/cmdline-tools/$c/bin/sdkmanager"
+              break
+            fi
+          done
+          [ -z "$SDKMANAGER" ] && SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -n "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+            "$SDKMANAGER" "platforms;android-37" "build-tools;37.0.0" || true
+          fi
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          # Release builds must not publish a cache other jobs then trust.
+          cache-read-only: true
+
+      - name: Verify signing secrets are present
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          missing=0
+          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "$(eval echo "\${$name:-}")" ]; then
+              echo "::error::secret $name is missing. A release must be signed with the real key."
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
+
+      - name: Materialize keystore
+        # app/build.gradle.kts reads keystore.properties (storeFile/storePassword/
+        # keyAlias/keyPassword) before falling back to KEYSTORE_* environment
+        # variables. Writing keystore.properties makes the choice explicit and
+        # independent of how the environment happens to be exported.
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          mkdir -p keystore
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > keystore/release.jks
+          cat > keystore.properties <<EOF
+          storeFile=keystore/release.jks
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+          chmod 600 keystore/release.jks keystore.properties
+
+      - name: Build Stable release APK
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION_TAG: ${{ inputs.version_tag }}
+          VERSION_CODE: ${{ inputs.version_code }}
+        run: |
+          ARGS="-PVERSION_NAME=$VERSION_TAG"
+          if [ -n "$VERSION_CODE" ]; then
+            ARGS="$ARGS -PVERSION_CODE=$VERSION_CODE"
+          fi
+          # --no-configuration-cache: the version properties feed tasks that are
+          # cached by path, and a stale cache would ship the wrong version.
+          ./gradlew :app:assembleStableRelease $ARGS --no-daemon --no-configuration-cache
+
+      - name: Assert the built APK really carries the requested version
+        id: apk
+        env:
+          VERSION_TAG: ${{ inputs.version_tag }}
+          VERSION_CODE: ${{ inputs.version_code }}
+        run: |
+          set -euo pipefail
+          # Match case-insensitively: the flavor directory is "Stable" while the
+          # build type is lowercase "release", and a case-sensitive -path fails.
+          APK_DIR=$(find app/build/outputs/apk -type d -ipath "*/stable/release" | head -n 1)
+          if [ -z "$APK_DIR" ]; then
+            echo "::error::Stable release output directory not found"
+            find app/build/outputs -maxdepth 4 -type d || true
+            exit 1
+          fi
+          ORIGINAL_APK=$(find "$APK_DIR" -maxdepth 1 -type f -name "*.apk" | head -n 1)
+          if [ -z "$ORIGINAL_APK" ]; then
+            echo "::error::No APK produced in $APK_DIR"
+            ls -R app/build/outputs/apk || true
+            exit 1
+          fi
+
+          # Badging is the cheapest proof that the signing config and version
+          # properties were actually applied, instead of trusting Gradle output.
+          AAPT2=$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort -V | tail -n 1)
+          if [ -z "$AAPT2" ]; then
+            echo "::error::aapt2 not found under $ANDROID_HOME/build-tools"
+            exit 1
+          fi
+          BADGING=$("$AAPT2" dump badging "$ORIGINAL_APK")
+          PACKAGE_LINE=$(printf '%s\n' "$BADGING" | grep -m 1 "^package:")
+          if [ -z "$PACKAGE_LINE" ]; then
+            echo "::error::Could not read package metadata from $ORIGINAL_APK"
+            exit 1
+          fi
+          echo "$PACKAGE_LINE"
+
+          # Extract by attribute name rather than by field position: aapt2 output
+          # ordering is not a stable contract across build-tools versions.
+          BUILT_NAME=$(printf '%s\n' "$PACKAGE_LINE" | tr ' ' '\n' | sed -n "s/^versionName='\(.*\)'$/\1/p")
+          if [ -z "$BUILT_NAME" ]; then
+            echo "::error::versionName was absent from package metadata"
+            exit 1
+          fi
+          case "$BUILT_NAME" in
+            "$VERSION_TAG"*) ;;
+            *)
+              echo "::error::versionName mismatch: expected '$VERSION_TAG', got '$BUILT_NAME'"
+              exit 1
+              ;;
+          esac
+
+          if [ -n "$VERSION_CODE" ]; then
+            BUILT_CODE=$(printf '%s\n' "$PACKAGE_LINE" | tr ' ' '\n' | sed -n "s/^versionCode='\(.*\)'$/\1/p")
+            if [ "$BUILT_CODE" != "$VERSION_CODE" ]; then
+              echo "::error::versionCode mismatch: expected '$VERSION_CODE', got '${BUILT_CODE:-none}'"
+              exit 1
+            fi
+          fi
+
+          # Reject an accidentally debug-signed artifact before it reaches users.
+          SIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
+          if [ -n "$SIGNER" ]; then
+            CRT=$("$SIGNER" verify --print-certs "$ORIGINAL_APK" | head -n 1)
+            echo "$CRT"
+            if printf '%s' "$CRT" | grep -qi "CN=Android Debug"; then
+              echo "::error::APK is debug-signed; the release keystore was not applied."
+              exit 1
+            fi
+          fi
+
+          NEW_APK="mtforum-stable-${VERSION_TAG}.apk"
+          mv "$ORIGINAL_APK" "$APK_DIR/$NEW_APK"
+          echo "apk=$APK_DIR/$NEW_APK" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "MT论坛 stable ${{ inputs.version_tag }}"
+          tag_name: ${{ inputs.version_tag }}
+          # Draft by default so the changelog can be written before publishing.
+          # Release notes are left empty on purpose: they are authored by hand.
+          draft: ${{ inputs.draft }}
+          prerelease: false
+          generate_release_notes: false
+          files: ${{ steps.apk.outputs.apk }}
+
+      # Always clean up the materialized key; it must not outlive the job even
+      # on a successful run.
+      - name: Remove keystore material
+        if: always()
+        run: rm -rf keystore keystore.properties

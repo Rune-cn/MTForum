@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MT 论坛 launcher foreground: a speech bubble carrying the "MT" monogram, which reads as
+  "discussion forum" rather than "terminal". Geometry stays inside the 66dp safe circle.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- speech bubble body -->
+    <path
+        android:fillColor="#FF0B2B1E"
+        android:pathData="M32,28h44a8,8 0 0 1 8,8v26a8,8 0 0 1 -8,8h-26l-10,10v-10h-8a8,8 0 0 1 -8,-8v-26a8,8 0 0 1 8,-8z" />
+    <!-- inner keyline -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF4ADE80"
+        android:strokeWidth="2.5"
+        android:pathData="M32,28h44a8,8 0 0 1 8,8v26a8,8 0 0 1 -8,8h-26l-10,10v-10h-8a8,8 0 0 1 -8,-8v-26a8,8 0 0 1 8,-8z" />
+    <!-- M -->
+    <path
+        android:fillColor="#FFE8FFF3"
+        android:pathData="M39,40h4v16h-4zM43,40h4v4h-4zM47,44h4v4h-4zM51,40h4v4h-4zM55,40h4v16h-4z" />
+    <!-- T -->
+    <path
+        android:fillColor="#FF4ADE80"
+        android:pathData="M60,56h14v-4h-5v-12h-4v12h-5z" />
+    <!-- reply dots: the "conversation" cue -->
+    <path
+        android:fillColor="#FF4ADE80"
+        android:pathData="M41,60h3v3h-3zM47,60h3v3h-3zM53,60h3v3h-3z" />
+</vector>
