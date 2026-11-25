@@ -3,6 +3,7 @@ package io.rune.mt.forum.ui.theme
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import io.rune.mt.forum.core.safemode.SafeMode
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
@@ -22,7 +23,9 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  */
 @Composable
 fun rememberMiuixBlurBackdrop(enableBlur: Boolean): LayerBackdrop? {
-    if (!enableBlur || !isRenderEffectSupported()) return null
+    // SafeMode overrides the user preference when a previous run crashed: the effect is fatal
+    // before the UI exists, so there would be no way to switch it off again.
+    if (!enableBlur || !isRenderEffectSupported() || SafeMode.blurDisabled) return null
     val surfaceColor = MiuixTheme.colorScheme.surface
     return rememberLayerBackdrop {
         drawRect(surfaceColor)
@@ -80,7 +83,9 @@ fun Modifier.miuixBlurEffect(
  */
 @Composable
 fun rememberMaterial3BlurBackdrop(enableBlur: Boolean): LayerBackdrop? {
-    if (!enableBlur || !isRenderEffectSupported()) return null
+    // SafeMode overrides the user preference when a previous run crashed: the effect is fatal
+    // before the UI exists, so there would be no way to switch it off again.
+    if (!enableBlur || !isRenderEffectSupported() || SafeMode.blurDisabled) return null
     val surfaceColor = MaterialTheme.colorScheme.surfaceContainer
     return rememberLayerBackdrop {
         drawRect(surfaceColor)

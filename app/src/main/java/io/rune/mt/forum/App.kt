@@ -10,6 +10,7 @@ import io.rune.mt.forum.core.image.buildForumImageLoader
 import android.os.Build
 import com.kieronquinn.monetcompat.core.MonetCompat
 import io.rune.mt.forum.core.crash.CrashHandler
+import io.rune.mt.forum.core.safemode.SafeMode
 import io.rune.mt.forum.core.env.AppConfig
 import io.rune.mt.forum.data.forum.repository.ForumSessionStore
 import io.rune.mt.forum.di.init.appModules
@@ -38,6 +39,9 @@ class App : Application(), KoinComponent {
     }
     override fun onCreate() {
         CrashHandler.init(this)
+        // Break a blur-induced crash loop before any UI exists: if the previous run left a
+        // crash dump, this session renders without blur.
+        SafeMode.evaluate(this)
         super.onCreate()
 
         // Forum CDNs filter on UA and Referer, so images need our own loader rather than the

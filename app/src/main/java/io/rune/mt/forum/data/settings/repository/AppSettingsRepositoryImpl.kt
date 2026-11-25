@@ -61,11 +61,14 @@ class AppSettingsRepositoryImpl(
             useAppleFloatingBar = prefs[AppDataStore.UI_USE_APPLE_FLOATING_BAR] ?: false,
             seedColorInt = prefs[AppDataStore.THEME_SEED_COLOR] ?: DEFAULT_SEED_COLOR,
             wallpaperSeedColorInt = prefs[AppDataStore.THEME_WALLPAPER_SEED_COLOR] ?: 0,
-            // OS4 always renders glass, so its blur path is forced on regardless of the
-            // stored OS3 toggle. Keep the stored value untouched for the OS3 path.
+            // Blur defaults to OFF. The blur path records a LayerBackdrop and samples it
+            // through a RenderEffect; on Android 16 that crashed the render thread with a
+            // stack overflow in hwui (computeTransformImpl recursing through the
+            // DirtyStack). Users can opt in from theme settings once miuix glass is stable
+            // there. CoreSettings.SafeMode can also force it off after a crash.
             useBlur = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                (prefs[AppDataStore.UI_USE_MIUIX] ?: true && prefs[AppDataStore.UI_USE_MIUIX_OS4] == true) ||
-                    (prefs[AppDataStore.UI_USE_BLUR] ?: true)
+                (prefs[AppDataStore.UI_USE_MIUIX_OS4] == true && prefs[AppDataStore.UI_USE_MIUIX] != false) ||
+                    (prefs[AppDataStore.UI_USE_BLUR] ?: false)
             } else {
                 false
             },

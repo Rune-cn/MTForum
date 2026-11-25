@@ -1,6 +1,5 @@
 package io.rune.mt.forum.domain.settings.model.preferences
 
-import android.os.Build
 import io.rune.mt.forum.domain.settings.model.preferences.theme.PaletteStyle
 import io.rune.mt.forum.domain.settings.model.preferences.theme.ThemeColorSpec
 import io.rune.mt.forum.domain.settings.model.preferences.theme.ThemeMode
@@ -23,7 +22,12 @@ data class ThemeState(
     // Default seed matches the launcher icon's terminal green (#4ADE80), darkened to
     // #2E9E5B so white foreground text keeps contrast on the primary container.
     val seedColor: Int = 0xFF2E9E5B.toInt(),
-    val useBlur: Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
+    // Off by default: the blur path records a LayerBackdrop and samples it through a
+    // RenderEffect, and on Android 16 that combination crashed the render thread with a
+    // stack overflow inside hwui (computeTransformImpl recursing through the DirtyStack).
+    // The visual effect is opt-in in theme settings until the miuix glass path is proven
+    // stable on that platform.
+    val useBlur: Boolean = false,
     val predictiveBackAnimation: PredictiveBackAnimation = PredictiveBackAnimation.MIUIX,
     val predictiveBackExitDirection: PredictiveBackExitDirection = PredictiveBackExitDirection.ALWAYS_RIGHT,
 )

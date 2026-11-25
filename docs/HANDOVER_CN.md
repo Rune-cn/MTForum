@@ -341,3 +341,61 @@ bash tools/build.sh :app:lintVitalStableRelease     # 改字符串/资源后必�
 
 已知版块 fid：44 综合交流、41 逆向交流、42 编程开发、50 休闲灌水、39 玩机交流、
 38 建议反馈、40 求助问答、2 版本发布。
+
+---
+
+## 11. 真机崩溃记录：hwui 栈溢出（2026-11-25）
+
+### 现象
+
+```
+signal 11 (SIGSEGV), code 2 (SEGV_ACCERR)
+Cause: stack pointer is close to top of stack; likely stack overflow.
+name: RenderThread
+#00..#512  libhwui.so (computeTransformImpl(DirtyStack const*, Matrix4*)+0/+36)
+```
+
+512 帧全部落在 `computeTransformImpl` 的递归里，说明 **RenderNode 层级异常深**（或有环）。
+
+### 结论
+
+崩溃发生在**渲染线程**，与解析、网络、Compose 重组逻辑无关。
+当时生效的渲染特性里，唯一会构造 `LayerBackdrop` 并用 `RenderEffect` 回采场景的是
+**blur 链路**：
+
+```
+rememberMiuixBlurBackdrop(enableBlur)      ← 记录整个子树到 LayerBackdrop
+  └ MiuixPageScaffold: Modifier.layerBackdrop(backdrop)  ← 内容录进图层
+  └ MiuixTopAppBar: Modifier.textureBlur(backdrop = …)    ← 再从该图层采样
+```
+
+容器（pager）和每个页面各自建一层 backdrop，嵌套录制会把同一棵子树反复展开成
+RenderNode，刚好就是 `DirtyStack` 链过深的表现。
+
+### 处理
+
+1. **blur 默认关闭**。注意要改两处，只改 `ThemeState` 的默认值**无效**——
+   `AppSettingsRepositoryImpl` 里写的是 `prefs[UI_USE_BLUR] ?: true`，那个才是实际默认。
+2. **SafeMode 崩溃回环保护**（`core/safemode/SafeMode.kt`）：
+   上次运行留下 crash dump 时，本次会话强制不建 backdrop，并把标记写进
+   `SharedPreferences`（同步，早于 DataStore 流）。用户在主题设置里重新打开 blur 会清除标记。
+   没有这层保护的话，一旦开着 blur 启动即崩，设置被持久化，会形成**永远进不去设置**的死循环。
+3. OS4 弹窗（`ThreadActions`）的 `backdrop` 传 `null`：从窗口级浮层采样页面图层是另一种
+   制造环的方式。
+
+### 仍未证实
+
+上述是针对渲染线程崩溃的**最可能解释**，但本机跑不了模拟器，**没有实机复现验证**。
+
+如果关掉 blur 后仍然崩溃，说明还有别的 RenderNode 环，排查顺序建议：
+
+1. 逐个页面二分（先只留首页，再加导读/列表/帖子）
+2. 关掉 `beyondViewportPageCount = 1`（相邻页面同时组合，各自持有 backdrop）
+3. 检查 `MiuixPageScaffold` 的 `layerBackdrop` 与顶栏 `textureBlur` 的层级关系：
+   顶栏必须**在图层外**、与之同级，不能落在被录制的子树里
+4. 用 `adb shell dumpsys gfxinfo` / `Layout Inspector` 看 RenderNode 深度
+
+### 复现所需信息
+
+再次遇到时请提供：**崩溃前停在哪个页面、做了什么操作**（启动即崩 / 进帖子崩 / 开关 blur 时崩）。
+这三者指向完全不同的 RenderNode 路径。

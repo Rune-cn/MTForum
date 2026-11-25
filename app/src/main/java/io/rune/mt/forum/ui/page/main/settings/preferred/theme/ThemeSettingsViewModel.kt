@@ -5,6 +5,7 @@ import android.os.Build
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.ViewModel
+import io.rune.mt.forum.core.safemode.SafeMode
 import androidx.lifecycle.viewModelScope
 import com.kieronquinn.monetcompat.core.MonetCompat
 import io.rune.mt.forum.domain.settings.repository.AppSettingsRepository
@@ -27,6 +28,7 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 
 class ThemeSettingsViewModel(
+    private val context: android.content.Context,
     appSettingsRepo: AppSettingsRepository,
     private val updateSetting: UpdateSettingUseCase,
 ) : ViewModel() {
@@ -98,7 +100,11 @@ class ThemeSettingsViewModel(
                 updateSetting(BooleanSetting.UiUseMiuix, action.useMiuix)
             }
 
-            is ThemeSettingsAction.SetUseBlur -> viewModelScope.launch { updateSetting(BooleanSetting.UiUseBlur, action.enable) }
+            is ThemeSettingsAction.SetUseBlur -> viewModelScope.launch {
+                // An explicit enable clears the SafeMode latch so the user can retry the effect.
+                if (action.enable) SafeMode.onUserEnabledBlur(context)
+                updateSetting(BooleanSetting.UiUseBlur, action.enable)
+            }
 
             is ThemeSettingsAction.SetThemeMode -> viewModelScope.launch {
                 updateSetting(StringSetting.ThemeMode, action.mode.name)

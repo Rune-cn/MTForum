@@ -15,8 +15,6 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.stringResource
 import io.rune.mt.forum.R
-import io.rune.mt.forum.ui.page.miuix.widgets.LocalMiuixComponentScope
-import io.rune.mt.forum.ui.page.miuix.widgets.LocalMiuixTopBarBackdrop
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopBarIconButton
 import io.rune.mt.forum.ui.theme.AppTheme
 import top.yukonga.miuix.kmp.basic.DropdownImpl
@@ -50,10 +48,6 @@ internal fun ThreadActions(
     // Window-space bounds of the icon button; refreshed on every layout pass.
     var anchorBounds by remember { mutableStateOf(Rect.Zero) }
 
-    val scope = LocalMiuixComponentScope.current
-    // Prefer the page backdrop (the popup covers the page, not the bar band); fall back to the
-    // bar's own backdrop so OS4 still samples something when the page has none.
-    val backdrop = scope.pageBackdrop ?: LocalMiuixTopBarBackdrop.current
 
     val copyLabel = stringResource(R.string.thread_action_copy_link)
     val shareLabel = stringResource(R.string.thread_action_share)
@@ -74,7 +68,8 @@ internal fun ThreadActions(
                 show = expanded,
                 onDismissRequest = { expanded = false },
                 anchorBounds = anchorBounds,
-                backdrop = backdrop,
+                // Intentionally null: see the note above about render-node cycles.
+                backdrop = null,
                 visuals = GlassPopupDefaults.visuals(style = GlassDefaults.style(AppTheme.isDark)),
             ) {
                 GlassPopupItem(
