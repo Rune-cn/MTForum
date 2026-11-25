@@ -68,41 +68,60 @@ bash tools/build.sh :app:testStableDebugUnitTest --tests "io.rune.mt.forum.Forum
 
 ## 模拟器：本机不可用（重要）
 
-尝试过但失败，结论是**这台机器无法运行 Android 模拟器**：
+结论：**这台机器无法运行 Android 模拟器**，相关资产已删除。
+
+当初的尝试过程（留档，便于换机器时参考）：
 
 1. 下载 emulator 37.4.1 + API 35 / API 30 系统镜像（合计约 3 GB）
 2. 手工创建 AVD（`avdmanager` 依赖 sdkmanager 索引，本机不可用）
-3. 安装 AEHD 硬件加速驱动（`aehd-windows_v2.2.zip`，`silent_install.bat` 安装成功，
-   `emulator-check accel` 报 **"AEHD is installed and usable"**）
+3. 安装 AEHD 硬件加速驱动（`aehd-windows_v2.2.zip`，`silent_install.bat` 安装成功，`emulator-check accel` 报 **"AEHD is installed and usable"**）
 4. 启动后 qemu 进程存活但 **CPU 时间始终 <2 秒、内存 140 MB**，永不进入 boot 阶段
 
 根因是沙箱禁止嵌套虚拟化。因此 UI 观感（间距、滚动、玻璃效果）只能靠真机确认。
 
-AVD 与系统镜像仍在磁盘上，如需清理：
+---
+
+### 如需重新尝试模拟器
 
 ```powershell
-Remove-Item C:\Users\Administrator\Documents\1\tools\android-home\avd -Recurse -Force
-Remove-Item C:\Users\Administrator\Documents\1\tools\android-sdk\system-images -Recurse -Force
-sc.exe stop aehd; sc.exe delete aehd   # 卸载硬件加速驱动
+# 1. 模拟器二进制
+Invoke-WebRequest 'https://dl.google.com/android/repository/emulator-windows_x64-16916650.zip' -OutFile emulator.zip
+Expand-Archive emulator.zip -DestinationPath $env:ANDROID_HOME -Force
+# 2. 系统镜像（需先在 sys-img2-4.xml 里查实际文件名）
+Invoke-WebRequest 'https://dl.google.com/android/repository/sys-img/google_apis/x86_64-35_r09.zip' -OutFile sysimg.zip
+# 3. 硬件加速驱动
+Invoke-WebRequest 'https://dl.google.com/android/repository/aehd-windows_v2.2.zip' -OutFile aehd.zip
+Expand-Archive aehd.zip -DestinationPath aehd -Force; .\aehd\silent_install.bat
 ```
 
-## 发布（GitHub Actions）
+前提是宿主允许嵌套虚拟化——本机不允许，`emulator-check accel` 会报 usable 但 qemu 不执行。
 
-`.github/workflows/manual-stable-release.yml`，**只能手动触发**：
+---
 
-| 输入 | 说明 |
+## 已清理的资产（2026-11-22）
+
+模拟器路线失败后，相关资产已全部删除，回收约 **22.9 GB**：
+
+| 项目 | 大小 | 说明 |
+|---|---|---|
+| `android-sdk/system-images`（API 30 / 35） | 6.9 GB | 模拟器系统镜像 |
+| `android-sdk/emulator` | 1.1 GB | 模拟器二进制 |
+| `android-home/.android` | 10.9 GB | 尝试启动时产生的 AVD 用户数据 |
+| `android-home/avd` | 90 MB | AVD 定义 |
+| `tools/emu` | 3.8 GB | 下载的 zip 与 miuix sources jar |
+| `tools/pgit.7z.exe`、`tools/dl`、`assets/*.zip` | 0.83 GB | 已解压的安装包 |
+
+AEHD 驱动已卸载：`sc stop aehd` → `sc delete aehd` → 删除
+`C:\Windows\System32\drivers\aehd.sys`。
+
+### 刻意保留
+
+| 项目 | 原因 |
 |---|---|
-| `version_tag` | 必填，`^\d+\.\d+(\.\d+)?$` |
-| `version_code` | 可选正整数；留空用 git commit count |
-| `draft` | 默认 true |
+| `android-home/debug.keystore` | 构建签名。删了会让已安装的 APK 无法覆盖升级 |
+| `android-sdk/{platforms,build-tools,platform-tools,cmdline-tools}` | 构建必需 |
+| `tools/{jdk-25…,gradle-home,git}` | 构建必需 |
+| `assets/rev`（2 MB） | 逆向证据：acw 脚本、真实页面样本、表情 JS |
+| `tools/repo.xml`（0.4 MB） | Android SDK 各组件的确切下载 URL 记录 |
 
-流程：构建 → `aapt2` 校验版本号 → `apksigner` 拒绝 debug 签名 → 上传 APK 到草稿 Release
-→ 无论成败删除 keystore。
-
-**必需 Secrets**：`KEYSTORE_BASE64`、`KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`。
-
-⚠️ `versionCode` 来自 git commit count，所以 `actions/checkout` 必须 `fetch-depth: 0`。
-本仓库只有 1 个 commit，发布时要显式传 `version_code`。
-
-⚠️ 查找产物目录用 `find -ipath "*/stable/release"`：flavor 是大写 `Stable`、
-build type 是小写 `release`，大小写敏感。
+清理后已验证：`testStableDebugUnitTest` 与 `assembleStableDebug` 均 BUILD SUCCESSFUL。
