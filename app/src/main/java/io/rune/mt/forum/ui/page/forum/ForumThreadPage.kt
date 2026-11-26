@@ -148,9 +148,6 @@ fun ForumThreadPage(
         },
     )
     val actionsState = rememberThreadActionsState()
-    // Back closes the open menu instead of leaving the thread; disabled while the menu is shut so
-    // the nav-level predictive-back gesture keeps sole ownership of back.
-    ThreadActionsBackHandler(state = actionsState)
 
     LaunchedEffect(tid) {
         Timber.tag("ForumThreadPage").i("thread shown tid=%d", tid)
@@ -265,6 +262,12 @@ fun ForumThreadPage(
         // Root-level overlay: this fillMaxSize page box is the popup host, which is what the
         // glass panel is measured and clamped against.
         ThreadActionsGlassMenu(items = threadActions, state = actionsState)
+
+        // Registered *after* the menu: the navigation-event dispatcher prioritises the most
+        // recently composed enabled handler, so while the menu is open this predictive handler
+        // previews the dismissal instead of letting the popup swallow the gesture. While the
+        // menu is shut it is disabled and NavDisplay's gesture driver keeps the preview.
+        ThreadActionsBackHandler(state = actionsState)
     }
 
     // The composer lives outside the Scaffold so it overlays the thread instead of scrolling

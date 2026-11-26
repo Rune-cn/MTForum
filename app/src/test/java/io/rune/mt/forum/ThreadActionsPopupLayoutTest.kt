@@ -302,6 +302,29 @@ class ThreadActionsPopupLayoutTest {
         }.onFailure { println("[capture] skipped: ${it::class.java.name}: ${it.message}") }
     }
 
+    @Test
+    fun `capture the OS4 menu mid predictive dismiss`() {
+        val state = ThreadActionsState()
+        composePage(useOs4 = true, state = state, menuAtRoot = true, menuItems = productionItems())
+        compose.waitForIdle()
+        openMenu()
+
+        // Feed half of a predictive-back drag: the panel must still be on screen but shrinking
+        // and fading, which is the preview the old BackHandler never rendered.
+        compose.runOnUiThread { state.dismissProgress = 0.5f }
+        compose.mainClock.advanceTimeBy(200)
+        compose.waitForIdle()
+        compose.onNodeWithText("Share").assertExists()
+
+        runCatching {
+            val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
+            val dir = File("build/ui-screenshots").apply { mkdirs() }
+            val file = File(dir, "os4-thread-actions-predictive-back.png")
+            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            println("[capture] wrote ${file.absolutePath} (${bitmap.width}x${bitmap.height})")
+        }.onFailure { println("[capture] skipped: ${it::class.java.name}: ${it.message}") }
+    }
+
     private fun openMenu() {
         compose.onNodeWithTag(ANCHOR).performClick()
         // Let the glass morph/unfurl animation settle before measuring the final panel geometry.
