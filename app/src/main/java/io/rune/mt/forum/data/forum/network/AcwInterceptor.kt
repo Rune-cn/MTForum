@@ -12,6 +12,11 @@ import timber.log.Timber
  */
 class AcwInterceptor(
     private val cookieJar: ForumCookieJar,
+    /**
+     * Host that serves the challenge. Overridable so the challenge→replay path can be exercised
+     * against a loopback server in unit tests.
+     */
+    private val siteHost: String = SITE_HOST,
 ) : Interceptor {
 
     private companion object {
@@ -22,12 +27,15 @@ class AcwInterceptor(
 
     override fun intercept(chain: Interceptor.Chain): Response {
         var request = chain.request()
-        // Only the forum host serves the JS challenger. CDN asset/image hosts never do, and
-        // peeking 64 KB of every image to look for one is pure overhead.
-        if (request.url.host != SITE_HOST) return chain.proceed(request)
+        // Only the forum host serves the JS challenger; CDN asset/image hosts never do.
+        if (request.url.host != siteHost) return chain.proceed(request)
         var attempt = 0
         while (true) {
             val response = chain.proceed(request)
+            // The challenger is always an HTML page. Checking the content type keeps every
+            // successful image response (including authorized `forum.php?mod=image` attachments)
+            // from being buffered 64 KB just to look for a JS marker.
+            if (!response.isHtml()) return response
             val bodyString = response.peekBody(64 * 1024).string()
             val signature = if (AcwSignature.isChallenger(bodyString)) AcwSignature.solve(bodyString) else null
             if (signature == null || attempt >= MAX_ATTEMPTS) return response
@@ -40,6 +48,11 @@ class AcwInterceptor(
                 .build()
             attempt++
         }
+    }
+
+    private fun Response.isHtml(): Boolean {
+        val subtype = body?.contentType()?.subtype?.lowercase() ?: return false
+        return subtype == "html" || subtype == "xhtml"
     }
 
     private fun buildCookieHeader(): String =
