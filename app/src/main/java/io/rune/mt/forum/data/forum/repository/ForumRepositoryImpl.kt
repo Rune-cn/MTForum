@@ -4,6 +4,7 @@ package io.rune.mt.forum.data.forum.repository
 import io.rune.mt.forum.data.forum.network.ForumCookieJar
 import io.rune.mt.forum.data.forum.network.ForumHtmlParser
 import io.rune.mt.forum.data.forum.network.ForumHttpClient
+import io.rune.mt.forum.data.forum.network.ForumUrls
 import io.rune.mt.forum.data.forum.network.MultipartPart
 import io.rune.mt.forum.domain.forum.model.Forum
 import io.rune.mt.forum.domain.forum.model.ForumConversationDetail
@@ -124,7 +125,7 @@ class ForumRepositoryImpl(
         ForumUser(
             uid = uid,
             name = name,
-            avatarUrl = avatar?.takeIf { it.isNotBlank() }?.let { resolveUrl(it) },
+            avatarUrl = ForumUrls.absolute(avatar),
             level = doc.selectFirst("span.user_lev")?.text()?.trim(),
             isLoggedIn = _session.value.isLoggedIn,
         )
@@ -268,13 +269,6 @@ class ForumRepositoryImpl(
     /** A write is considered successful unless it bounced to the login form or returned an error notice. */
     private fun writeSucceeded(html: String): Boolean =
         !ForumHtmlParser.isLoginRequired(html) && !ERROR_WORDS.containsMatchIn(ForumHtmlParser.extractNotice(html).orEmpty())
-
-    /** Absolute-izes the relative asset URLs the site emits inside profile pages. */
-    private fun resolveUrl(url: String): String = when {
-        url.startsWith("http") -> url
-        url.startsWith("//") -> "https:$url"
-        else -> ForumHttpClient.BASE_URL + url.removePrefix("/")
-    }
 
     /** Probes the profile of our own uid to decide whether the cookie set is valid. */
     private suspend fun refreshSession(): Boolean {

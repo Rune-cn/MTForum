@@ -241,6 +241,7 @@ dependencies {
     // html parsing for the Discuz/Comiis templates
     implementation(libs.jsoup)
     implementation(libs.coil.compose)
+    implementation(libs.coil.gif)
     implementation(libs.coil.network.okhttp)
 
     // monetcompat

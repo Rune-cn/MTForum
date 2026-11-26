@@ -17,7 +17,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,6 +34,8 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import io.rune.mt.forum.data.forum.network.ForumUrls
+import timber.log.Timber
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -138,16 +143,31 @@ fun ForumHtmlText(
                     // Coil never reserves space — the picture then simply never appears.
                     // Constraining the height and using Fit keeps an unloaded image visible as
                     // a placeholder block instead of nothing.
+                    //
+                    // A failed load retries once against the forum host for Discuz asset paths:
+                    // cookie-gated attachments (`/data/attachment/...`) are only reachable there,
+                    // where the image client carries the session. Anything still failing is
+                    // logged (URL only, never cookies) so the blank block is diagnosable.
+                    var fallbackUrl by remember(block.url) { mutableStateOf<String?>(null) }
                     AsyncImage(
-                        model = block.url,
+                        model = fallbackUrl ?: block.url,
                         contentDescription = null,
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 80.dp, max = 480.dp)
                             .clip(RoundedCornerShape(10.dp))
                             .background(MiuixTheme.colorScheme.surfaceContainerHigh)
-                            .clickable { onImageClick(block.url) },
+                            .clickable { onImageClick(fallbackUrl ?: block.url) },
                         contentScale = ContentScale.FillWidth,
+                        onError = {
+                            val retry = if (fallbackUrl == null) ForumUrls.imageFallback(block.url) else null
+                            if (retry != null) {
+                                Timber.tag("ForumThread").i("picture %s failed, retrying %s", block.url, retry)
+                                fallbackUrl = retry
+                            } else {
+                                Timber.tag("ForumThread").w("picture failed: %s", block.url)
+                            }
+                        },
                     )
                 }
             }

@@ -22,7 +22,10 @@ class ForumCookieJar : CookieJar {
 
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
         val now = System.currentTimeMillis()
-        return store.values.filter { it.expiresAt > now }
+        // `matches` keeps the session cookie on bbs.binmt.cc: the same jar is also handed to the
+        // image loader, and sending the auth cookie to the public CDNs would leak it (and make
+        // their shared caches serve session-bound content).
+        return store.values.filter { it.expiresAt > now && it.matches(url) }
     }
 
     fun snapshot(): Map<String, String> = store.mapValues { it.value.value }

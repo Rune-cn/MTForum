@@ -17,10 +17,14 @@ class AcwInterceptor(
     private companion object {
         const val MAX_ATTEMPTS = 3
         const val COOKIE = "acw_sc__v2"
+        const val SITE_HOST = "bbs.binmt.cc"
     }
 
     override fun intercept(chain: Interceptor.Chain): Response {
         var request = chain.request()
+        // Only the forum host serves the JS challenger. CDN asset/image hosts never do, and
+        // peeking 64 KB of every image to look for one is pure overhead.
+        if (request.url.host != SITE_HOST) return chain.proceed(request)
         var attempt = 0
         while (true) {
             val response = chain.proceed(request)
