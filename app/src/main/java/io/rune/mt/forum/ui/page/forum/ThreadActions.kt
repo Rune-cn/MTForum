@@ -2,9 +2,11 @@
 package io.rune.mt.forum.ui.page.forum
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,27 +37,58 @@ internal data class ThreadActionItem(
 )
 
 /**
- * Trailing overflow actions for the thread screen (favourite / like / follow author / copy / share).
+ * Open state of the thread overflow menu, hoisted out of the top bar.
  *
- * Both style branches anchor to the button's real window bounds. Two placement bugs lived here:
+ * `GlassPopup` is an *inline* overlay, not a popup window: it emits a full-size dismiss layer
+ * plus a `Layout` that places the panel from window coordinates, and `placeGlassPopup` clamps
+ * that panel into `intersect(window, host)`. Composed inside the top bar's `actions` cell it was
+ * measured against that cell instead of the page, so the panel was pushed off its anchor, the
+ * dismiss layer only covered the cell, and the oversized child distorted the bar itself.
  *
- *  - OS4 passed `Rect.Zero` as `anchorBounds` (it was never measured), so the glass popup opened
- *    at the window's top-left corner instead of under the icon.
- *  - OS3 used the default popup position provider with `Align.Start`, which left-aligns the menu
- *    with the button; on a right-edge button the menu then overflowed off-screen and got clamped,
- *    which reads as "错位". `ContextMenuPositionProvider` + `TopEnd` right-aligns it properly.
+ * Keeping the flag and the anchor bounds here lets [ThreadActions] stay in the top bar while
+ * [ThreadActionsGlassMenu] is composed at the page root.
+ */
+@Stable
+internal class ThreadActionsState {
+    /** Whether the overflow menu is open. */
+    var expanded by mutableStateOf(false)
+
+    /** Window-space bounds of the icon button, refreshed on every layout pass. */
+    var anchorBounds by mutableStateOf(Rect.Zero)
+}
+
+/** Remembers a [ThreadActionsState] for one thread screen. */
+@Composable
+internal fun rememberThreadActionsState(): ThreadActionsState = remember { ThreadActionsState() }
+
+/**
+ * Trailing overflow button for the thread screen (favourite / like / follow author / copy / share).
+ *
+ * This only draws the three-dot button and publishes its window bounds; the menu itself is
+ * composed by [ThreadActionsGlassMenu] in the page's root `BoxScope`. Two placement bugs lived
+ * here:
+ *
+ *  - The OS3 `WindowListPopup` used the default position provider with `Align.Start`, which
+ *    left-aligns the menu with the button; on a right-edge button the menu then overflowed
+ *    off-screen and got clamped, which reads as "错位". `ContextMenuPositionProvider` + `TopEnd`
+ *    right-aligns it properly. It is a real window, so it stays next to the button.
+ *  - The OS4 glass menu was composed here, inside the actions cell. See [ThreadActionsState].
  */
 @Composable
-internal fun ThreadActions(items: List<ThreadActionItem>) {
+internal fun ThreadActions(
+    items: List<ThreadActionItem>,
+    state: ThreadActionsState,
+    modifier: Modifier = Modifier,
+) {
     if (items.isEmpty()) return
-    var expanded by remember { mutableStateOf(false) }
-    // Window-space bounds of the icon button; refreshed on every layout pass.
-    var anchorBounds by remember { mutableStateOf(Rect.Zero) }
 
+    // The box wraps just the button so the OS3 window popup — which anchors to the layout node
+    // it is composed in — keeps anchoring to the button rather than to the whole actions row.
+    // Under OS4 this box holds nothing but the button, so the page-root menu is unaffected.
     Box {
         MiuixTopBarIconButton(
-            onClick = { expanded = true },
-            modifier = Modifier.onGloballyPositioned { anchorBounds = it.boundsInWindow() },
+            onClick = { state.expanded = true },
+            modifier = modifier.onGloballyPositioned { state.anchorBounds = it.boundsInWindow() },
         ) {
             Icon(
                 imageVector = Icons.Rounded.MoreVert,
@@ -63,32 +96,13 @@ internal fun ThreadActions(items: List<ThreadActionItem>) {
             )
         }
 
-        if (AppTheme.useMiuixOs4) {
-            GlassPopup(
-                show = expanded,
-                onDismissRequest = { expanded = false },
-                anchorBounds = anchorBounds,
-                // Intentionally null: see the note above about render-node cycles.
-                backdrop = null,
-                visuals = GlassPopupDefaults.visuals(style = GlassDefaults.style(AppTheme.isDark)),
-            ) {
-                items.forEach { item ->
-                    GlassPopupItem(
-                        text = item.label,
-                        onClick = {
-                            expanded = false
-                            item.onClick()
-                        },
-                    )
-                }
-            }
-        } else {
+        if (!AppTheme.useMiuixOs4) {
             WindowListPopup(
-                show = expanded,
+                show = state.expanded,
                 // Right-aligned context menu: matches a top-bar overflow button.
                 popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
                 alignment = PopupPositionProvider.Align.TopEnd,
-                onDismissRequest = { expanded = false },
+                onDismissRequest = { state.expanded = false },
             ) {
                 ListPopupColumn {
                     items.forEachIndexed { index, item ->
@@ -98,13 +112,52 @@ internal fun ThreadActions(items: List<ThreadActionItem>) {
                             isSelected = false,
                             index = index,
                             onSelectedIndexChange = {
-                                expanded = false
+                                state.expanded = false
                                 item.onClick()
                             },
                         )
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * The OS4 glass overflow menu, anchored to the top bar button through [state].
+ *
+ * Must be composed as a child of the page's root `Box(Modifier.fillMaxSize())`, after the page
+ * content, so the panel is measured against the whole page rather than the button's cell — the
+ * component's own KDoc asks for exactly that. Emits nothing under OS3, where [ThreadActions]
+ * opens a real [WindowListPopup] window instead.
+ */
+@Composable
+internal fun BoxScope.ThreadActionsGlassMenu(
+    items: List<ThreadActionItem>,
+    state: ThreadActionsState,
+    modifier: Modifier = Modifier,
+) {
+    if (items.isEmpty() || !AppTheme.useMiuixOs4) return
+
+    GlassPopup(
+        show = state.expanded,
+        onDismissRequest = { state.expanded = false },
+        anchorBounds = state.anchorBounds,
+        // Intentionally null: sampling the page layer from a window-level overlay is a
+        // different render cycle (see docs/HANDOVER_CN.md); the opaque fallback fill keeps the
+        // panel readable and retains the bloom stroke.
+        backdrop = null,
+        modifier = modifier,
+        visuals = GlassPopupDefaults.visuals(style = GlassDefaults.style(AppTheme.isDark)),
+    ) {
+        items.forEach { item ->
+            GlassPopupItem(
+                text = item.label,
+                onClick = {
+                    state.expanded = false
+                    item.onClick()
+                },
+            )
         }
     }
 }
