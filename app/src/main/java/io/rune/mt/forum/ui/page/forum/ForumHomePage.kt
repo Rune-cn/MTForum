@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,6 +43,7 @@ import io.rune.mt.forum.domain.forum.model.ForumThread
 import io.rune.mt.forum.ui.navigation.LocalNavigator
 import io.rune.mt.forum.ui.navigation.Route
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixPageScaffold
+import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopBarIconButton
 import io.rune.mt.forum.ui.page.miuix.widgets.rememberMiuixPageChrome
 import io.rune.mt.forum.ui.theme.AppTheme
 import org.koin.androidx.compose.koinViewModel
@@ -86,6 +88,16 @@ fun ForumHomePage(
         horizontalPadding = if (useMiuixOs4) 16.dp else 12.dp,
         listState = listState,
         verticalPadding = 12.dp,
+        actions = {
+            // 消息提醒 opens the site's notice inbox; it is not a pager switch, so the tab the
+            // user was on (论坛) stays behind them when they come back.
+            MiuixTopBarIconButton(onClick = { navigator.push(Route.Notices) }) {
+                Icon(
+                    imageVector = Icons.Rounded.Notifications,
+                    contentDescription = stringResource(R.string.notice_entry_title),
+                )
+            }
+        },
     ) {
         // The search entry sits above the board grid: it is its own entry point, not a board.
         item(key = "forum_search_entry") {

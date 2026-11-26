@@ -5,6 +5,7 @@ import io.rune.mt.forum.domain.forum.model.Forum
 import io.rune.mt.forum.domain.forum.model.ForumCategory
 import io.rune.mt.forum.domain.forum.model.ForumConversationDetail
 import io.rune.mt.forum.domain.forum.model.ForumFavorite
+import io.rune.mt.forum.domain.forum.model.ForumFavoritesPage
 import io.rune.mt.forum.domain.forum.model.ForumHotEntry
 import io.rune.mt.forum.domain.forum.model.ForumNotice
 import io.rune.mt.forum.domain.forum.model.ForumNoticeKind
@@ -13,9 +14,12 @@ import io.rune.mt.forum.domain.forum.model.ForumNoticeTab
 import io.rune.mt.forum.domain.forum.model.ForumPost
 import io.rune.mt.forum.domain.forum.model.ForumPrivateConversation
 import io.rune.mt.forum.domain.forum.model.ForumPrivateMessage
+import io.rune.mt.forum.domain.forum.model.ForumProfileField
+import io.rune.mt.forum.domain.forum.model.ForumProfileStat
 import io.rune.mt.forum.domain.forum.model.ForumThread
 import io.rune.mt.forum.domain.forum.model.ForumThreadDetail
 import io.rune.mt.forum.domain.forum.model.ForumThreadPage
+import io.rune.mt.forum.domain.forum.model.ForumUserProfile
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -28,7 +32,9 @@ import org.jsoup.nodes.Element
  */
 object ForumHtmlParser {
 
-    private val FORM_HASH = Regex("""formhash\s*=\s*'([0-9a-f]+)'""")
+    private val FORM_HASH = Regex("""formhash\s*=\s*['"]([0-9a-f]+)['"]""")
+    /** The mobile template also prints the session hash as a query parameter in logout links. */
+    private val FORM_HASH_IN_URL = Regex("""formhash=([0-9a-f]+)""")
     private val TID_IN_HREF = Regex("""thread-(\d+)-""")
     private val FID_IN_HREF = Regex("""fid=(\d+)""")
     /** Discuz `filter=typeid&typeid=N` link of one 主题分类 tab. */
@@ -41,7 +47,8 @@ object ForumHtmlParser {
     private val FAVID = Regex("""favid=(\d+)""")
     private val TID_RESULT = Regex("""thread-(\d+)-\d+-\d+\.html""")
 
-    fun parseFormhash(html: String): String? = FORM_HASH.find(html)?.groupValues?.get(1)
+    fun parseFormhash(html: String): String? =
+        (FORM_HASH.find(html) ?: FORM_HASH_IN_URL.find(html))?.groupValues?.get(1)
 
     /**
      * Parses every board the site lists on one or more index pages, in document order.
@@ -431,9 +438,10 @@ object ForumHtmlParser {
 
     // ---- Favourites (收藏) --------------------------------------------------
 
-    fun parseFavorites(html: String): List<ForumFavorite> {
-        val doc = Jsoup.parse(html)
-        return doc.select("li.mysclist_li").mapNotNull { li ->
+    fun parseFavorites(html: String): List<ForumFavorite> = parseFavorites(Jsoup.parse(html))
+
+    private fun parseFavorites(doc: Document): List<ForumFavorite> =
+        doc.select("li.mysclist_li").mapNotNull { li ->
             val titleLink = li.selectFirst("a[href*=thread-]") ?: return@mapNotNull null
             val tid = TID_IN_HREF.find(titleLink.attr("href"))?.groupValues?.get(1)?.toIntOrNull()
             val favid = FAVID.find(li.selectFirst("a[href*=favid=]")?.attr("href").orEmpty())
@@ -445,7 +453,81 @@ object ForumHtmlParser {
                 forumName = li.selectFirst("a[href*=forum-]")?.text()?.trim(),
             )
         }
+
+    /**
+     * One page of favourites plus the session `formhash` and the server's own page count.
+     *
+     * The list itself is [parseFavorites]; `formhash` is only present on this page (inside the
+     * logout link), which is why the delete flow does not need a separate request.
+     */
+    fun parseFavoritesPage(html: String, page: Int = 1): ForumFavoritesPage {
+        val doc = Jsoup.parse(html)
+        return ForumFavoritesPage(
+            favorites = parseFavorites(doc),
+            formhash = parseFormhash(html),
+            page = page,
+            totalPages = parseTotalPages(doc),
+        )
     }
+
+    // ---- User profile (个人主页) --------------------------------------------
+
+    /**
+     * Parses one user's space profile page
+     * (`home.php?mod=space&uid={uid}&do=profile&mobile=2`).
+     *
+     * The plain `home.php?mod=space&uid=` URL only renders the 广播 shell (its feed is filled by
+     * an AJAX call), so the profile fields come from the `do=profile` page. The page also renders
+     * the *visitor's* sidebar (`span.user_tit`), which is why the name is read from
+     * `div.comiis_space_info` instead of reusing that selector — the same mistake that once made
+     * `getUserProfile` report a visitor as signed in.
+     */
+    fun parseUserProfile(html: String, uid: Int): ForumUserProfile {
+        val doc = Jsoup.parse(html)
+        val info = doc.selectFirst("div.comiis_space_info")
+        val headerTexts = info?.select("p span")?.map { it.text().trim() }.orEmpty()
+        val counters = doc.select("div.comiis_space_profileico li a span").map { it.text().trim() }
+        val creditStats = doc.select("div.comiis_space_profilejf li").mapNotNull { li ->
+            val value = li.selectFirst("span.f_0")?.text()?.trim() ?: return@mapNotNull null
+            val label = li.text().removePrefix(li.selectFirst("span.f_0")?.text().orEmpty()).trim()
+            if (label.isBlank()) null else ForumProfileStat(label = label, value = value)
+        }
+        val fields = doc.select("div.comiis_space_profile li").mapNotNull { li ->
+            val valueEl = li.selectFirst("div.profile_rs") ?: return@mapNotNull null
+            val label = li.selectFirst("span")?.text()?.trim().orEmpty()
+            if (label.isBlank()) null else ForumProfileField(label = label, value = valueEl.text().trim())
+        }
+        val follow = doc.selectFirst("a#followmod")
+        val signature = doc.selectFirst("div.comiis_space_profile li div.profile_face")
+            ?.text()?.trim()
+            ?.takeIf { it.isNotBlank() && !it.contains("这家伙很懒") }
+        return ForumUserProfile(
+            uid = uid,
+            name = info?.selectFirst("h2")?.text()?.trim().orEmpty(),
+            avatarUrl = ForumUrls.absolute(info?.selectFirst("div.user_img img")?.attr("src")),
+            levelText = info?.selectFirst("span.kmlevs.kmlv")?.text()?.trim()?.takeIf { it.isNotBlank() },
+            levelTitle = info?.select("span.kmlev")?.firstOrNull()?.text()?.trim()?.takeIf { it.isNotBlank() },
+            credits = creditStats.firstOrNull { it.label == "积分" }?.value?.filterDigits()?.toIntOrNull(),
+            popularity = headerTexts.countBySuffix("人气"),
+            followingCount = headerTexts.countBySuffix("关注"),
+            followerCount = headerTexts.countBySuffix("粉丝"),
+            threadCount = counters.countByPrefix("帖子"),
+            replyCount = counters.countByPrefix("回复"),
+            friendCount = counters.countByPrefix("好友"),
+            creditStats = creditStats,
+            fields = fields,
+            signature = signature,
+            isFollowing = follow?.let {
+                it.attr("href").contains("op=del") || it.text().contains("取消关注")
+            },
+        )
+    }
+
+    private fun List<String>.countBySuffix(suffix: String): Int? =
+        firstOrNull { it.endsWith(suffix) }?.filterDigits()?.toIntOrNull()
+
+    private fun List<String>.countByPrefix(prefix: String): Int? =
+        firstOrNull { it.startsWith(prefix) }?.filterDigits()?.toIntOrNull()
 
     /** Hidden credentials of the new-thread form. */
     fun parseNewThreadForm(html: String, fid: Int): io.rune.mt.forum.domain.forum.model.ForumNewThreadForm {

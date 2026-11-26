@@ -21,9 +21,11 @@ import io.rune.mt.forum.ui.animation.predictiveback.OS4_DIM_AMOUNT
 import io.rune.mt.forum.ui.animation.predictiveback.appNavTransition
 import io.rune.mt.forum.ui.animation.predictiveback.os4CardCornerRadius
 import io.rune.mt.forum.ui.page.forum.ForumConversationPage
+import io.rune.mt.forum.ui.page.forum.ForumFavoritesPage
 import io.rune.mt.forum.ui.page.forum.ForumHomePage
 import io.rune.mt.forum.ui.page.forum.ForumListPage
 import io.rune.mt.forum.ui.page.forum.ForumNoticesPage
+import io.rune.mt.forum.ui.page.forum.ForumProfilePage
 import io.rune.mt.forum.ui.page.forum.ForumSearchPage
 import io.rune.mt.forum.ui.page.forum.ForumThreadPage
 import io.rune.mt.forum.ui.page.forum.NewThreadPage
@@ -191,9 +193,23 @@ fun AppNavContainer(
                     outerPadding = PaddingValues(),
                 )
             }
+            entry<Route.UserProfile>(swipeDismiss = swipeBackDirection) { arg ->
+                ForumProfilePage(
+                    uid = arg.uid,
+                    fallbackName = arg.name,
+                    enableBlur = useBlur,
+                    outerPadding = PaddingValues(),
+                )
+            }
             entry<Route.ForumSearch>(swipeDismiss = swipeBackDirection) { arg ->
                 ForumSearchPage(
                     initialKeyword = arg.keyword,
+                    enableBlur = useBlur,
+                    outerPadding = PaddingValues(),
+                )
+            }
+            entry<Route.Favorites>(swipeDismiss = swipeBackDirection) {
+                ForumFavoritesPage(
                     enableBlur = useBlur,
                     outerPadding = PaddingValues(),
                 )

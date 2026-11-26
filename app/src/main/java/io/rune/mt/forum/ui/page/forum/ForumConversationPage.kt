@@ -8,24 +8,32 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -61,6 +69,11 @@ fun ForumConversationPage(
     val state by viewModel.conversation.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     var draft by remember(uid) { mutableStateOf("") }
+    // Measured height of the pinned composer *including* its window insets. The list's bottom
+    // content padding mirrors it so the newest bubble always stops above the composer, and the
+    // value grows with the IME automatically because the composer consumes the IME inset.
+    var composerHeightPx by remember { mutableIntStateOf(0) }
+    val composerHeight = with(LocalDensity.current) { composerHeightPx.toDp() }
 
     LaunchedEffect(uid) {
         viewModel.openConversation(uid, name)
@@ -73,7 +86,11 @@ fun ForumConversationPage(
         MiuixPageScaffold(
             title = state.name.ifBlank { name }.ifBlank { "私信" },
             chrome = chrome,
-            outerPadding = outerPadding,
+            // The scaffold copies only the bottom of outerPadding into the list's content padding,
+            // so this is exactly "leave room for the composer" without touching the shared helper.
+            outerPadding = PaddingValues(
+                bottom = outerPadding.calculateBottomPadding() + composerHeight,
+            ),
             horizontalPadding = 12.dp,
             verticalPadding = 12.dp,
             listState = listState,
@@ -95,6 +112,13 @@ fun ForumConversationPage(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
+                // Report the full height (content + insets) to the list padding above.
+                .onSizeChanged { composerHeightPx = it.height }
+                // adjustResize does not shrink an edge-to-edge window; the IME is an inset.
+                // union() takes the larger bottom inset of the two, so the composer sits above
+                // the keyboard when it is open and above the navigation bar when it is not,
+                // without ever counting both (#imePadding + #navigationBarsPadding would stack).
+                .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
                 .padding(innerGutter),
         ) {
             state.sendError?.let {

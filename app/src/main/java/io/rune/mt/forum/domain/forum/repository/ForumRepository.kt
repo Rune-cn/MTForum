@@ -3,6 +3,7 @@ package io.rune.mt.forum.domain.forum.repository
 
 import io.rune.mt.forum.domain.forum.model.ForumConversationDetail
 import io.rune.mt.forum.domain.forum.model.ForumFavorite
+import io.rune.mt.forum.domain.forum.model.ForumFavoritesPage
 import io.rune.mt.forum.domain.forum.model.ForumGuideView
 import io.rune.mt.forum.domain.forum.model.ForumHomeData
 import io.rune.mt.forum.domain.forum.model.ForumNoticePage
@@ -13,6 +14,7 @@ import io.rune.mt.forum.domain.forum.model.ForumSession
 import io.rune.mt.forum.domain.forum.model.ForumThread
 import io.rune.mt.forum.domain.forum.model.ForumThreadDetail
 import io.rune.mt.forum.domain.forum.model.ForumThreadPage
+import io.rune.mt.forum.domain.forum.model.ForumUserProfile
 import io.rune.mt.forum.domain.forum.model.NewThreadImage
 import io.rune.mt.forum.domain.forum.model.NewThreadResult
 import kotlinx.coroutines.flow.StateFlow
@@ -73,6 +75,16 @@ interface ForumRepository {
     /** Loads the profile of the signed-in user, or null when anonymous. */
     suspend fun getUserProfile(uid: Int): io.rune.mt.forum.domain.forum.model.ForumUser?
 
+    /**
+     * Loads one user's public space profile, including the recent threads the site lists on the
+     * `do=thread&view=me` tab.
+     *
+     * Unlike [getUserProfile] (which only distinguishes "session valid" from "not"), this is the
+     * full 个人资料 page. The site hides it from guests, so it throws [ForumLoginRequiredException]
+     * when the request lands on the login form instead of silently returning an empty profile.
+     */
+    suspend fun getUserProfileDetail(uid: Int): ForumUserProfile
+
 
     // ---- Private messages (私信) -------------------------------------------
 
@@ -100,6 +112,14 @@ interface ForumRepository {
      * and the site answers with the login form instead of the list.
      */
     suspend fun getNotices(tab: ForumNoticeTab, page: Int = 1): ForumNoticePage
+    /**
+     * One page of favourites plus the page's own credentials.
+     *
+     * The delete POST needs the session `formhash`, and the favourites page is where the mobile
+     * template prints it (in the logout link), so this variant returns both the rows and the
+     * token instead of forcing the screen into a second request.
+     */
+    suspend fun getFavoritesPage(page: Int = 1): ForumFavoritesPage
 
     /** Adds [tid] to favourites; two-step on the site (open form, then submit). */
     suspend fun addFavorite(tid: Int, formhash: String): Boolean
@@ -130,3 +150,13 @@ interface ForumRepository {
         images: List<NewThreadImage> = emptyList(),
     ): NewThreadResult
 }
+
+/**
+ * Thrown when a read that the site only serves to members lands on the login form.
+ *
+ * This is distinct from a network error: the session is stale or absent, and the screen should
+ * offer the login page instead of a retry that would fail the same way. Read-only pages used by
+ * signed-out visitors (board listings, threads) keep returning their content, so this is only
+ * thrown by the member-only surfaces.
+ */
+class ForumLoginRequiredException : IllegalStateException("登录状态已失效，请重新登录")
