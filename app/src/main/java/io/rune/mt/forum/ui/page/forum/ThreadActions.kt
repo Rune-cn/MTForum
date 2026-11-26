@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package io.rune.mt.forum.ui.page.forum
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.heightIn
@@ -11,19 +10,24 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import io.rune.mt.forum.R
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopBarIconButton
 import io.rune.mt.forum.ui.theme.AppTheme
+import kotlinx.coroutines.CancellationException
 import top.yukonga.miuix.kmp.basic.DropdownImpl
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
@@ -34,6 +38,7 @@ import top.yukonga.miuix.kmp.glass.GlassPopup
 import top.yukonga.miuix.kmp.glass.GlassPopupDefaults
 import top.yukonga.miuix.kmp.glass.GlassPopupItem
 import top.yukonga.miuix.kmp.material.GlassDefaults
+import top.yukonga.miuix.kmp.nav.gesture.PredictiveBackHandler
 import top.yukonga.miuix.kmp.window.WindowListPopup
 
 /**
@@ -67,30 +72,94 @@ internal class ThreadActionsState {
     /** Whether the overflow menu is open. */
     var expanded by mutableStateOf(false)
 
+    /**
+     * Predictive-back drag progress: 0 = settled open, 1 = fully dragged towards dismissal.
+     *
+     * Fed by the system gesture through [ThreadActionsBackHandler] while [expanded] is true and
+     * consumed by [ThreadActionsGlassMenu], so the panel scales/fades with the finger instead of
+     * disappearing at commit. Reset to 0 whenever the menu closes.
+     */
+    var dismissProgress by mutableFloatStateOf(0f)
+
     /** Window-space bounds of the icon button, refreshed on every layout pass. */
     var anchorBounds by mutableStateOf(Rect.Zero)
+
+    /** Closes the menu and clears any in-flight gesture transform. */
+    fun close() {
+        expanded = false
+        dismissProgress = 0f
+    }
 }
 
 /** Remembers a [ThreadActionsState] for one thread screen. */
 @Composable
 internal fun rememberThreadActionsState(): ThreadActionsState = remember { ThreadActionsState() }
 
+/** Panel scale reduction at full predictive-back drag. */
+internal const val MENU_DISMISS_SCALE_DELTA = 0.08f
+
+/** Panel alpha reduction at full predictive-back drag. */
+internal const val MENU_DISMISS_ALPHA_DELTA = 0.9f
+
+/** Outward shift (dp) at full predictive-back drag, towards the swipe edge. */
+internal const val MENU_DISMISS_TRANSLATION_DP = 16f
+
+/** Transform applied to the glass panel for one predictive-back progress value. */
+internal data class ThreadMenuDismissVisuals(
+    val scale: Float,
+    val alpha: Float,
+    val translationDp: Float,
+)
+
 /**
- * Dismisses the open overflow menu on the system back gesture instead of popping the thread.
+ * Maps predictive-back progress (0..1, clamped) to the menu panel transform.
  *
- * Must be called from the page root. The callback exists in the activity's
- * `OnBackPressedDispatcher` at all times, but `enabled` follows [ThreadActionsState.expanded]:
+ * Pure so the gesture mapping can be asserted without driving a real touch gesture: the panel
+ * must be untouched at rest and fully faded at commit, with no overshoot in between.
+ */
+internal fun threadMenuDismissVisuals(progress: Float): ThreadMenuDismissVisuals {
+    val p = progress.coerceIn(0f, 1f)
+    return ThreadMenuDismissVisuals(
+        scale = 1f - MENU_DISMISS_SCALE_DELTA * p,
+        alpha = 1f - MENU_DISMISS_ALPHA_DELTA * p,
+        translationDp = MENU_DISMISS_TRANSLATION_DP * p,
+    )
+}
+
+/**
+ * Dismisses the open overflow menu *with* the predictive-back gesture instead of popping the
+ * thread.
  *
- *  - while the menu is shut the callback is disabled, so the dispatcher never selects it and
- *    `NavDisplay`'s predictive-back gesture driver remains the only active back handler — no
- *    gesture is stolen from navigation;
- *  - while the menu is open the callback is enabled. It was registered after the nav-level one
- *    (the nav stack composes above the page), so the dispatcher prefers it: a back press /
- *    committed gesture closes the menu and is consumed, so the thread is not popped.
+ * This is the same `PredictiveBackHandler` the navigation layer uses (miuix-nav's gesture
+ * variant), so the drag streams `NavBackEvent.progress` into [ThreadActionsState.dismissProgress]
+ * and [ThreadActionsGlassMenu] renders the preview. Registration rules:
+ *
+ *  - `enabled = state.expanded`: while the menu is shut the handler is disabled, so `NavDisplay`
+ *    keeps sole ownership of the gesture (no stolen navigation preview);
+ *  - while the menu is open it is enabled. It is composed **after** [ThreadActionsGlassMenu] in
+ *    the page root, and the navigation-event dispatcher prioritises the most recently composed
+ *    enabled handler — so our preview wins over the glass popup's own plain dismiss handler.
+ *    Composing it before the menu would let the popup swallow the gesture (menu closes on
+ *    commit, but with no preview), which is exactly the bug this fixes.
+ *
+ * OS3's `WindowListPopup` is a real window and cannot be predicted; it keeps its own
+ * dismiss-on-back behaviour and this handler is a no-op there.
  */
 @Composable
 internal fun ThreadActionsBackHandler(state: ThreadActionsState) {
-    BackHandler(enabled = state.expanded) { state.expanded = false }
+    PredictiveBackHandler(
+        enabled = state.expanded,
+        onProgress = { events ->
+            try {
+                events.collect { event -> state.dismissProgress = event.progress }
+            } catch (cancel: CancellationException) {
+                state.dismissProgress = 0f
+                throw cancel
+            }
+        },
+        onCommit = { state.close() },
+        onCancel = { state.dismissProgress = 0f },
+    )
 }
 
 /**
@@ -134,7 +203,7 @@ internal fun ThreadActions(
                 // Right-aligned context menu: matches a top-bar overflow button.
                 popupPositionProvider = ListPopupDefaults.ContextMenuPositionProvider,
                 alignment = PopupPositionProvider.Align.TopEnd,
-                onDismissRequest = { state.expanded = false },
+                onDismissRequest = { state.close() },
             ) {
                 ListPopupColumn {
                     items.forEachIndexed { index, item ->
@@ -144,7 +213,7 @@ internal fun ThreadActions(
                             isSelected = false,
                             index = index,
                             onSelectedIndexChange = {
-                                state.expanded = false
+                                state.close()
                                 item.onClick()
                             },
                         )
@@ -177,15 +246,27 @@ internal fun BoxScope.ThreadActionsGlassMenu(
 ) {
     if (items.isEmpty() || !AppTheme.useMiuixOs4) return
 
+    // While a predictive-back gesture is in flight the panel follows the finger: scale down,
+    // fade out and shift towards the swipe edge. At rest (progress 0) these are exactly the
+    // identity transform, so the open menu is pixel-identical to before.
+    val visuals = threadMenuDismissVisuals(state.dismissProgress)
+    val directionSign = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1f else 1f
+    val panelModifier = modifier.graphicsLayer {
+        scaleX = visuals.scale
+        scaleY = visuals.scale
+        alpha = visuals.alpha
+        translationX = directionSign * visuals.translationDp.dp.toPx()
+    }
+
     GlassPopup(
         show = state.expanded,
-        onDismissRequest = { state.expanded = false },
+        onDismissRequest = { state.close() },
         anchorBounds = state.anchorBounds,
         // Intentionally null: sampling the page layer from a window-level overlay is a
         // different render cycle (see docs/HANDOVER_CN.md); the opaque fallback fill keeps the
         // panel readable and retains the bloom stroke.
         backdrop = null,
-        modifier = modifier,
+        modifier = panelModifier,
         visuals = GlassPopupDefaults.visuals(style = GlassDefaults.style(AppTheme.isDark)),
     ) {
         items.forEachIndexed { index, item ->
@@ -203,7 +284,7 @@ internal fun BoxScope.ThreadActionsGlassMenu(
             GlassPopupItem(
                 text = item.label,
                 onClick = {
-                    state.expanded = false
+                    state.close()
                     item.onClick()
                 },
                 // The library row is 44dp tall; raising the outer minimum to 48dp extends the
