@@ -44,4 +44,24 @@ sealed interface Route : NavKey {
     /** Compose a new thread in board [fid] (版块列表页的「发帖」入口). */
     @Serializable
     data class NewThread(val fid: Int, val name: String) : Route
+
+    /**
+     * In-forum search. [keyword] pre-fills the field so a retry or a "search again" round trip
+     * keeps the query; an empty value focuses the field instead of firing a request.
+     */
+    @Serializable
+    data class ForumSearch(val keyword: String = "") : Route
+
+    /**
+     * One user's public profile (`home.php?mod=space&uid=`).
+     *
+     * [name] travels with the key so the app bar shows the nickname before the profile request
+     * resolves, the same way [ForumList] carries its board name.
+     */
+    @Serializable
+    data class UserProfile(val uid: Int, val name: String) : Route
+
+    /** The signed-in user's favourited threads (`home.php?mod=space&do=favorite`). */
+    @Serializable
+    data object Favorites : Route
 }
