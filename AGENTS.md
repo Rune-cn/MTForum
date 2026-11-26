@@ -122,6 +122,13 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     （`home.php?mod=space&do=thread&view=me&type=draft` 等地址均为 0 条）。发帖/回复草稿一律
     存本机（`ForumDraftRepository`，DataStore `forum_drafts`，上限 20 条，按 `savedAt` 淘汰），
     **禁止**再向站点发送 `save=1` 冒充草稿。
+27. **签到只有一条 GET，结果在 CDATA 里**：`plugin.php?id=k_misign:sign&operation=qiandao&format=text&formhash=…`
+    返回 `<?xml version="1.0"?>\r\n<root><![CDATA[已签到]]></root>`；`formhash` 只能从签到页
+    `k_misign-sign.html` 的**退出链接**取（`parseFormhash` 的 `formhash=` 兜底）。
+    `已签到` 是「今天已签」，**不是错误**；其余非错误文案按成功原样展示（服务器文字即结果），
+    权限/登录/限流文案必须判失败。接口不返回数字——签到后的排名/连续/累计只能**重新取页**，
+    不要自己 +1。游客按规则 18 走登录卡片。解析在 `ForumHtmlParser.parseSignInState` /
+    `parseSignInOutcome`，CDATA 抽取只此一处（见 REVERSE_SPEC §22）。
 
 ## Miuix 双风格（OS3 / OS4）
 
