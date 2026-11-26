@@ -11,6 +11,8 @@ import io.rune.mt.forum.domain.forum.model.ForumFavorite
 import io.rune.mt.forum.domain.forum.model.ForumGuideView
 import io.rune.mt.forum.domain.forum.model.ForumHomeData
 import io.rune.mt.forum.domain.forum.model.ForumNewThreadForm
+import io.rune.mt.forum.domain.forum.model.ForumNoticePage
+import io.rune.mt.forum.domain.forum.model.ForumNoticeTab
 import io.rune.mt.forum.domain.forum.model.ForumPrivateConversation
 import io.rune.mt.forum.domain.forum.model.ForumSession
 import io.rune.mt.forum.domain.forum.model.ForumThread
@@ -171,6 +173,19 @@ class ForumRepositoryImpl(
             http.getHtml("home.php?mod=space&do=favorite&view=me&type=all&page=$page"),
         )
     }
+
+    // ---- Notices (提醒) -----------------------------------------------------
+
+    override suspend fun getNotices(tab: ForumNoticeTab, page: Int): ForumNoticePage =
+        withContext(Dispatchers.IO) {
+            val html = http.getHtml(ForumUrls.noticePath(tab, page))
+            // A stale cookie set bounces the tab page to the login form, which parses as "no
+            // rows". Surfacing the failure keeps the screen from lying with an empty inbox.
+            if (ForumHtmlParser.isLoginRequired(html)) {
+                throw IllegalStateException("登录状态已失效，请重新登录")
+            }
+            ForumHtmlParser.parseNotices(html, tab, page)
+        }
 
     override suspend fun addFavorite(tid: Int, formhash: String): Boolean = withContext(Dispatchers.IO) {
         // The site favourites in two hops: GET renders a small form, POST submits it. A single GET

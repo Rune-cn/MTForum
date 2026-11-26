@@ -172,4 +172,11 @@
     <string name="thread_action_like">推荐本帖</string>
     <string name="thread_action_follow_author">关注楼主</string>
     <string name="forum_new_thread">发帖</string>
+    <string name="forum_notices_title">消息提醒</string>
+    <string name="forum_notice_tab_system">系统提醒</string>
+    <string name="forum_notice_tab_reply">回复我的</string>
+    <string name="forum_notice_tab_mypost">我的帖子</string>
+    <string name="forum_notices_empty">暂时没有提醒内容</string>
+    <string name="forum_notices_login_required">需要登录</string>
+    <string name="forum_notices_login_hint">登录后可在此查看提醒内容。</string>
 </resources>

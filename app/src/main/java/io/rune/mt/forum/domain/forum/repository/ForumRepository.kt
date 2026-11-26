@@ -5,6 +5,8 @@ import io.rune.mt.forum.domain.forum.model.ForumConversationDetail
 import io.rune.mt.forum.domain.forum.model.ForumFavorite
 import io.rune.mt.forum.domain.forum.model.ForumGuideView
 import io.rune.mt.forum.domain.forum.model.ForumHomeData
+import io.rune.mt.forum.domain.forum.model.ForumNoticePage
+import io.rune.mt.forum.domain.forum.model.ForumNoticeTab
 import io.rune.mt.forum.domain.forum.model.ForumPost
 import io.rune.mt.forum.domain.forum.model.ForumPrivateConversation
 import io.rune.mt.forum.domain.forum.model.ForumSession
@@ -72,6 +74,17 @@ interface ForumRepository {
 
     /** Favourited threads (`home.php?mod=space&do=favorite&view=me`). */
     suspend fun getFavorites(page: Int = 1): List<ForumFavorite>
+
+    // ---- Notices (提醒) -----------------------------------------------------
+
+    /**
+     * One page of the signed-in user's 提醒 inbox; [page] is 1-based.
+     *
+     * The site renders each [tab] as its own page (`view=system|interactive|mypost`), so the tab
+     * is part of the request rather than a client-side filter. Throws when the session is stale
+     * and the site answers with the login form instead of the list.
+     */
+    suspend fun getNotices(tab: ForumNoticeTab, page: Int = 1): ForumNoticePage
 
     /** Adds [tid] to favourites; two-step on the site (open form, then submit). */
     suspend fun addFavorite(tid: Int, formhash: String): Boolean

@@ -54,6 +54,16 @@ internal object ForumUrls {
         "forum.php?mod=guide&view=${view.value}&index=1&page=$page"
 
     /**
+     * One page of one 提醒 tab.
+     *
+     * The live site selects the tab with `view=` (not the desktop template's `filter=`), and the
+     * tab pages are the ones that actually render the notice rows: the bare
+     * `do=notice&mobile=2` URL is the 消息提醒 hub listing (我的消息 / 我的粉丝 / …), not a list.
+     */
+    fun noticePath(tab: io.rune.mt.forum.domain.forum.model.ForumNoticeTab, page: Int): String =
+        "home.php?mod=space&do=notice&view=${tab.value}&page=$page&mobile=2"
+
+    /**
      * Retry candidate for a CDN image that failed to load.
      *
      * Discuz keeps the same file under the forum host (`/data/attachment/...`, `/uc_server/...`),
