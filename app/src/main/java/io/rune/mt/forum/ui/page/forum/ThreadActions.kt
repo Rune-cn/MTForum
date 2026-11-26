@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import io.rune.mt.forum.R
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopBarIconButton
+import io.rune.mt.forum.ui.page.miuix.widgets.currentMiuixComponentScope
 import io.rune.mt.forum.ui.theme.AppTheme
 import kotlinx.coroutines.CancellationException
 import top.yukonga.miuix.kmp.basic.DropdownImpl
@@ -237,6 +238,12 @@ internal fun ThreadActions(
  * all come from `GlassPopupDefaults` rather than from a bare text column. A separator before the
  * last row keeps the system-share row apart from the in-app rows (favourite / like / follow /
  * copy link), the way Miuix's own dropdown menus draw section breaks.
+ *
+ * This is the same presentation the theme-settings dropdowns use: the panel samples the page's
+ * recorded `MiuixComponentScope.pageBackdrop`, so OS4 gets the blurred glass rather than the
+ * opaque fallback fill. The backdrop is recorded by the app-wide host (`SettingsActivity` applies
+ * `pageBackdropModifier` to the root that contains the navigation tree), which is why this
+ * composable must live at the page root inside that tree instead of in the top bar.
  */
 @Composable
 internal fun BoxScope.ThreadActionsGlassMenu(
@@ -245,6 +252,13 @@ internal fun BoxScope.ThreadActionsGlassMenu(
     modifier: Modifier = Modifier,
 ) {
     if (items.isEmpty() || !AppTheme.useMiuixOs4) return
+
+    // The page backdrop the app-wide MiuixComponentHost records around the navigation tree.
+    // Passing it to the popup's glass surface is what makes the panel a real blurred glass
+    // panel; with `null` the library falls back to an opaque fill and the menu looks flat.
+    // It stays null under OS3 or when render effects are unsupported, where the popup is not
+    // composed at all, and in previews/tests composed without a MiuixComponentHost.
+    val componentScope = currentMiuixComponentScope()
 
     // While a predictive-back gesture is in flight the panel follows the finger: scale down,
     // fade out and shift towards the swipe edge. At rest (progress 0) these are exactly the
@@ -262,11 +276,15 @@ internal fun BoxScope.ThreadActionsGlassMenu(
         show = state.expanded,
         onDismissRequest = { state.close() },
         anchorBounds = state.anchorBounds,
-        // Intentionally null: sampling the page layer from a window-level overlay is a
-        // different render cycle (see docs/HANDOVER_CN.md); the opaque fallback fill keeps the
-        // panel readable and retains the bloom stroke.
-        backdrop = null,
+        // Same sampling surface as the theme-settings dropdowns (MiuixPreferences.kt): the page
+        // layer recorded by the app-wide host, not a window-level snapshot. The panel is an
+        // inline overlay inside that layer, so its coordinates resolve against the same window
+        // the backdrop was recorded in.
+        backdrop = componentScope.pageBackdrop,
         modifier = panelModifier,
+        // Same glass recipe as GlassDropdownPreference, and the same popup defaults the
+        // dropdown passes (24dp corner radius, 8dp vertical content padding, 200/288/416dp
+        // sizing with a 12dp safe margin), so the two menus read as one design language.
         visuals = GlassPopupDefaults.visuals(style = GlassDefaults.style(AppTheme.isDark)),
     ) {
         items.forEachIndexed { index, item ->
