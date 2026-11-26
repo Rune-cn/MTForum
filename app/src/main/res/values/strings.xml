@@ -143,6 +143,7 @@
     <string name="forum_op_badge">OP</string>
     <string name="forum_floor_format">#%1$d</string>
     <string name="forum_pinned_badge">Pinned</string>
+    <string name="forum_digest_badge">Digest</string>
     <string name="forum_reply_badge">Reply</string>
     <string name="nav_guide">Guide</string>
     <string name="forum_guide_tab_latest">Latest</string>
@@ -161,7 +162,6 @@
     <string name="thread_action_copy_link">Copy link</string>
     <string name="thread_action_copied">Link copied</string>
     <string name="thread_action_open_browser">Open in browser</string>
-    <string name="forum_digest_badge">Digest</string>
     <string name="forum_thread_likes_format">%1$d likes</string>
     <string name="thread_share_prefix">来自 MT论坛：</string>
     <string name="forum_tag_featured">Featured</string>

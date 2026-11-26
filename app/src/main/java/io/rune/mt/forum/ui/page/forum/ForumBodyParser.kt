@@ -243,21 +243,73 @@ internal object ForumBodyParser {
         var out = source
         // Structural tags first, so nested inline tags land inside the right element.
         REPLACEMENTS.forEach { (regex, replacement) -> out = regex.replace(out, replacement) }
+        // Anything still tagged after the known conversions is stripped rather than shown as
+        // literal `[b]`-style text: an unclosed/unsupported tag must never leak into a paragraph.
+        out = RESIDUAL_TAG.replace(out, "")
         return out
     }
 
+    /**
+     * Discuz BBCode → the small HTML subset [Walker] understands.
+     *
+     * The site normally renders posts to HTML server-side, but real bodies still contain raw
+     * BBCode from the site's editor, `preview` responses, and quotes of older posts. Order
+     * matters: paired blocks first (quote/hide/url/code…), then bare markers (list/table/hr),
+     * then the wrappers whose tag name alone carries the meaning (size/align/font), and finally
+     * [RESIDUAL_TAG] removes anything still unresolved.
+     *
+     * `[hide]` deliberately does **not** reveal its body: entitlement is server-side, so a body
+     * that leaked through must still read as hidden instead of exposing gated content.
+     */
     private val REPLACEMENTS: List<Pair<Regex, String>> = listOf(
+        // Paired structural blocks (most specific first).
+        Regex("""\[quote=([^]]+)]\s*([\s\S]*?)\[/quote]""", RegexOption.IGNORE_CASE) to
+            "<blockquote><strong>$1</strong><br>$2</blockquote>",
         Regex("""\[quote]([\s\S]*?)\[/quote]""", RegexOption.IGNORE_CASE) to "<blockquote>$1</blockquote>",
-        Regex("""\[b]([\s\S]*?)\[/b]""", RegexOption.IGNORE_CASE) to "<strong>$1</strong>",
-        Regex("""\[i]([\s\S]*?)\[/i]""", RegexOption.IGNORE_CASE) to "<em>$1</em>",
-        Regex("""\[u]([\s\S]*?)\[/u]""", RegexOption.IGNORE_CASE) to "<u>$1</u>",
-        Regex("""\[s]([\s\S]*?)\[/s]""", RegexOption.IGNORE_CASE) to "<s>$1</s>",
+        Regex("""\[hide]([\s\S]*?)\[/hide]""", RegexOption.IGNORE_CASE) to "<blockquote>此内容已隐藏</blockquote>",
+        Regex("""\[free]([\s\S]*?)\[/free]""", RegexOption.IGNORE_CASE) to "$1",
+        Regex("""\[(?:media|audio|flash)(?:=[^]]*)?]([\s\S]*?)\[/(?:media|audio|flash)]""", RegexOption.IGNORE_CASE) to "$1",
+        Regex("""\[attachimg](\d+)\[/attachimg]""", RegexOption.IGNORE_CASE) to " [附件] ",
+        Regex("""\[attach](\d+)\[/attach]""", RegexOption.IGNORE_CASE) to " [附件] ",
+        Regex("""\[email=([^]]+)]([\s\S]*?)\[/email]""", RegexOption.IGNORE_CASE) to "<a href=\"mailto:$1\">$2</a>",
+        Regex("""\[email]([\s\S]*?)\[/email]""", RegexOption.IGNORE_CASE) to "<a href=\"mailto:$1\">$1</a>",
         Regex("""\[url=([^]]+)]([\s\S]*?)\[/url]""", RegexOption.IGNORE_CASE) to "<a href=\"$1\">$2</a>",
         Regex("""\[url]([\s\S]*?)\[/url]""", RegexOption.IGNORE_CASE) to "<a href=\"$1\">$1</a>",
         Regex("""\[code]([\s\S]*?)\[/code]""", RegexOption.IGNORE_CASE) to "<pre><code>$1</code></pre>",
         Regex("""\[color=([^]]+)]([\s\S]*?)\[/color]""", RegexOption.IGNORE_CASE) to "<font color=\"$1\">$2</font>",
-        Regex("""\[img]([\s\S]*?)\[/img]""", RegexOption.IGNORE_CASE) to "<img src=\"$1\">",
+        Regex("""\[img(?:=[^]]*)?]([\s\S]*?)\[/img]""", RegexOption.IGNORE_CASE) to "<img src=\"$1\">",
+        Regex("""\[b]([\s\S]*?)\[/b]""", RegexOption.IGNORE_CASE) to "<strong>$1</strong>",
+        Regex("""\[i]([\s\S]*?)\[/i]""", RegexOption.IGNORE_CASE) to "<em>$1</em>",
+        Regex("""\[u]([\s\S]*?)\[/u]""", RegexOption.IGNORE_CASE) to "<u>$1</u>",
+        Regex("""\[s]([\s\S]*?)\[/s]""", RegexOption.IGNORE_CASE) to "<s>$1</s>",
+
+        // Bare structural markers: list/table rows become real block elements so the walker
+        // splits them into separate paragraphs (`li`/`tr` are in BLOCK_TAGS).
+        Regex("""\[list(?:=[^]]+)?]""", RegexOption.IGNORE_CASE) to "<ul>",
+        Regex("""\[/list]""", RegexOption.IGNORE_CASE) to "</ul>",
+        Regex("""\[\*]""") to "<li>",
+        Regex("""\[table]""", RegexOption.IGNORE_CASE) to "<table>",
+        Regex("""\[/table]""", RegexOption.IGNORE_CASE) to "</table>",
+        Regex("""\[tr]""", RegexOption.IGNORE_CASE) to "<tr>",
+        Regex("""\[/tr]""", RegexOption.IGNORE_CASE) to "</tr>",
+        Regex("""\[td]""", RegexOption.IGNORE_CASE) to "<td>",
+        Regex("""\[/td]""", RegexOption.IGNORE_CASE) to "</td>",
         Regex("""\[hr]""", RegexOption.IGNORE_CASE) to "<hr>",
+
+        // Wrappers with no visual equivalent in the block renderer: drop the markers, keep the
+        // text. `[size]`/`[font]`/`[backcolor]`/`[align]` are styling, `[md]` is already text.
+        Regex("""\[(?:size=\d+|font=[^]]*|backcolor=[^]]*|align=[^]]*|indent|float(?:=[^]]*)?|p|md)]""", RegexOption.IGNORE_CASE) to "",
+        Regex("""\[/(?:size|font|backcolor|align|indent|float|p|md)]""", RegexOption.IGNORE_CASE) to "",
+
+        // Id-only markers with nothing renderable behind them.
+        Regex("""\[(?:postbg|groupid|rate|player|autolink|music)(?:=[^]]*)?]""", RegexOption.IGNORE_CASE) to "",
+        Regex("""\[/(?:postbg|groupid|rate|player|autolink|music)]""", RegexOption.IGNORE_CASE) to "",
+    )
+
+    /** Last-resort scrub for unbalanced or unsupported Discuz tags left in the body. */
+    private val RESIDUAL_TAG = Regex(
+        """\[/?(?:attach|attachimg|hide|free|size|font|backcolor|align|indent|float|p|list|table|tr|td|media|audio|flash|postbg|groupid|rate|player|email|md|quote|b|i|u|s|url|img|color|code|hr)(?:=[^]]*)?]""",
+        RegexOption.IGNORE_CASE,
     )
 
     /** Strips markup and returns one readable line, used for listing summaries. */
