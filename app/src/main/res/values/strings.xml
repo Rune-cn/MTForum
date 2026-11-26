@@ -172,4 +172,11 @@
     <string name="thread_action_like">Upvote this thread</string>
     <string name="thread_action_follow_author">Follow the author</string>
     <string name="forum_new_thread">New thread</string>
+    <string name="forum_notices_title">Notices</string>
+    <string name="forum_notice_tab_system">System notices</string>
+    <string name="forum_notice_tab_reply">Replies to me</string>
+    <string name="forum_notice_tab_mypost">My posts</string>
+    <string name="forum_notices_empty">No notices yet.</string>
+    <string name="forum_notices_login_required">Sign in required</string>
+    <string name="forum_notices_login_hint">Your notices appear here after you sign in.</string>
 </resources>

@@ -5,6 +5,10 @@ import io.rune.mt.forum.domain.forum.model.Forum
 import io.rune.mt.forum.domain.forum.model.ForumConversationDetail
 import io.rune.mt.forum.domain.forum.model.ForumFavorite
 import io.rune.mt.forum.domain.forum.model.ForumHotEntry
+import io.rune.mt.forum.domain.forum.model.ForumNotice
+import io.rune.mt.forum.domain.forum.model.ForumNoticeKind
+import io.rune.mt.forum.domain.forum.model.ForumNoticePage
+import io.rune.mt.forum.domain.forum.model.ForumNoticeTab
 import io.rune.mt.forum.domain.forum.model.ForumPost
 import io.rune.mt.forum.domain.forum.model.ForumPrivateConversation
 import io.rune.mt.forum.domain.forum.model.ForumPrivateMessage
@@ -331,4 +335,88 @@ object ForumHtmlParser {
         replace(ICON_GLYPHS, "").trim()
 
     private val ICON_GLYPHS = Regex("[\\uE000-\\uF8FF]")
+
+    // ---- 提醒 (notice inbox) -------------------------------------------------
+
+    /**
+     * Rows of one 提醒 tab (`home.php?mod=space&do=notice&view=<tab>&mobile=2`).
+     *
+     * The site renders all three tabs with one template, so the selectors are shared: rows are
+     * `div.comiis_notice_list ul li`. The `type=` sub-tabs (帖子 / 点评 / 提到我的, 打招呼 / 好友 /
+     * 留言 …) live in `#comiis_sub li`, outside the list container, which is why scoping the
+     * query to `div.comiis_notice_list` keeps them from being mistaken for rows — worth an
+     * explicit anchor because the *page containing those sub-tabs* otherwise looks like a list.
+     *
+     * An empty tab prints `div.comiis_notip` (“暂时没有提醒内容”) instead of a list, so it parses
+     * to an empty [ForumNoticePage] and the screen shows its own empty card.
+     */
+    fun parseNotices(html: String, tab: ForumNoticeTab, page: Int): ForumNoticePage {
+        val doc = Jsoup.parse(html)
+        val notices = doc.select("div.comiis_notice_list ul li").mapNotNull { parseNoticeRow(it) }
+        return ForumNoticePage(
+            tab = tab,
+            page = page,
+            totalPages = parseTotalPages(doc),
+            notices = notices,
+        )
+    }
+
+    /** One `li` of the notice list; null when it carries no body (the template's spacers). */
+    private fun parseNoticeRow(li: Element): ForumNotice? {
+        val body = li.selectFirst("div.ntc_body") ?: return null
+        val authorLink = body.selectFirst("a[href*=space-uid-]")
+        val authorName = authorLink?.text()?.cleanTitle().orEmpty()
+        // A notice links to a post via `ptid=<tid>` (the title anchor first, the trailing 查看
+        // second); notices that target a profile/wall keep the row non-navigable instead of
+        // opening a thread with a guessed id.
+        val threadLink = body.select("a[href]").firstOrNull { NOTICE_PTID.containsMatchIn(it.attr("href")) }
+        val tid = threadLink
+            ?.let { NOTICE_PTID.find(it.attr("href"))?.groupValues?.get(1)?.toIntOrNull() }
+        val threadTitle = threadLink?.text()?.cleanTitle().orEmpty()
+
+        // Render the body without the author (shown on its own line) and without the redundant
+        // 查看 anchor (the whole row is the tap target); the remaining text is the preview.
+        val preview = body.clone().apply {
+            select("a[href*=space-uid-]").remove()
+            select("a.lit").remove()
+        }
+        val previewText = preview.text().let(::normalizeNoticeText)
+
+        return ForumNotice(
+            id = li.selectFirst("a[id^=a_note_]")
+                ?.attr("id")
+                ?.let { NOTICE_ID.find(it)?.groupValues?.get(1)?.toLongOrNull() },
+            kind = noticeKind(previewText, hasAuthor = authorName.isNotBlank()),
+            authorName = authorName,
+            authorAvatarUrl = ForumUrls.absolute(li.selectFirst("a.notice_img img")?.attr("src")),
+            contentHtml = preview.html(),
+            timeText = li.selectFirst("h2.f_d")?.text()?.let(::normalizeNoticeText)?.ifBlank { null },
+            tid = tid,
+            threadTitle = threadTitle,
+            // The live page prints no unread marker: all 13 rows of a real 2026-11-26
+            // `view=mypost` page are `<li class="b_b bg_f cl">`, and the 系统/坛友互动 tabs were
+            // empty. Keeping false is the honest reading; see ForumNotice.unread.
+            unread = false,
+        )
+    }
+
+    private fun noticeKind(text: String, hasAuthor: Boolean): ForumNoticeKind = when {
+        !hasAuthor -> ForumNoticeKind.System
+        text.contains("回复") -> ForumNoticeKind.Reply
+        text.contains("点评") -> ForumNoticeKind.Comment
+        text.contains("提到") -> ForumNoticeKind.Mention
+        text.contains("赞") || text.contains("挺") -> ForumNoticeKind.Like
+        else -> ForumNoticeKind.Other
+    }
+
+    /** Drops the icon-font glyphs / NBSP the template mixes into the time and body text. */
+    private fun normalizeNoticeText(raw: String): String =
+        raw.cleanTitle()
+            .replace('\u00A0', ' ')
+            .replace(NOTICE_WHITESPACE, " ")
+            .trim()
+
+    private val NOTICE_PTID = Regex("""ptid=(\d+)""")
+    private val NOTICE_ID = Regex("""a_note_(\d+)""")
+    private val NOTICE_WHITESPACE = Regex("""\s+""")
 }
