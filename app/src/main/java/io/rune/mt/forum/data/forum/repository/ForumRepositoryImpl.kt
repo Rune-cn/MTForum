@@ -8,6 +8,7 @@ import io.rune.mt.forum.data.forum.network.ForumUrls
 import io.rune.mt.forum.data.forum.network.MultipartPart
 import io.rune.mt.forum.domain.forum.model.ForumConversationDetail
 import io.rune.mt.forum.domain.forum.model.ForumFavorite
+import io.rune.mt.forum.domain.forum.model.ForumFavoritesPage
 import io.rune.mt.forum.domain.forum.model.ForumGuideView
 import io.rune.mt.forum.domain.forum.model.ForumHomeData
 import io.rune.mt.forum.domain.forum.model.ForumNewThreadForm
@@ -17,8 +18,10 @@ import io.rune.mt.forum.domain.forum.model.ForumThread
 import io.rune.mt.forum.domain.forum.model.ForumThreadDetail
 import io.rune.mt.forum.domain.forum.model.ForumThreadPage
 import io.rune.mt.forum.domain.forum.model.ForumUser
+import io.rune.mt.forum.domain.forum.model.ForumUserProfile
 import io.rune.mt.forum.domain.forum.model.NewThreadImage
 import io.rune.mt.forum.domain.forum.model.NewThreadResult
+import io.rune.mt.forum.domain.forum.repository.ForumLoginRequiredException
 import io.rune.mt.forum.domain.forum.repository.ForumRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -137,6 +140,33 @@ class ForumRepositoryImpl(
         )
     }
 
+    /**
+     * The full space profile (个人资料) plus the user's recent threads.
+     *
+     * The plain `uid=` URL only renders the 广播 shell whose feed is filled by AJAX, so the
+     * profile itself is read from `do=profile`. The recent-thread listing is a second page
+     * (`do=thread&view=me`); it is best-effort, so a failing listing still returns the profile
+     * instead of failing the whole screen. Guests are bounced to the login form, which maps to
+     * [ForumLoginRequiredException] rather than an empty page.
+     */
+    override suspend fun getUserProfileDetail(uid: Int): ForumUserProfile = withContext(Dispatchers.IO) {
+        val html = http.getHtml("home.php?mod=space&uid=$uid&do=profile&mobile=2")
+        if (ForumHtmlParser.isLoginRequired(html)) {
+            throw ForumLoginRequiredException()
+        }
+        val profile = ForumHtmlParser.parseUserProfile(html, uid)
+        val threads = runCatching {
+            http.getHtml("home.php?mod=space&uid=$uid&do=thread&view=me&from=space&mobile=2")
+        }.getOrNull()
+        if (threads == null) return@withContext profile
+        val page = ForumHtmlParser.parseThreadPage(threads, fid = 0, page = 1)
+        profile.copy(
+            recentThreads = page.threads,
+            recentThreadPage = page.page,
+            recentThreadTotalPages = page.totalPages,
+        )
+    }
+
     // ---- Private messages (私信) -------------------------------------------
 
     override suspend fun getConversations(page: Int): List<ForumPrivateConversation> =
@@ -170,6 +200,14 @@ class ForumRepositoryImpl(
         ForumHtmlParser.parseFavorites(
             http.getHtml("home.php?mod=space&do=favorite&view=me&type=all&page=$page"),
         )
+    }
+
+    override suspend fun getFavoritesPage(page: Int): ForumFavoritesPage = withContext(Dispatchers.IO) {
+        val html = http.getHtml("home.php?mod=space&do=favorite&view=me&type=all&page=$page")
+        if (ForumHtmlParser.isLoginRequired(html)) {
+            throw ForumLoginRequiredException()
+        }
+        ForumHtmlParser.parseFavoritesPage(html, page)
     }
 
     override suspend fun addFavorite(tid: Int, formhash: String): Boolean = withContext(Dispatchers.IO) {
