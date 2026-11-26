@@ -10,8 +10,10 @@ import io.rune.mt.forum.domain.forum.model.ForumHomeData
 import io.rune.mt.forum.domain.forum.model.ForumNoticePage
 import io.rune.mt.forum.domain.forum.model.ForumNoticeTab
 import io.rune.mt.forum.domain.forum.model.ForumUserProfile
+import io.rune.mt.forum.domain.forum.model.ForumNewThreadDraft
 import io.rune.mt.forum.domain.forum.model.ForumNewThreadForm
 import io.rune.mt.forum.domain.forum.model.ForumPrivateConversation
+import io.rune.mt.forum.domain.forum.model.ForumReplyDraft
 import io.rune.mt.forum.domain.forum.model.ForumSession
 import io.rune.mt.forum.domain.forum.model.ForumThread
 import io.rune.mt.forum.domain.forum.model.ForumThreadDetail
@@ -19,6 +21,7 @@ import io.rune.mt.forum.domain.forum.model.ForumThreadPage
 import io.rune.mt.forum.domain.forum.model.ForumUser
 import io.rune.mt.forum.domain.forum.model.NewThreadImage
 import io.rune.mt.forum.domain.forum.model.NewThreadResult
+import io.rune.mt.forum.domain.forum.repository.ForumDraftRepository
 import io.rune.mt.forum.domain.forum.repository.ForumRepository
 import io.rune.mt.forum.ui.page.forum.ForumViewModel
 import kotlinx.coroutines.Dispatchers
@@ -58,7 +61,7 @@ class ForumListCategoryStateTest {
     @Test
     fun `selecting a category reloads page 1 and keeps the choice for paging and refresh`() {
         val repository = RecordingRepository()
-        val viewModel = ForumViewModel(repository)
+        val viewModel = ForumViewModel(repository, NoOpDraftRepository)
 
         viewModel.openForum(fid = 38, forumName = "建议反馈")
         assertEquals(listOf(1 to null), repository.threadCalls)
@@ -98,7 +101,7 @@ class ForumListCategoryStateTest {
     @Test
     fun `reopening the same board keeps its category and a new board starts at 全部`() {
         val repository = RecordingRepository()
-        val viewModel = ForumViewModel(repository)
+        val viewModel = ForumViewModel(repository, NoOpDraftRepository)
 
         viewModel.openForum(fid = 38, forumName = "建议反馈")
         viewModel.selectCategory(62)
@@ -209,4 +212,18 @@ class ForumListCategoryStateTest {
             images: List<NewThreadImage>,
         ): NewThreadResult = error("unused")
     }
+}
+
+/**
+ * This test never touches drafts; the view model only needs the collaborator to exist, and the
+ * category assertions cover the board requests.
+ */
+private object NoOpDraftRepository : ForumDraftRepository {
+    override suspend fun newThreadDraft(fid: Int): ForumNewThreadDraft? = null
+    override suspend fun saveNewThreadDraft(draft: ForumNewThreadDraft) = Unit
+    override suspend fun deleteNewThreadDraft(fid: Int) = Unit
+    override suspend fun replyDraft(tid: Int): ForumReplyDraft? = null
+    override suspend fun saveReplyDraft(draft: ForumReplyDraft) = Unit
+    override suspend fun deleteReplyDraft(tid: Int) = Unit
+    override suspend fun draftCount(): Int = 0
 }

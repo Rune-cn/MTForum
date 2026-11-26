@@ -1029,3 +1029,92 @@ render effect、或 SafeMode 命中）→ 面板走库的 opaque 兜底，这是
   （`menu samples the page chrome backdrop never the page backdrop`；label 用例 6 行 + 顺序断言）
 - `:app:lintVitalStableRelease` → BUILD SUCCESSFUL（`Lint found no new issues`）
 - ⚠️ 本机无设备/模拟器：真机上「菜单不再崩溃」与玻璃观感**均未复测**。
+
+---
+
+## 16. 本地草稿（发帖 / 回复）— 2026-11-27
+
+用户反馈「发帖有草稿的你可以先测试保存草稿」，结论是**站点侧草稿不可用，草稿必须做在客户端本机**。
+
+### 16.1 站点「保存草稿」实测（真实会话，一次）
+
+`forum.php?mod=post&action=newthread&fid={fid}&mobile=2` 的表单里确实有保存草稿按钮：
+
+```html
+<input type="hidden" id="postsave" name="save" value="" />
+<button type="button" id="postsubmit" class="comiis_btn formdialog bg_a f_f" value="true"
+        onclick="document.getElementById('postsave').value=1;$('postsubmit').click();"><em>保存草稿</em></button>
+```
+
+它不是一个独立接口——只是把 `postsave` 的值改成 `1` 后提交**同一个 multipart 新帖 POST**
+（URL 仍是 `forum.php?mod=post&action=newthread&fid={fid}&extra=&topicsubmit=yes&mobile=2`，
+字段 `formhash/posttime/subject/message/htmlon=0/usesig=1/allownoticeauthor=1/save`）。
+带 `save=1` 的两种提交实测：
+
+| 请求 | 结果 |
+|---|---|
+| `save=1` **且** `topicsubmit=yes` | **主题被直接发布**（版面出现真实新帖），没有变成草稿 |
+| `save=1` **不带** `topicsubmit=yes` | 服务端重新渲染空白发帖表单，**没有草稿被持久化** |
+
+之后逐个核对，均为 0 条草稿：
+
+```
+GET home.php?mod=space&do=thread&view=me&from=space       → 无草稿
+GET home.php?mod=space&do=thread&view=me&type=draft       → 无草稿
+GET home.php?mod=spacecp&ac=draft                         → 只是「资料设置」，没有草稿管理
+桌面版同地址                                               → 无草稿
+```
+
+结论：站点草稿插件处于关闭状态（`forum_guard` 插件在删除那条测试帖时还抛过 Discuz
+「System Error / 编辑数据不存在」）。**因此 `save=1` 不是保存草稿，禁止再尝试用它冒充草稿。**
+
+### 16.2 因此：草稿是客户端本地的
+
+- 领域层：`domain/forum/model/ForumDraft.kt`（`ForumNewThreadDraft` / `ForumReplyDraft` /
+  `ForumDraftIndex`，`@Serializable`）+ `domain/forum/repository/ForumDraftRepository.kt`。
+- 实现：`data/forum/repository/ForumDraftRepositoryImpl.kt`，使用**独立的 Preferences DataStore**
+  文件 `files/datastore/forum_drafts.preferences_pb`（Koin 里 qualifier `ForumDraftDataStore`），
+  整份索引序列化成一个 JSON 字符串，一次 `edit` 原子写入。进程被杀、应用重启后仍在。
+- 容量：**总共最多 20 条**（`ForumDraftRepositoryImpl.MAX_DRAFTS`），新帖按 `fid`、回复按 `tid`
+  去重（同版块/同帖子只保留一条，覆盖旧的）；超过 20 条时按 `savedAt` 淘汰最旧的。
+  `savedAt` 由仓库自己的时钟盖章，调用方改不了。
+- 图片只存 content URI，**不存图片字节**；恢复时重新读取，读不到（文件被删/授权丢失）的
+  以「有 N 张图片已无法恢复」提示并跳过。发帖图片选择器从 `GetMultipleContents` 换成
+  `OpenMultipleDocuments` 并在选图时 `takePersistableUriPermission`，否则重启后 URI 授权
+  不保留、恢复必然丢图。
+
+### 16.3 交互（发帖页 + 回复框一致）
+
+- 显式「保存草稿」按钮：发帖页按钮行（`取消 / 保存草稿 / 发布`）、回复框页脚
+  （`取消 / 保存草稿 / 发送`）。只写本机 DataStore，**不发任何网络请求**，成功后 Toast
+  「草稿已保存在本机」。
+- 离开页面自动保存：发帖页在返回按钮与 `DisposableEffect.onDispose`（含预测式返回手势退出）
+  各调一次 `saveOnLeave()`，用内容签名去重；只保存非空白内容，**且当存在一条未被处理的旧草稿时
+  不覆盖**（不会静默丢数据）。回复框在 `dismissReply()` 时同样只保存非空白、未恢复旧草稿的内容。
+- 打开时若同一 `fid`/`tid` 有草稿：不静默填表，先弹「恢复草稿？」对话框
+  （`DraftRestoreDialog`，恢复 = 主按钮，丢弃 = 次按钮）。恢复会填入标题/正文/引用/图片；
+  丢弃删除本机草稿并保持空白；点对话框外部/返回只是关掉提示、**保留**草稿（防止误删）。
+- 发布成功 / 回复成功：删除对应草稿。
+
+**注**：自动保存用 `viewModelScope.launch(NonCancellable + Dispatchers.IO)`，因为页面退出后
+`viewModelScope` 会先被取消，普通 launch 可能丢写；这是「退场必须写完」的刻意选择。
+
+### 16.4 验证
+
+- `:app:testStableDebugUnitTest` → **38 suites / 207 tests / 0 failures / 0 errors**（本次新增 2 个
+  suite / 15 个用例）；`:app:compileStableDebugKotlin` → BUILD SUCCESSFUL；
+  `:app:lintVitalStableRelease` → BUILD SUCCESSFUL（`Lint found no new issues`，1 个既有错误由
+  baseline 过滤）。
+- 新增测试：`ForumDraftStoreTest`（5：字段/图片 URI 往返、同上下文覆盖、删除、20 条上限淘汰、
+  损坏 JSON 降级、回复引用字段往返；用内存版 `DataStore<Preferences>` 驱动，因为 DataStore 的
+  文件重命名在 Windows JVM 上无法覆盖已存在的 `.preferences_pb`）；`ForumDraftViewModelTest`
+  （10：发帖/回复各自的「提示 → 恢复 → 丢弃 → 保存不发请求 → 发布后清除 → 自动保存不覆盖旧草稿」）。
+- Robolectric 用英文串，新增 7 个字符串键三语同步（`draft_*`）。
+
+### 16.5 限制（如实）
+
+- **无跨设备/账号同步**：草稿只在本机，换手机/清数据即丢；站点没有可用的草稿 API。
+- 站点草稿功能不可用（§16.1），客户端也不会在站点上创建任何草稿。
+- 图片 URI 依赖系统授权；`OpenMultipleDocuments` 的持久授权在部分第三方文件提供者上不可靠，
+  这类图片恢复时会被计为「无法恢复」。
+- 草稿上限 20 条是硬编码常量，没有设置项；被淘汰的草稿不可恢复。

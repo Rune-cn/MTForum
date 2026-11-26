@@ -117,6 +117,11 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     `&nbsp;` 缩进，必须整块取出行并保持等宽与对齐；标题（`font[size]`）、引用、表格、附件、
     `hr`、`i.pstatus`、`div.comiis_modact` 同理各自成块。真实正文是 HTML，切勿对其跑 BBCode
     正则转换（代码里合法含 `[b]` 等字面量）。
+26. **草稿只能是本地草稿**：站点发帖表单的 `save=1` **不是**保存草稿——2026-11-27 实测
+    `save=1` + `topicsubmit=yes` 会直接发布主题，去掉 `topicsubmit` 也不会落任何草稿
+    （`home.php?mod=space&do=thread&view=me&type=draft` 等地址均为 0 条）。发帖/回复草稿一律
+    存本机（`ForumDraftRepository`，DataStore `forum_drafts`，上限 20 条，按 `savedAt` 淘汰），
+    **禁止**再向站点发送 `save=1` 冒充草稿。
 
 ## Miuix 双风格（OS3 / OS4）
 

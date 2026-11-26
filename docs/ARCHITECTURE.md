@@ -17,14 +17,15 @@ app/src/main/java/io/rune/mt/forum/
 │   │   │   └── ForumHtmlParser.kt    jsoup 解析：版块/列表/帖子/楼层/分页/缩略图
 │   │   └── repository/
 │   │       ├── ForumRepositoryImpl.kt   仓库实现（每方法 withContext(IO)）
+│   │       ├── ForumDraftRepositoryImpl.kt  本机草稿（独立 DataStore `forum_drafts`，上限 20 条）
 │   │       ├── ForumSessionStore.kt     DataStore 持久化 Cookie
 │   │       └── ForumPasswordAuthenticator.kt  账号密码登录
 │   ├── settings/                     设置项仓库
 │   └── updater/                      更新检查（指向本仓库 Releases）
 ├── domain/
 │   ├── forum/
-│   │   ├── model/                    Forum / ForumThread / ForumPost / ForumUser / ForumSession
-│   │   └── repository/ForumRepository.kt
+│   │   ├── model/                    Forum / ForumThread / ForumPost / ForumUser / ForumSession / ForumDraft
+│   │   └── repository/               ForumRepository.kt / ForumDraftRepository.kt
 │   ├── settings/                     偏好模型与用例
 │   └── updater/
 ├── di/

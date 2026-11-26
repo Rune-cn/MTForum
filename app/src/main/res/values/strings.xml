@@ -233,4 +233,12 @@
     <string name="forum_body_code_label">Code</string>
     <string name="forum_body_copy">Copy</string>
     <string name="forum_body_copied">Copied</string>
+    <!-- Local drafts (本地草稿) — stored on the device only; the site cannot save drafts -->
+    <string name="draft_save">Save draft</string>
+    <string name="draft_saved_toast">Draft saved on this device</string>
+    <string name="draft_restore_title">Restore draft?</string>
+    <string name="draft_restore_message">This draft is stored only on this device; the forum does not keep drafts.</string>
+    <string name="draft_restore_confirm">Restore</string>
+    <string name="draft_restore_discard">Discard</string>
+    <string name="draft_images_skipped_format">%1$d image(s) could not be restored and were skipped.</string>
 </resources>
