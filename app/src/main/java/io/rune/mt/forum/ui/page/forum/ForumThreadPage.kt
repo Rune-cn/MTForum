@@ -68,6 +68,8 @@ import io.rune.mt.forum.ui.page.miuix.widgets.rememberMiuixPageChrome
 import io.rune.mt.forum.ui.theme.AppTheme
 import org.koin.androidx.compose.koinViewModel
 import timber.log.Timber
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.FloatingActionButton
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.PullToRefresh
@@ -351,15 +353,21 @@ internal fun ForumPostCard(
     }
     val authorClickable = Modifier.clickable(enabled = post.authorUid != 0) { onAuthorClick(post) }
 
-    Column(
+    // The card is Miuix's own `Card`, the container the example builds every grouped section
+    // from (`component/CardSection.kt`, `GroupedCardItems.kt`): its surface color, 16dp corner
+    // radius and squircle clipping come from `CardDefaults` instead of a hand-rolled
+    // `clip(RoundedCornerShape(18.dp)).background(...)`. The inner paddings stay explicit so the
+    // body keeps its full-bleed width for images and tables.
+    Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(bottom = 12.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(
-                if (op) MiuixTheme.colorScheme.surfaceContainerHigh
-                else MiuixTheme.colorScheme.surfaceContainer,
-            ),
+            .padding(bottom = 12.dp),
+        insideMargin = PaddingValues(0.dp),
+        colors = if (op) {
+            CardDefaults.defaultColors(color = MiuixTheme.colorScheme.surfaceContainerHigh)
+        } else {
+            CardDefaults.defaultColors(color = MiuixTheme.colorScheme.surfaceContainer)
+        },
     ) {
         // Board label on the OP card only: it answers "where am I?" without repeating the app bar
         // title, and a long thread's later floors do not need it.
