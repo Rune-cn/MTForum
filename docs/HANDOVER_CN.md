@@ -146,20 +146,53 @@ POST member.php?mod=logging&action=login&loginsubmit=yes&loginhash=…&inajax=1
 `new` 回复 / `sofa` 抢沙发。它们都渲染与版块列表相同的 `li.forumlist_li`，可直接复用
 `parseThreadPage`；分页是真实存在的 `div.pg`（`/ 12 页`），抢沙发没有分页器（单页 12 条）。
 
-### 3.5 正文渲染
+### 3.5 正文渲染（2026-11-27 重写）
 
-站点输出的是 **HTML 不是 BBCode**（实测多个帖子，标签为
-`blockquote/br/div/font/i/img/strong/table/td/tr`）。
+站点把帖子存成 **BBCode**，Comiis 移动模板在服务端渲染成 **HTML**，所以客户端拿到的是
+HTML，任务是**忠实渲染这段 HTML**——不引 WebView、不引第三方富文本引擎。旧实现把
+`li/div/table/tr` 全部当段落边界，结果一个 5 行代码块变成 5 个散段、面板与等宽排版全丢
+（真实帖子里有 40 个 `comiis_blockcode`，读起来就是一段段散文）。本节记录重写后的块模型。
 
-但客户端发送回复时用的是 BBCode（`[quote]`/`[b]`/`[#呵呵]`），所以解析器双向兼容：
+管线（解析在 `ForumBodyParser.kt`，渲染在 `ForumHtmlText.kt`）：
 
 ```
-原文 ──(bbcodeToHtml)──▶ HTML ──(jsoup)──▶ 块列表 ──▶ Compose
-                                               ├ Paragraph(AnnotatedString)
-                                               ├ Picture(url)
-                                               ├ EmojiRow(urls)
-                                               └ Quote(AnnotatedString)
+服务端 HTML ──(jsoup)────────▶ 块列表 ──▶ Compose
+原始 BBCode ─(bbcodeToHtml)──┘
 ```
+
+块类型（`ForumBodyBlock`）：
+
+| 块 | 来源 HTML（Comiis 模板） | 渲染 |
+|---|---|---|
+| `Paragraph` | `div/p/br` + 行内标签 | 15sp 正文，`AnnotatedString` 带 SpanStyle（可选 `textAlign`） |
+| `Heading(level)` | `<font size="6\|5\|4\|2">`（常包 `<strong>`） | 20 / 17 / 15.5 / 12.5 sp，Semibold，紧贴上边距 |
+| `CodeBlock` | `div.comiis_blockcode > .b_l > ol > li` | 独立面板、等宽、横向滚动、Copy 按钮，**逐行原样保留** |
+| `Quote(text, author)` | `div.comiis_quote > blockquote` / 裸 `<blockquote>` | 左侧竖线；作者行（`font color=#999999` 的「…发表于…」）作暗色页眉 |
+| `Divider` | `<hr class="l">` | 1dp 分隔线 |
+| `BulletList(items)` | `ul/ol > li`（支持 2–3 层嵌套） | 圆点 / 序号 + 缩进 |
+| `Table(rows)` | `table/tr/td` | weight 网格 + 细边框 |
+| `Attachment` | `div.comiis_attach`（`span.f_ok`、`p.attach_size`、`a[href*=mod=attachment]`） | 附件卡片，点击 `ForumUrls.absolute` 后的下载地址 |
+| `ModeratorNote` | `div.comiis_modact` | 蓝色信息 chip |
+| `EditNote` | `i.pstatus`（「本帖最后由…编辑」） | 12sp 暗色说明，非斜体 |
+| `Picture` / `EmojiRow` | `<img>`（懒加载属性）/ `[#xxx]` token | 全宽图片 / 小表情行 |
+
+服务端实测事实（Comiis 模板对单个 BBCode 标签的输出）：
+
+| 发送的 BBCode | 模板输出 HTML |
+|---|---|
+| `[b]` `[i]` `[u]` `[s]` | `<strong>` `<i>` `<u>` `<strike>` |
+| `[color=#ff0000]` / `[color=blue]` | `<font color="#ff0000">` / `<font color="blue">` |
+| `[size=5]` | **服务端丢弃**，文本无样式；正文里的 `font[size]` 来自 `size` 或旧渲染 |
+| `[align=center]` | `<div align="center">…</div>` |
+| `[quote]`（普通回复里） | 纯文本 + `<br>`，无 blockquote |
+| `[quote]`（真正的引用回复） | `div.comiis_quote > blockquote` + `font color=#999999` 作者行 |
+| `[code]` | `div.comiis_blockcode > .b_l > ol > li`（每个 `<li>` 一行，可再含 `<br>`/`&nbsp;`） |
+| `[url]` | `<a href target=_blank>` |
+| `[list][*]` | `<ul><li>` |
+| `[table][tr][td]` | `<table><tr><td>` |
+| `[hr]` | `<hr class="l">` |
+| 表情 | `<img src=…/smiley/… smilieid=…>` |
+| 附件 | `div.comiis_attach`（文件名 + 「N KB , 下载次数…」） |
 
 行内样式映射：
 
@@ -172,8 +205,22 @@ POST member.php?mod=logging&action=login&loginsubmit=yes&loginhash=…&inajax=1
 | `a` | `primary` 色 + 下划线 |
 | `font color` | 解析 hex / 少量颜色名 |
 
+**为什么代码块必须独立成块**：`comiis_blockcode` 的每个 `<li>` 是一行代码，单行里还可能
+带 `<br>` 与 `&nbsp;` 缩进。把 `li` 当段落边界就会散架；必须整块取出、按 `<li>`/`<br>`
+还原行、`&nbsp;`→空格但**不折叠内部空格**（对齐有意义），只去掉所有非空行共有的公共缩进。
+渲染层用 `FontFamily.Monospace + horizontalScroll`，并给「代码 / Copy」按钮复制精确文本。
+
+**HTML vs BBCode 判断**：真实正文是 HTML，代码块里合法地含有字面量 `[b]`/`[i]`/`[url]`；
+若对 HTML 跑 BBCode 正则链会把代码改坏。`prepare()` 先判是否含已知 HTML 标签：是则原样交给
+jsoup；只有纯 BBCode（客户端外发回复 / 预览响应）才走 `bbcodeToHtml()`。`[code]` 体先抽出
+占位并转义 `< > &`，保证 `<app>` 这类字面量原样显示。`[hide]` 仍只显示「此内容已隐藏」。
+
 颜色解析**没有**用 `android.graphics.Color.parseColor`——它在 JVM 单测里是 stub 会抛异常，
 被 `runCatching` 吞掉后样式静默消失。已改为自己解析。
+
+**已知限制**：`[align]` 只映射到段落 `textAlign`（无块级对齐容器）；表格不做合并单元格/
+表头语义；嵌套表格降级为文本行（可读即可）；服务端已丢弃的 `font size` 无法还原；超长引用
+不做额外截断（站点已在 HTML 里截好并带 `…`）。
 
 ### 3.6 表情
 
@@ -321,6 +368,8 @@ bash tools/build.sh :app:lintVitalStableRelease     # 改字符串/资源后必�
 | `Os4PredictiveBackGeometryTest` | OS4 卡片返回几何：端点、单调、逐帧无跳变、像素对齐、scrim 起手为 0 |
 | `Os4PredictiveBackScreenshotTest` | 用真实 transition + 假 `NavTransitionScope` 渲出 p=0.45 的一帧并做像素断言 |
 | `ForumImageScreenshotTest` | **JVM 截图**：真实卡片 + 正文渲染、失败占位块落盘 PNG |
+| `ForumBodyRichParserTest` | 代码块（DOM 计数/多行/实体还原）、字号标题、`hr` 分隔、表格、附件卡、引用作者、`[code]` 转义 |
+| `ForumRichBodyScreenshotTest` | **JVM 截图**：代码块+标题+表格+附件+引用+列表合成图、真实 `rich_bbcode_reply` 回复 |
 
 ### 无模拟器时怎么「跑」UI（2026-11-26 新增）
 
