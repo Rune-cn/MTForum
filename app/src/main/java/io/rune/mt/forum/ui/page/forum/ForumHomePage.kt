@@ -335,14 +335,16 @@ internal fun ForumThreadCard(
             }
 
 
-            // Status chips: only facts the parser actually has. The mobile list exposes no
-            // digest/original markers, so nothing is invented here.
-            if (thread.pinned || thread.recommendCount > 0 || thread.imageUrls.isNotEmpty() || thread.replyCount >= HOT_REPLY_THRESHOLD) {
+            // Status chips: only facts the parser actually has. The list carries 置顶 (em.comiis_xifont)
+            // and 精华 (span.bg_c "精") markers; the title anchor also inlines a 热度 icon, which is
+            // not a chip of its own. Original/recommendation markers are still not exposed.
+            if (thread.pinned || thread.digest || thread.recommendCount > 0 || thread.imageUrls.isNotEmpty() || thread.replyCount >= HOT_REPLY_THRESHOLD) {
                 Row(
                     modifier = Modifier.padding(top = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     if (thread.pinned) ForumBadge(text = stringResource(R.string.forum_pinned_badge))
+                    if (thread.digest) ForumBadge(text = stringResource(R.string.forum_digest_badge))
                     if (thread.recommendCount > 0) ForumBadge(text = stringResource(R.string.forum_tag_featured))
                     if (thread.imageUrls.isNotEmpty()) ForumBadge(text = stringResource(R.string.forum_tag_with_image))
                     if (thread.replyCount >= HOT_REPLY_THRESHOLD) ForumBadge(text = stringResource(R.string.forum_tag_hot))

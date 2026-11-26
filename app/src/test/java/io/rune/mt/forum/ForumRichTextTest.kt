@@ -152,4 +152,64 @@ class ForumRichTextTest {
         val link = paragraph.text.spanStyles.firstOrNull { it.item.color == Color(0xFF0000FF) }
         assertTrue("expected a link span, got ${paragraph.text.spanStyles}", link != null)
     }
+
+    @Test
+    fun `bbcode quote with author keeps the author and the quoted text`() {
+        val blocks = ForumBodyParser.parse("[quote=wuti]原帖内容[/quote]我的回复")
+        val quote = blocks.filterIsInstance<ForumBodyBlock.Quote>().firstOrNull()
+        assertTrue("expected a Quote block, got $blocks", quote != null)
+        assertTrue("author must survive", quote!!.text.text.contains("wuti"))
+        assertTrue("quoted text must survive", quote.text.text.contains("原帖内容"))
+    }
+
+    @Test
+    fun `bbcode list becomes separate items without markers`() {
+        val text = ForumBodyParser.parse("[list][*]第一项[*]第二项[/list]")
+            .filterIsInstance<ForumBodyBlock.Paragraph>()
+            .joinToString("|") { it.text.text }
+        assertTrue("both items must render, got: $text", text.contains("第一项") && text.contains("第二项"))
+        assertFalse("list markers must not leak, got: $text", text.contains("[*]") || text.contains("[list]"))
+    }
+
+    @Test
+    fun `hidden bbcode content is not revealed`() {
+        val blocks = ForumBodyParser.parse("[hide]机密内容[/hide]")
+        val text = blocks.joinToString("|") {
+            when (it) {
+                is ForumBodyBlock.Paragraph -> it.text.text
+                is ForumBodyBlock.Quote -> it.text.text
+                else -> ""
+            }
+        }
+        assertFalse("gated content must not be exposed, got: $text", text.contains("机密内容"))
+        assertTrue("a hidden-content placeholder must be shown, got: $text", text.contains("隐藏"))
+    }
+
+    @Test
+    fun `attachment and media markers degrade to readable text`() {
+        val text = ForumBodyParser.parse("[attach]123[/attach][media=x]https://example.com/a.mp4[/media]")
+            .filterIsInstance<ForumBodyBlock.Paragraph>()
+            .joinToString("|") { it.text.text }
+        assertTrue("attachment placeholder expected, got: $text", text.contains("附件"))
+        assertTrue("media URL should stay readable, got: $text", text.contains("https://example.com/a.mp4"))
+        assertFalse("raw markers must not leak, got: $text", text.contains("[attach]") || text.contains("[media]"))
+    }
+
+    @Test
+    fun `unbalanced bbcode markers do not leak`() {
+        val text = ForumBodyParser.parse("普通[b]粗体没有闭合，[color=#ff0000]红色[/color]")
+            .filterIsInstance<ForumBodyBlock.Paragraph>()
+            .joinToString { it.text.text }
+        assertFalse("an unclosed [b] must be scrubbed, got: $text", text.contains("[b]"))
+        assertFalse("a colour marker must be scrubbed, got: $text", text.contains("[color="))
+    }
+
+    @Test
+    fun `bbcode size align and table markers are stripped`() {
+        val text = ForumBodyParser.parse("[align=center][size=4]标题[/size][/align][table][tr][td]单元格[/td][/tr][/table]")
+            .filterIsInstance<ForumBodyBlock.Paragraph>()
+            .joinToString("|") { it.text.text }
+        assertTrue("text must survive, got: $text", text.contains("标题") && text.contains("单元格"))
+        assertFalse("markers must not leak, got: $text", text.contains("[size=") || text.contains("[td]") || text.contains("[align="))
+    }
 }

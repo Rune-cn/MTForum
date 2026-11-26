@@ -146,6 +146,7 @@
     <string name="forum_op_badge">樓主</string>
     <string name="forum_floor_format">#%1$d</string>
     <string name="forum_pinned_badge">置頂</string>
+    <string name="forum_digest_badge">精華</string>
     <string name="forum_reply_badge">回覆</string>
     <string name="nav_guide">導讀</string>
     <string name="forum_guide_tab_latest">最新</string>
@@ -164,7 +165,6 @@
     <string name="thread_action_copy_link">複製連結</string>
     <string name="thread_action_copied">連結已複製</string>
     <string name="thread_action_open_browser">在瀏覽器開啟</string>
-    <string name="forum_digest_badge">精華</string>
     <string name="forum_thread_likes_format">%1$d 讚</string>
     <string name="thread_share_prefix">來自 MT論壇：</string>
     <string name="forum_tag_featured">推薦</string>

@@ -110,12 +110,14 @@ object ForumHtmlParser {
         val authorLink = li.selectFirst("h2 a.top_user")
         val avatar = li.selectFirst("img.top_tximg")
         val stats = li.select("div.comiis_xznalist_bottom span.comiis_tm").map { it.text().filterDigits().toIntOrNull() ?: 0 }
+        // 精华 rows carry a `<span class="bg_c f_f">精</span>` badge inside the title area (the
+        // same slot that holds the 热度 badge). The badge text is not part of the title, so both
+        // the flag and the title are derived structurally, never by sniffing a leading 精.
+        val digest = li.selectFirst("div.mmlist_li_box h2 span.bg_c")?.text()?.contains("精") == true
         return ForumThread(
             tid = tid,
             fid = fid,
-            // Hot/digest guide rows prefix the title with an icon-font glyph inside the anchor;
-            // text() returns that private-use codepoint, so strip it instead of showing tofu.
-            title = titleLink.text().cleanTitle(),
+            title = threadTitle(titleLink),
             summary = li.selectFirst("div.list_body a")?.text()?.trim(),
             authorName = authorLink?.text()?.trim().orEmpty(),
             authorUid = UID_IN_HREF.find(authorLink?.attr("href").orEmpty())?.groupValues?.get(1)?.toIntOrNull() ?: 0,
@@ -128,8 +130,23 @@ object ForumHtmlParser {
             replyCount = stats.getOrNull(1) ?: 0,
             viewCount = stats.getOrNull(2) ?: 0,
             pinned = li.selectFirst("em.comiis_xifont")?.text()?.contains("置顶") == true,
+            digest = digest,
             imageUrls = parseThumbnails(li),
         )
+    }
+
+    /**
+     * Title text with the row's status badges removed.
+     *
+     * Guide/board rows inline badges inside the title anchor — `span.bg_c` for 精华,
+     * `span.bg_a` for 热度 and their icon-font `i.comiis_font` glyphs. None of that belongs to
+     * the title, so a clone of the anchor is stripped before [cleanTitle] removes any remaining
+     * private-use glyph.
+     */
+    private fun threadTitle(anchor: Element): String {
+        val copy = anchor.clone()
+        copy.select("span.bg_c, span.bg_a, i.comiis_font").remove()
+        return copy.text().cleanTitle()
     }
 
 
