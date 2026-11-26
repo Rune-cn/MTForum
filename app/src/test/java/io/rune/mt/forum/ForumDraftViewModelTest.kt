@@ -13,6 +13,8 @@ import io.rune.mt.forum.domain.forum.model.ForumNoticeTab
 import io.rune.mt.forum.domain.forum.model.ForumPrivateConversation
 import io.rune.mt.forum.domain.forum.model.ForumReplyDraft
 import io.rune.mt.forum.domain.forum.model.ForumSession
+import io.rune.mt.forum.domain.forum.model.ForumSignInOutcome
+import io.rune.mt.forum.domain.forum.model.ForumSignInState
 import io.rune.mt.forum.domain.forum.model.ForumThreadDetail
 import io.rune.mt.forum.domain.forum.model.ForumThreadPage
 import io.rune.mt.forum.domain.forum.model.ForumUser
@@ -369,6 +371,8 @@ private class DraftTestRepository : ForumRepository {
     override suspend fun followUser(uid: Int, formhash: String): Boolean = notWired()
     override suspend fun unfollowUser(uid: Int, formhash: String): Boolean = notWired()
     override suspend fun recommendThread(tid: Int, formhash: String): Boolean = notWired()
+    override suspend fun getSignInState(): ForumSignInState = notWired()
+    override suspend fun signIn(formhash: String): ForumSignInOutcome = notWired()
     override suspend fun getNotices(tab: ForumNoticeTab, page: Int): ForumNoticePage = notWired()
 
     private fun <T> notWired(): T = error("not wired in this fake")

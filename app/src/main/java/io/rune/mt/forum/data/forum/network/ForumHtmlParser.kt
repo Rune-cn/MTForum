@@ -16,6 +16,8 @@ import io.rune.mt.forum.domain.forum.model.ForumPrivateConversation
 import io.rune.mt.forum.domain.forum.model.ForumPrivateMessage
 import io.rune.mt.forum.domain.forum.model.ForumProfileField
 import io.rune.mt.forum.domain.forum.model.ForumProfileStat
+import io.rune.mt.forum.domain.forum.model.ForumSignInOutcome
+import io.rune.mt.forum.domain.forum.model.ForumSignInState
 import io.rune.mt.forum.domain.forum.model.ForumThread
 import io.rune.mt.forum.domain.forum.model.ForumThreadDetail
 import io.rune.mt.forum.domain.forum.model.ForumThreadPage
@@ -541,6 +543,92 @@ object ForumHtmlParser {
         return io.rune.mt.forum.domain.forum.model.ForumNewThreadForm(formhash, posttime, captcha)
     }
 
+    // ---- Daily sign-in (每日签到) -------------------------------------------
+
+    /**
+     * Reads the 签到 page (`k_misign-sign.html`).
+     *
+     * The page is one Card-sized screen from the `k_misign` plugin, laid out by the Comiis mobile
+     * template exactly like a member profile header:
+     *
+     * - `div.comiis_space_info` → `div.user_img img` (avatar), `h2.fyy` (nickname),
+     *   `p.fyy.comiis_tm` ("签到等级 Lv.8");
+     * - `div.comiis_qdinfo ul li` → each row's label is `span.comiis_tm` and its value is the
+     *   row's own remaining text (`今日排名` / `0`, `连续签到` / `2天`, `累计签到` / `271天`);
+     * - `div.comiis_btnbox` → `<a id="signresult">签到</a>` while the day's sign-in is still
+     *   available, and a plain `<a class="comiis_btn bg_b f_c">已签到</a>` afterwards. The id and
+     *   the text both flip, so the flag is read from either signal instead of one exact markup.
+     *
+     * A guest never reaches this DOM: the site answers with the login form, and the repository
+     * turns that into [ForumLoginRequiredException]. The DOM selectors live here only.
+     */
+    fun parseSignInState(html: String): ForumSignInState {
+        val doc = Jsoup.parse(html)
+        val info = doc.selectFirst("div.comiis_space_info")
+        // Label → value pairs in the site's own order; the label is a nested span, the value is
+        // whatever the row prints after it.
+        val stats = doc.select("div.comiis_qdinfo ul li").mapNotNull { li ->
+            val labelEl = li.selectFirst("span.comiis_tm") ?: return@mapNotNull null
+            val label = labelEl.text().cleanTitle()
+            val value = li.text().removePrefix(labelEl.text()).cleanTitle()
+            if (label.isBlank()) null else label to value
+        }.toMap()
+        // While 签到 is still possible the template prints the id; once done it drops the id and
+        // relabels the button. Either signal is enough, so a template change to one of them
+        // cannot flip the flag to "not signed" on an already-signed page.
+        val action = doc.selectFirst("div.comiis_btnbox a#signresult")
+        val actionLabels = doc.select("div.comiis_btnbox a").map { it.text().cleanTitle() }
+        val alreadySigned = action == null ||
+            actionLabels.any { it.contains(SIGN_IN_DONE) }
+
+        return ForumSignInState(
+            alreadySignedToday = alreadySigned,
+            signInLevel = info?.selectFirst("p.fyy.comiis_tm")?.text()?.cleanTitle()
+                ?.let { SIGN_IN_LEVEL.find(it)?.groupValues?.get(1) },
+            todayRank = stats["今日排名"]?.filterDigits()?.toIntOrNull(),
+            streakDays = stats["连续签到"]?.filterDigits()?.toIntOrNull(),
+            totalDays = stats["累计签到"]?.filterDigits()?.toIntOrNull(),
+            nickname = info?.selectFirst("h2.fyy")?.text()?.cleanTitle()?.takeIf { it.isNotBlank() },
+            avatarUrl = ForumUrls.absolute(info?.selectFirst("div.user_img img")?.attr("src")),
+            formhash = parseFormhash(html),
+        )
+    }
+
+    /**
+     * Maps the sign-in call's answer (`plugin.php?id=k_misign:sign&operation=qiandao`) to an
+     * outcome.
+     *
+     * The endpoint answers with the site's usual XML wrapper around one CDATA string, e.g.
+     * `<?xml version="1.0" encoding="utf-8"?>\r\n<root><![CDATA[已签到]]></root>`. That payload is
+     * the whole result and is meant to be shown to the user; only its wording classifies it.
+     *
+     * `已签到` is the observed already-signed reply. The fresh-success wording could not be
+     * captured (the test account had already signed in), so anything that is neither "already
+     * signed" nor a rejection is treated as [ForumSignInOutcome.Success] and surfaced verbatim.
+     * A rejection (permission / login / flood control) must never be reported as a success.
+     */
+    fun parseSignInOutcome(raw: String): ForumSignInOutcome {
+        val message = parseCdataMessage(raw)
+            ?: extractNotice(raw)
+            ?: raw.trim().takeIf { it.isNotBlank() && !it.contains("<") }
+            ?: return ForumSignInOutcome.Failure(SIGN_IN_EMPTY_REPLY)
+        return when {
+            SIGN_IN_ALREADY.containsMatchIn(message) -> ForumSignInOutcome.AlreadySigned(message)
+            SIGN_IN_FAILURE_WORDS.containsMatchIn(message) -> ForumSignInOutcome.Failure(message)
+            else -> ForumSignInOutcome.Success(message)
+        }
+    }
+
+    /**
+     * Extracts the CDATA payload of the site's ajax endpoints.
+     *
+     * Several plugin endpoints answer `<?xml version="1.0"?>\r\n<root><![CDATA[…] ]]></root>`
+     * instead of HTML or JSON; the wrapper is identical every time, so the extraction is kept in
+     * one place (see docs/REVERSE_SPEC.md §22).
+     */
+    fun parseCdataMessage(raw: String): String? =
+        CDATA.find(raw)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotBlank() }
+
     // ---- Action-result helpers ---------------------------------------------
 
     fun pageTitle(html: String): String = Jsoup.parse(html).title()
@@ -689,4 +777,24 @@ object ForumHtmlParser {
 
     /** Label the site prints on the first 主题分类 tab, which is the unfiltered listing. */
     private const val CATEGORY_ALL_LABEL = "全部"
+
+    // ---- 每日签到 (k_misign) ------------------------------------------------
+
+    /** `签到等级 Lv.8` → `Lv.8`; the page sometimes drops the space. */
+    private val SIGN_IN_LEVEL = Regex("""签到等级\s*(\S+)""")
+
+    /** Label the button carries once today's sign-in is done. */
+    private const val SIGN_IN_DONE = "已签到"
+
+    /** The observed already-signed reply, plus the wordings the plugin has used around it. */
+    private val SIGN_IN_ALREADY = Regex("""已签到|已经签到|今天已经签|今日已签""")
+
+    /** Words that mark a rejected sign-in (permission / login / flood control). */
+    private val SIGN_IN_FAILURE_WORDS = Regex("""抱歉|非法|错误|不能|失败|无权限|权限不足|间隔|禁止|限制|请先登录|登录后""")
+
+    /** Fallback when the endpoint answers with an empty body or a bare error page. */
+    private const val SIGN_IN_EMPTY_REPLY = "签到接口没有返回内容"
+
+    /** The XML/CDATA wrapper every plugin ajax endpoint answers with. */
+    private val CDATA = Regex("""<!\[CDATA\[(.*?)\]\]>""", setOf(RegexOption.DOT_MATCHES_ALL))
 }
