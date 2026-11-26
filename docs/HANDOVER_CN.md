@@ -1,7 +1,7 @@
 # 交接文档
 
 > MT论坛 客户端 · 包名 `io.rune.mt.forum` · 仓库 https://github.com/Rune-cn/MTForum
-> 最后更新 2026-11-26 · 约 207 个 Kotlin 文件 / 17.8k 行 · 75 个测试（15 个测试类）
+> 最后更新 2026-11-26 · 约 208 个 Kotlin 文件 / 18k 行 · 79 个测试（16 个测试类）
 
 本文件是接手这个项目的第一入口。读完这一份就能动工；
 需要站点细节时再看 [REVERSE_SPEC.md](REVERSE_SPEC.md)，需要找文件时看 [ARCHITECTURE.md](ARCHITECTURE.md)。
@@ -271,7 +271,7 @@ Coil 走 `BitmapFactoryDecoder` 只出首帧，首帧透明的 GIF 看起来就�
 
 ```bash
 bash tools/build.sh                                # debug 冒烟
-bash tools/build.sh :app:testStableDebugUnitTest    # 75 个测试，必跑
+bash tools/build.sh :app:testStableDebugUnitTest    # 79 个测试，必跑
 bash tools/build.sh :app:assembleStableRelease
 bash tools/build.sh :app:lintVitalStableRelease     # 改字符串/资源后必跑
 ```
@@ -293,7 +293,8 @@ bash tools/build.sh :app:lintVitalStableRelease     # 改字符串/资源后必�
 | `ForumImageUrlTest` | 头像/缩略图 URL 绝对化、占位图过滤、`javascript:` 不拼接 |
 | `ForumImageDecoderTest` | GIF→gif 解码器、JPEG→BitmapFactory 的路由断言 |
 | `ForumImageSessionTest` | 图片客户端带会话 jar + acw、Cookie 不跨 host |
-| `ForumImageScreenshotTest` | **JVM 截图**：真实卡片 + 正文渲染并落盘 PNG |
+| `AcwImageFetchTest` | acw 只对 html/xhtml 探测；`image/*` 只取一次、不重放 |
+| `ForumImageScreenshotTest` | **JVM 截图**：真实卡片 + 正文渲染、失败占位块落盘 PNG |
 
 ### 无模拟器时怎么「跑」UI（2026-11-26 新增）
 
@@ -494,7 +495,11 @@ host≠页面尺寸）与截图 [screenshots/os4-thread-actions-menu.png](screen
 
 **修复**：
 1. `buildForumImageHttpClient(cookieJar)`：独立 OkHttpClient，共用 `ForumCookieJar` +
-   `AcwInterceptor`；`App.onCreate` 在 Koin 起来后懒注入 jar。
+   `AcwInterceptor`；`App.onCreate` 在 `startKoin { … }` 之后**立即**取 `ForumCookieJar`（eager，
+   没有 `runCatching` 静默降级）再 `SingletonImageLoader.setSafe`，任何图片请求都不会抢跑。
+   `AcwInterceptor` 先按 host 放行（非 `bbs.binmt.cc` 不探测），再按 **Content-Type** 只对
+   `text/html`/`xhtml` `peekBody(64KB)` 并重放；`image/*` 不缓冲不重放（线上真机链路实测：
+   带 acw 后 `mod=image` 返回 `image/gif`）。
 2. `ForumCookieJar.loadForRequest` 改为按 `Cookie.matches(url)` 过滤——会话 Cookie 不再泄漏给
    CDN；`AcwInterceptor` 对非 `bbs.binmt.cc` 直接放行（不再对每张图 `peekBody(64KB)`）。
 3. 新增 `ForumUrls.absolute()/imageFallback()`：URL 绝对化（`//`、`/`、裸相对路径）与
@@ -509,3 +514,13 @@ host≠页面尺寸）与截图 [screenshots/os4-thread-actions-menu.png](screen
 
 **仍未验证**：`mod=image` 在**真实登录会话**下是否返回图片字节，本环境无凭据，只能在装配层
 （jar 按 host 过滤 / client 含 acw / fallback 映射）证明；需要真机登录后看带附件帖。
+
+### 12.3 已发布 Release
+
+- `26.11`（versionCode 12）：首个修复版，release 签名（**不是 debug 签名**）。
+- `26.11.1`（versionCode 13）：在 26.11 上再加固——`AcwInterceptor` 按 Content-Type 门控
+  （`image/*` 不探测不重放）、图片 loader 在 `startKoin` 后 eager 注入、Coil ServiceLoader 关闭
+  （组件表 debug/release 一致），并新增 `AcwImageFetchTest` 与失败占位截图测试。
+- 签名密钥**不**入库：本机 `C:\Users\Administrator\Documents\1\secrets\mtforum-release.jks`
+  （密码在同目录 `mtforum-release.properties`）；GitHub 侧用 `KEYSTORE_BASE64` 等 4 个 Secrets。
+  该文件丢失后无法再签发可升级包，务必备份。

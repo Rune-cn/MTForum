@@ -32,7 +32,8 @@ app/src/main/java/io/rune/mt/forum/
 │   ├── ViewModelModule.kt            所有 VM 注册
 │   └── init/app_modules.kt           模块汇总
 ├── core/
-│   ├── image/ForumImageLoader.kt     Coil 配置（CDN：UA+Referer；站点附件：会话 Cookie+acw；coil-gif）
+│   ├── image/ForumImageLoader.kt     Coil 配置（CDN：UA+Referer；站点附件：会话 Cookie+acw；coil-gif；
+│   │                                  组件全显式注册 + serviceLoaderEnabled(false)，debug/release 一致）
 │   ├── crash/ · i18n/ · device/ · env/ · reflection/
 ├── ui/
 │   ├── navigation/
