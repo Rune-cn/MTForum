@@ -32,10 +32,65 @@
             android:exported="true"
             android:enableOnBackInvokedCallback="true"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
-            android:windowSoftInputMode="adjustResize">
+            android:windowSoftInputMode="adjustResize"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.APPLICATION_PREFERENCES" />
                 <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+
+            <!--
+                论坛链接深链。只声明可被选择（DEFAULT + BROWSABLE），不声明 autoVerify：
+                站点无法由本仓库发布 assetlinks.json，宣称 App Links 验证只会让 Android 12+
+                把该域名判为验证失败。查询参数（mod/tid/fid）在代码里解析。
+            -->
+            <!-- 帖子：https://bbs.binmt.cc/thread-<tid>-<page>-<author>.html -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="bbs.binmt.cc"
+                    android:pathPattern="/thread-.*\.html" />
+            </intent-filter>
+            <!-- 版块：https://bbs.binmt.cc/forum-<fid>-<page>.html -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="bbs.binmt.cc"
+                    android:pathPattern="/forum-.*\.html" />
+            </intent-filter>
+            <!-- Discuz 查询形态：https://bbs.binmt.cc/forum.php?mod=viewthread&tid=... -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="bbs.binmt.cc"
+                    android:path="/forum.php" />
+            </intent-filter>
+            <!-- 自定义 scheme：mtforum://thread/<tid> -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="mtforum"
+                    android:host="thread" />
+            </intent-filter>
+            <!-- 自定义 scheme：mtforum://forum/<fid> -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="mtforum"
+                    android:host="forum" />
             </intent-filter>
         </activity>
 

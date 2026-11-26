@@ -43,6 +43,22 @@ class Navigator(val backStack: NavBackStack) {
         }
     }
 
+    /**
+     * Jumps to a deep-linked destination on top of the shell.
+     *
+     * Collapsing to `[Main, route]` keeps back predictable: from a link it lands on the forum
+     * home rather than a page that happened to be open when the link was tapped. When the stack
+     * is already the bare shell a plain push produces the same stack without a clear+refill,
+     * which would make the NavDisplay drop the entry it is currently showing.
+     */
+    fun navigateToDeepLink(route: Route) {
+        if (backStack.size == 1 && backStack.lastOrNull() == Route.Main) {
+            push(route)
+        } else {
+            replaceAll(listOf(Route.Main, route))
+        }
+    }
+
     private var lastPopTime = 0L
 
     // Pop the top key if present.

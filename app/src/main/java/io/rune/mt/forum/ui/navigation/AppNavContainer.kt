@@ -7,12 +7,16 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.rune.mt.forum.domain.settings.model.preferences.PredictiveBackAnimation
 import io.rune.mt.forum.domain.settings.model.preferences.ThemeState
+import kotlinx.coroutines.flow.StateFlow
 import io.rune.mt.forum.ui.animation.predictiveback.OS4_DIM_AMOUNT
 import io.rune.mt.forum.ui.animation.predictiveback.appNavTransition
 import io.rune.mt.forum.ui.animation.predictiveback.os4CardCornerRadius
@@ -39,7 +43,11 @@ import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
-fun AppNavContainer(uiState: ThemeState) {
+fun AppNavContainer(
+    uiState: ThemeState,
+    deepLink: StateFlow<Route?>,
+    onDeepLinkConsumed: () -> Unit,
+) {
     val sharedViewModel: SettingsSharedViewModel = koinViewModel(
         viewModelStoreOwner = LocalActivity.current as ComponentActivity,
     )
@@ -47,6 +55,17 @@ fun AppNavContainer(uiState: ThemeState) {
     val backStack = rememberNavBackStack<Route>(Route.Main)
     val navigator = remember(backStack) { Navigator(backStack) }
     val onBack = remember(navigator) { { navigator.pop() } }
+
+    // A link is a one-shot jump: navigate, then clear the flow so nothing replays it on the next
+    // recomposition. The Activity only publishes a route on cold start or a new VIEW intent.
+    val deepLinkRoute by deepLink.collectAsStateWithLifecycle()
+    LaunchedEffect(deepLinkRoute) {
+        val route = deepLinkRoute ?: return@LaunchedEffect
+        Timber.tag("DeepLink").i("navigate to %s", route)
+        navigator.navigateToDeepLink(route)
+        onDeepLinkConsumed()
+    }
+
     val useBlur = uiState.useBlur
     // Same platform guard as MiuixNavWrapper: OS4 needs render effects, otherwise it degrades
     // to OS3 so sub-pages stay consistent with the navigation bar that opened them.

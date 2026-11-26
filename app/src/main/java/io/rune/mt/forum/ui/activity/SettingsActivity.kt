@@ -4,6 +4,7 @@ package io.rune.mt.forum.ui.activity
 import io.rune.mt.forum.core.i18n.LocaleManager
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -24,6 +25,7 @@ import io.rune.mt.forum.domain.settings.repository.AppSettingsRepository
 import io.rune.mt.forum.domain.updater.repository.UpdateRepository
 import kotlinx.coroutines.flow.first
 import io.rune.mt.forum.ui.navigation.AppNavContainer
+import io.rune.mt.forum.ui.navigation.ForumDeepLinkState
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixComponentHost
 import io.rune.mt.forum.ui.theme.AppTheme
 import io.rune.mt.forum.ui.theme.LocalWindowLayoutInfo
@@ -49,6 +51,12 @@ class SettingsActivity :
     private val updateRepo by inject<UpdateRepository>()
     private val appSettingsRepo by inject<AppSettingsRepository>()
 
+    /**
+     * Deep links arrive as ACTION_VIEW intents on this, the app's only activity. The state holder
+     * decides cold-start vs. recreate and the nav shell consumes it exactly once.
+     */
+    internal val deepLinkState = ForumDeepLinkState()
+
     // legado-style: the startup update check runs at most once per process.
     private var startupUpdateChecked = false
 
@@ -64,6 +72,10 @@ class SettingsActivity :
         super.onCreate(savedInstanceState)
 
         Timber.i("SettingsActivity created (cold start=%s)", savedInstanceState == null)
+
+        // 浏览器/分享来的论坛链接：冷启动时转成一次导航。recreate（切语言/进程恢复）
+        // 不重放，否则会把用户从恢复出来的返回栈里拽走。
+        deepLinkState.onColdStart(intent, savedInstanceState)
 
         // 2) 用“上次解析好的”外观把窗口定住：这两步都在 Compose 之前，
         //    recreate() 之后状态栏不会再变白/变浅。
@@ -123,7 +135,11 @@ class SettingsActivity :
                                 .background(backgroundColor)
                                 .then(scope.pageBackdropModifier),
                         ) {
-                            AppNavContainer(uiState)
+                            AppNavContainer(
+                                uiState = uiState,
+                                deepLink = deepLinkState.route,
+                                onDeepLinkConsumed = deepLinkState::consume,
+                            )
                         }
                     }
                 }
@@ -150,5 +166,17 @@ class SettingsActivity :
     override fun onResume() {
         super.onResume()
         Timber.i("SettingsActivity resumed")
+    }
+
+    /**
+     * A forum link tapped while the app is already running. `singleTop` (manifest) keeps this
+     * instance instead of stacking a second one, so the link opens on top of the current shell.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // Keep getIntent() in sync with the newest link, otherwise a later recreate would parse
+        // the stale intent.
+        setIntent(intent)
+        deepLinkState.onNewIntent(intent)
     }
 }
