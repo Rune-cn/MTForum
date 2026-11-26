@@ -274,14 +274,25 @@ internal object ForumBodyParser {
 
     /**
      * Resolves an image source, preferring the real file behind Discuz's lazy-load placeholder.
-     * The mobile template ships `src="file://..."` plus a `file`/`zoomfile` attribute.
+     *
+     * The Comiis template never puts the uploaded file straight into `src` for every image kind:
+     * lists put it in `comiis_loadimages`, the post editor in `file`/`zoomfile`, AJAX fragments in
+     * `data-src`; `src` then points at a transparent 1px placeholder (`none.png`,
+     * `imageloading.gif`) or a `file:` stub. Reading `src` first is what made image-host uploads
+     * render as a blank block even though the real URL was right there in the tag.
      */
     private fun imageUrl(element: Element): String? {
-        val lazy = element.attr("file").ifBlank { element.attr("zoomfile") }.ifBlank { element.attr("data-src") }
+        val lazy = element.attr("comiis_loadimages")
+            .ifBlank { element.attr("file") }
+            .ifBlank { element.attr("zoomfile") }
+            .ifBlank { element.attr("data-src") }
         val raw = element.attr("src")
         val candidate = when {
             raw.isBlank() -> lazy
             raw.startsWith("file:") -> lazy
+            raw.startsWith("data:") -> lazy
+            raw.startsWith("javascript:") -> lazy
+            PLACEHOLDER_SOURCES.any { raw.contains(it) } -> lazy
             else -> raw
         }
         return ForumUrls.absolute(candidate)
@@ -290,7 +301,11 @@ internal object ForumBodyParser {
     private fun isSmiley(element: Element): Boolean =
         element.hasAttr("smilieid") ||
             element.attr("src").contains(SMILEY_PATH) ||
-            element.attr("file").contains(SMILEY_PATH)
+            element.attr("file").contains(SMILEY_PATH) ||
+            element.attr("comiis_loadimages").contains(SMILEY_PATH)
+
+    /** Transparent stubs the template uses in `src` while the real file sits in a lazy attribute. */
+    private val PLACEHOLDER_SOURCES = listOf("none.png", "imageloading.gif", "about:blank")
 
     /**
      * Parses the `#RRGGBB` / `#RGB` / `rgb(…)` colour syntax Discuz emits.

@@ -1,7 +1,7 @@
 # 交接文档
 
 > MT论坛 客户端 · 包名 `io.rune.mt.forum` · 仓库 https://github.com/Rune-cn/MTForum
-> 最后更新 2026-11-26 · 约 208 个 Kotlin 文件 / 18k 行 · 79 个测试（16 个测试类）
+> 最后更新 2026-11-26 · 约 209 个 Kotlin 文件 / 18k 行 · 84 个测试（17 个测试类）
 
 本文件是接手这个项目的第一入口。读完这一份就能动工；
 需要站点细节时再看 [REVERSE_SPEC.md](REVERSE_SPEC.md)，需要找文件时看 [ARCHITECTURE.md](ARCHITECTURE.md)。
@@ -271,7 +271,7 @@ Coil 走 `BitmapFactoryDecoder` 只出首帧，首帧透明的 GIF 看起来就�
 
 ```bash
 bash tools/build.sh                                # debug 冒烟
-bash tools/build.sh :app:testStableDebugUnitTest    # 79 个测试，必跑
+bash tools/build.sh :app:testStableDebugUnitTest    # 84 个测试，必跑
 bash tools/build.sh :app:assembleStableRelease
 bash tools/build.sh :app:lintVitalStableRelease     # 改字符串/资源后必跑
 ```
@@ -294,6 +294,7 @@ bash tools/build.sh :app:lintVitalStableRelease     # 改字符串/资源后必�
 | `ForumImageDecoderTest` | GIF→gif 解码器、JPEG→BitmapFactory 的路由断言 |
 | `ForumImageSessionTest` | 图片客户端带会话 jar + acw、Cookie 不跨 host |
 | `AcwImageFetchTest` | acw 只对 html/xhtml 探测；`image/*` 只取一次、不重放 |
+| `ForumBodyImageUrlTest` | 正文图懒加载属性优先于 `src` 占位；`javascript:` 不产生图片块 |
 | `ForumImageScreenshotTest` | **JVM 截图**：真实卡片 + 正文渲染、失败占位块落盘 PNG |
 
 ### 无模拟器时怎么「跑」UI（2026-11-26 新增）
@@ -507,6 +508,11 @@ host≠页面尺寸）与截图 [screenshots/os4-thread-actions-menu.png](screen
    最终失败记 `Timber.w("picture failed: %s")`（只记 URL）。
 4. `coil-gif` + 显式注册解码器：GIF 动图；没有它时首帧透明的 GIF 看着就是空白（次要原因）。
 5. 占位属性（`comiis_loadimages`/`src=none.png`）不会被当成图片下发（测试锁定）。
+6. **懒加载属性优先**：正文 `imageUrl()` 现在按 `comiis_loadimages → file → zoomfile → data-src`
+   取真实地址，只有 `src` 不是占位（`none.png`/`imageloading.gif`/`file:`/`data:`/`javascript:`）时才用
+   `src`——图床/附件图在正文里是懒加载的，之前读 `src` 只拿到 1px 透明占位。
+7. **失败可见**：正文图彻底失败后在占位块中央显示 `⚠ <host>`（并用 `Timber.w` 记 URL），
+   用户截图即可指出是哪个域/哪类 URL 失败，无需 adb 或登录。
 
 **测试**：`ForumImageUrlTest` / `ForumImageDecoderTest` / `ForumImageSessionTest` /
 `ForumImageScreenshotTest` 覆盖；失败→通过样例：相对头像 `""` → 绝对 URL；缩略图

@@ -149,26 +149,46 @@ fun ForumHtmlText(
                     // where the image client carries the session. Anything still failing is
                     // logged (URL only, never cookies) so the blank block is diagnosable.
                     var fallbackUrl by remember(block.url) { mutableStateOf<String?>(null) }
-                    AsyncImage(
-                        model = fallbackUrl ?: block.url,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 80.dp, max = 480.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(MiuixTheme.colorScheme.surfaceContainerHigh)
-                            .clickable { onImageClick(fallbackUrl ?: block.url) },
-                        contentScale = ContentScale.FillWidth,
-                        onError = {
-                            val retry = if (fallbackUrl == null) ForumUrls.imageFallback(block.url) else null
-                            if (retry != null) {
-                                Timber.tag("ForumThread").i("picture %s failed, retrying %s", block.url, retry)
-                                fallbackUrl = retry
-                            } else {
-                                Timber.tag("ForumThread").w("picture failed: %s", block.url)
-                            }
-                        },
-                    )
+                    var failedHost by remember(block.url) { mutableStateOf<String?>(null) }
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        AsyncImage(
+                            model = fallbackUrl ?: block.url,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 80.dp, max = 480.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(MiuixTheme.colorScheme.surfaceContainerHigh)
+                                .clickable { onImageClick(fallbackUrl ?: block.url) },
+                            contentScale = ContentScale.FillWidth,
+                            onError = {
+                                val retry = if (fallbackUrl == null) ForumUrls.imageFallback(block.url) else null
+                                if (retry != null) {
+                                    Timber.tag("ForumThread").i("picture %s failed, retrying %s", block.url, retry)
+                                    fallbackUrl = retry
+                                } else {
+                                    Timber.tag("ForumThread").w("picture failed: %s", block.url)
+                                    // Show the failing host so a screenshot alone identifies the
+                                    // culprit (CDN vs forum host vs a stale third-party domain).
+                                    failedHost = runCatching { java.net.URI(block.url).host }.getOrNull()
+                                        ?: block.url
+                                }
+                            },
+                        )
+                        val host = failedHost
+                        if (host != null) {
+                            Text(
+                                text = "⚠ $host",
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(MiuixTheme.colorScheme.surfaceContainer)
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                fontSize = 12.sp,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            )
+                        }
+                    }
                 }
             }
         }

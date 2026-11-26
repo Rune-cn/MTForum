@@ -69,6 +69,8 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     （`forum.php?mod=image`、`mod=attachment`）匿名请求只会拿到 200 + acw 挑战页（text/html），
     必须复用 `ForumCookieJar` + `AcwInterceptor`；URL 统一 `ForumUrls.absolute()` 绝对化，
     `javascript:`/`file:`/`data:` 一律当无图处理，不要直接把原始 `src` 属性丢给 Coil。
+    **正文图片的懒加载属性优先**：`comiis_loadimages → file → zoomfile → data-src` 才是真实地址，
+    `src` 往往是 `none.png`/`imageloading.gif` 占位。
 14. **Cookie 只按 host 下发**：`ForumCookieJar.loadForRequest` 用 `Cookie.matches(url)` 过滤，
     禁止把 `cQWy_2132_auth` 发给 `cdn/icdn/oos` 等 CDN。
 
