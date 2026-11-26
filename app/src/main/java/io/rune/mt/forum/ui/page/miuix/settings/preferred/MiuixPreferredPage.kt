@@ -108,6 +108,36 @@ fun MiuixPreferredPage(
                 onLogout = accountViewModel::logout,
             )
         }
+        item { SmallTitle(stringResource(R.string.forum_section_title)) }
+        item {
+            // Forum shortcuts. The profile row needs the signed-in uid and is meaningless
+            // without a session, so guests only see the two member surfaces they can still
+            // open (the screens themselves explain why a login is required).
+            val signedInUser = accountSession.user?.takeIf { accountSession.isLoggedIn }
+            Card(
+                modifier = Modifier
+                    .padding(horizontal = 12.dp)
+                    .padding(bottom = 12.dp),
+            ) {
+                MiuixNavigationItemWidget(
+                    title = stringResource(R.string.notice_entry_title),
+                    description = stringResource(R.string.notice_entry_desc),
+                    onClick = { navigator.push(Route.Notices) },
+                )
+                MiuixNavigationItemWidget(
+                    title = stringResource(R.string.favorites_title),
+                    description = stringResource(R.string.favorites_entry_desc),
+                    onClick = { navigator.push(Route.Favorites) },
+                )
+                if (signedInUser != null) {
+                    MiuixNavigationItemWidget(
+                        title = stringResource(R.string.profile_entry_title),
+                        description = stringResource(R.string.profile_entry_desc),
+                        onClick = { navigator.push(Route.UserProfile(signedInUser.uid, signedInUser.name)) },
+                    )
+                }
+            }
+        }
         item { SmallTitle(stringResource(R.string.personalization)) }
         item {
             Card(

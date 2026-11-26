@@ -29,7 +29,7 @@ object ForumHtmlParser {
 
     private val FORM_HASH = Regex("""formhash\s*=\s*['"]([0-9a-f]+)['"]""")
     /** The mobile template also prints the session hash as a query parameter in logout links. */
-    private val FORM_HASH_IN_URL = Regex("""[?&]formhash=([0-9a-f]+)""")
+    private val FORM_HASH_IN_URL = Regex("""formhash=([0-9a-f]+)""")
     private val TID_IN_HREF = Regex("""thread-(\d+)-""")
     private val FID_IN_HREF = Regex("""fid=(\d+)""")
     private val UID_IN_HREF = Regex("""uid=(\d+)""")
@@ -341,7 +341,7 @@ object ForumHtmlParser {
             uid = uid,
             name = info?.selectFirst("h2")?.text()?.trim().orEmpty(),
             avatarUrl = ForumUrls.absolute(info?.selectFirst("div.user_img img")?.attr("src")),
-            levelText = info?.selectFirst("span.kmlevs.kmlev")?.text()?.trim()?.takeIf { it.isNotBlank() },
+            levelText = info?.selectFirst("span.kmlevs.kmlv")?.text()?.trim()?.takeIf { it.isNotBlank() },
             levelTitle = info?.select("span.kmlev")?.firstOrNull()?.text()?.trim()?.takeIf { it.isNotBlank() },
             credits = creditStats.firstOrNull { it.label == "积分" }?.value?.filterDigits()?.toIntOrNull(),
             popularity = headerTexts.countBySuffix("人气"),

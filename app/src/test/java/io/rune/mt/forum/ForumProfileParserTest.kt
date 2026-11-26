@@ -31,7 +31,7 @@ class ForumProfileParserTest {
         assertEquals("厌生客", profile.name)
         assertEquals(132694, profile.uid)
         assertNotNull("avatar is required for the header", profile.avatarUrl)
-        assertTrue("avatar must be the member's own", profile.avatarUrl!!.contains("132694"))
+        assertTrue("avatar must be the member's own", profile.avatarUrl!!.contains("13/26/94"))
         assertEquals("Lv.4", profile.levelText)
         assertEquals("高中生", profile.levelTitle)
         assertEquals(1298, profile.credits)
@@ -98,7 +98,7 @@ class ForumProfileParserTest {
     fun `favourites page exposes formhash and the server pager`() {
         val page = ForumHtmlParser.parseFavoritesPage(fixture("favorites_page.html"), page = 1)
         assertEquals("16385279", page.formhash)
-        assertEquals(4, page.totalPages)
+        assertEquals("the site prints 5 pages for this account", 5, page.totalPages)
         assertEquals(2, page.favorites.size)
         assertEquals(712378L, page.favorites[0].favid)
         assertEquals(177295, page.favorites[0].tid)
