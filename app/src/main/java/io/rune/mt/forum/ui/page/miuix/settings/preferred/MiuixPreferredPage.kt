@@ -106,36 +106,28 @@ fun MiuixPreferredPage(
                 session = accountSession,
                 onLogin = { navigator.push(Route.Login) },
                 onLogout = accountViewModel::logout,
+                // 我的主页 lives on the account card's avatar now; the forum section below only
+                // keeps the favourites shortcut.
+                onOpenProfile = { user ->
+                    navigator.push(Route.UserProfile(user.uid, user.name))
+                },
             )
         }
         item { SmallTitle(stringResource(R.string.forum_section_title)) }
         item {
-            // Forum shortcuts. The profile row needs the signed-in uid and is meaningless
-            // without a session, so guests only see the two member surfaces they can still
-            // open (the screens themselves explain why a login is required).
-            val signedInUser = accountSession.user?.takeIf { accountSession.isLoggedIn }
+            // Forum shortcuts. Notifications and the profile page are reached from the home page
+            // bell and the account card avatar instead of duplicated here, so favourites is the
+            // only row this section still needs.
             Card(
                 modifier = Modifier
                     .padding(horizontal = 12.dp)
                     .padding(bottom = 12.dp),
             ) {
                 MiuixNavigationItemWidget(
-                    title = stringResource(R.string.notice_entry_title),
-                    description = stringResource(R.string.notice_entry_desc),
-                    onClick = { navigator.push(Route.Notices) },
-                )
-                MiuixNavigationItemWidget(
                     title = stringResource(R.string.favorites_title),
                     description = stringResource(R.string.favorites_entry_desc),
                     onClick = { navigator.push(Route.Favorites) },
                 )
-                if (signedInUser != null) {
-                    MiuixNavigationItemWidget(
-                        title = stringResource(R.string.profile_entry_title),
-                        description = stringResource(R.string.profile_entry_desc),
-                        onClick = { navigator.push(Route.UserProfile(signedInUser.uid, signedInUser.name)) },
-                    )
-                }
             }
         }
         item { SmallTitle(stringResource(R.string.personalization)) }

@@ -4,6 +4,7 @@ package io.rune.mt.forum.ui.page.main.settings
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +30,10 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,12 +61,19 @@ private val avatarClient by lazy { OkHttpClient() }
  * Signed out it advertises the login entry point; signed in it shows the avatar, nickname,
  * level and uid and offers logout. Styling follows the ambient Miuix presentation, so the
  * same composable works under both OS3 and OS4 without a style flag.
+ *
+ * The avatar plus the name/level column is the "own profile" entry point: the settings page no
+ * longer grows a separate 我的主页 row once the account card can carry it. Only that header area
+ * is clickable, so the sign-out button keeps its own touch target.
+ *
+ * @param onOpenProfile Invoked with the signed-in user when the avatar/name header is tapped.
  */
 @Composable
 fun AccountSection(
     session: ForumSession,
     onLogin: () -> Unit,
     onLogout: () -> Unit,
+    onOpenProfile: (ForumUser) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val useMiuixOs4 = AppTheme.useMiuixOs4
@@ -75,7 +88,11 @@ fun AccountSection(
         if (!session.isLoggedIn || user == null) {
             SignedOutRow(onLogin = onLogin)
         } else {
-            SignedInRow(user = user, onLogout = { confirmLogout = true })
+            SignedInRow(
+                user = user,
+                onOpenProfile = { onOpenProfile(user) },
+                onLogout = { confirmLogout = true },
+            )
         }
     }
 
@@ -124,37 +141,56 @@ private fun SignedOutRow(onLogin: () -> Unit) {
 }
 
 @Composable
-private fun SignedInRow(user: ForumUser, onLogout: () -> Unit) {
+private fun SignedInRow(
+    user: ForumUser,
+    onOpenProfile: () -> Unit,
+    onLogout: () -> Unit,
+) {
+    val profileLabel = stringResource(R.string.profile_entry_title)
+    // Avatar + name/level is one entry point to the user's own space profile. It stays a nested
+    // row so the sign-out button next to it keeps its own, separate touch target.
+    val openProfileModifier = Modifier
+        .clip(RoundedCornerShape(12.dp))
+        .clickable(onClick = onOpenProfile)
+        .semantics(mergeDescendants = true) {
+            contentDescription = profileLabel
+            role = Role.Button
+        }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AccountAvatar(avatarUrl = user.avatarUrl, displayName = user.name)
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = user.name,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = openProfileModifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AccountAvatar(avatarUrl = user.avatarUrl, displayName = user.name)
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = stringResource(
-                        R.string.account_level_format,
-                        user.level?.trim()?.removePrefix("Lv.")?.removePrefix("lv.")?.takeIf { it.isNotBlank() }
-                            ?: "—",
-                    ),
-                    fontSize = 13.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    text = user.name,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.account_uid_format, user.uid),
-                    fontSize = 13.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = stringResource(
+                            R.string.account_level_format,
+                            user.level?.trim()?.removePrefix("Lv.")?.removePrefix("lv.")?.takeIf { it.isNotBlank() }
+                                ?: "—",
+                        ),
+                        fontSize = 13.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.account_uid_format, user.uid),
+                        fontSize = 13.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                }
             }
         }
         Spacer(modifier = Modifier.width(12.dp))

@@ -816,6 +816,7 @@ size/align/table 去标记）。
   行内垃圾桶 → 确认对话框 → `removeFavorite(favid, formhash)`（先 GET 表单再 POST），
   乐观删除、失败回滚 + toast；`type=all` 里的版块收藏被跳过。
 - 我的页（设置页第 4 tab）新增「论坛」分组：消息提醒 / 我的收藏 / 我的主页（未登录隐藏）。
+  ⚠️ 该分组已在 §15.8 收敛：只剩「我的收藏」，消息提醒改由首页铃铛、我的主页改由点账号头像进入。
 - 主页顶栏新增铃铛 `MiuixTopBarIconButton`（`Icons.Rounded.Notifications`）→ `Route.Notices`。
 - 私信输入框：Activity 是 edge-to-edge + `adjustResize`，IME 以 inset 到达。Composer 用
   `windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))`（取较大值，避免
@@ -875,3 +876,28 @@ size/align/table 去标记）。
   `ThemePresetColorsTest`(4)，以及扩充的 `ForumParserTest`。
 - 真机未验证项：搜索键盘/自动聚焦、提醒页未读样式、个人主页与收藏在真实会话下的排版、
   私信 IME inset、三点菜单玻璃（见 15.6）。
+
+### 15.8 设置页入口收敛：消息提醒 / 我的主页（2026-11-27）
+
+机主反馈：「消息提醒不用放设置了吧 设置中的我的主页也去掉吧 点头像就能进主页」。处理：
+
+- **设置页「论坛」分组只剩「我的收藏」一行**（`MiuixPreferredPage`）。删掉
+  `notice_entry_title → Route.Notices` 与 `profile_entry_title → Route.UserProfile(uid, name)`
+  两行；`SmallTitle(forum_section_title)` 保留（收藏还在，不存在空标题悬挂）。
+- **消息提醒**改由首页顶栏铃铛进入（`ForumHomePage` 的 `MiuixTopBarIconButton` +
+  `notice_entry_title` 作 contentDescription）——这条路径一直都在，§15.3 已记录。
+- **我的主页**改为点设置页账号卡片里的头像 + 昵称/等级区进入：
+  `AccountSection(..., onOpenProfile = { user -> navigator.push(Route.UserProfile(user.uid, user.name)) })`。
+  该区域用 `Modifier.clickable` + `semantics { contentDescription = profile_entry_title; role = Role.Button }`
+  （读屏念「我的主页」）；点击范围只有「头像 + 名字/等级 Column」，**不覆盖右侧退出按钮**，
+  退出仍走自己的确认对话框。游客（未登录）卡片 `SignedOutRow` 保持不可点。
+- **字符串**：`profile_entry_desc` 在 Kotlin 里已无引用，按三语同步铁律从
+  `values/`、`values-zh-rCN/`、`values-zh-rTW/` 一起删除（各 227 → 226 键）。
+  `notice_entry_title`（首页铃铛用）、`profile_entry_title`（现在作头像的无障碍描述）
+  保留不动。
+- 回归测试 `SettingsAccountEntryTest`(5)：头像点击回到登录用户、退出按钮仍弹确认框、
+  游客无主页入口、设置页源码只剩收藏行、英文串解析。
+- 验证：`:app:compileStableDebugKotlin` → BUILD SUCCESSFUL；
+  `:app:testStableDebugUnitTest` → **37 suites / 197 tests / 0 failures / 0 errors**；
+  `:app:lintVitalStableRelease` → BUILD SUCCESSFUL。
+- 真机未验证项：点头像进主页的实际手感（头像/名字共用一个 12dp 圆角的点击区）。

@@ -201,7 +201,6 @@
     <string name="notice_entry_title">訊息提醒</string>
     <string name="notice_entry_desc">檢視系統提醒與回覆</string>
     <string name="profile_entry_title">我的主頁</string>
-    <string name="profile_entry_desc">檢視自己的個人主頁</string>
     <!-- 個人主頁 -->
     <string name="profile_title">個人主頁</string>
     <string name="profile_login_required_title">登入後查看主頁</string>
