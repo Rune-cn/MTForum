@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package io.rune.mt.forum.data.forum.network
 
+import io.rune.mt.forum.domain.forum.model.ForumGuideView
+
 /**
  * Normalises the image references found in the site's HTML into absolute http(s) URLs.
  *
@@ -40,6 +42,16 @@ internal object ForumUrls {
             else -> ForumHttpClient.BASE_URL + value
         }
     }
+
+    /**
+     * Site path of one 导读 list page.
+     *
+     * The site's guide tab links all carry `index=1`; page one also works without `page`, but
+     * keeping both parameters explicit is what the tab links do and is the only shape verified
+     * against the live site. `view=hot` is a real guide list (not a portal redirect).
+     */
+    fun guidePath(view: ForumGuideView, page: Int): String =
+        "forum.php?mod=guide&view=${view.value}&index=1&page=$page"
 
     /**
      * Retry candidate for a CDN image that failed to load.

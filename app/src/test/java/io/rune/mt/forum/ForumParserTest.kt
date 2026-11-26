@@ -55,8 +55,8 @@ class ForumParserTest {
 
     @Test
     fun `guide page parses through the board parser`() {
-        // `view=hot` redirects to the portal home with no thread list; `view=newthread` is the
-        // real 导读 page and shares the board listing's DOM. This pins that contract.
+        // `view=newthread` is the 最新 导读 list; it shares the board listing's DOM, which is why
+        // the board parser can read every guide view (newthread/hot/digest/new/sofa) unchanged.
         val page = ForumHtmlParser.parseThreadPage(fixture("guide_newthread.html"), fid = 0, page = 1)
         assertTrue("guide must yield threads, got ${page.threads.size}", page.threads.size >= 10)
         assertTrue("guide threads need titles", page.threads.all { it.title.isNotBlank() })

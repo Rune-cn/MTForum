@@ -148,6 +148,11 @@
     <string name="forum_pinned_badge">置顶</string>
     <string name="forum_reply_badge">回复</string>
     <string name="nav_guide">导读</string>
+    <string name="forum_guide_tab_latest">最新</string>
+    <string name="forum_guide_tab_hot">热门</string>
+    <string name="forum_guide_tab_digest">精华</string>
+    <string name="forum_guide_tab_reply">回复</string>
+    <string name="forum_guide_tab_sofa">抢沙发</string>
     <string name="nav_messages">消息</string>
     <string name="logout_confirm_title">退出登录？</string>
     <string name="logout_confirm_message">将清除本机保存的登录会话。</string>
@@ -165,7 +170,7 @@
     <string name="forum_tag_featured">推荐</string>
     <string name="forum_tag_with_image">有图</string>
     <string name="forum_tag_hot">热门</string>
-    <string name="forum_hot_ranking">热度排行</string>
+    <string name="forum_hot_ranking">热帖排行</string>
     <string name="thread_action_more">更多操作</string>
     <string name="thread_action_like">推荐本帖</string>
     <string name="thread_action_follow_author">关注楼主</string>
