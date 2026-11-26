@@ -172,4 +172,9 @@
     <string name="thread_action_like">推薦本帖</string>
     <string name="thread_action_follow_author">關注樓主</string>
     <string name="forum_new_thread">發帖</string>
+    <string name="forum_search">搜尋</string>
+    <string name="forum_search_hint">搜尋論壇主題…</string>
+    <string name="forum_search_empty">沒有找到相關主題</string>
+    <string name="forum_search_action">搜尋</string>
+    <string name="forum_search_login_required">登入後即可搜尋論壇主題</string>
 </resources>

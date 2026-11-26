@@ -104,9 +104,34 @@ object ForumHtmlParser {
         )
     }
 
-    private fun parseThreadRow(li: Element, fid: Int): ForumThread? {
+    /**
+     * Parses a search result page (`search.php?mod=forum&searchid=…`).
+     *
+     * The Comiis search result reuses the board listing's row DOM (`li.forumlist_li`), but rows
+     * come from different boards: each row carries its own board link (`forum-<fid>-1.html`),
+     * so the fid is read from the row instead of from the request. The title anchor wraps the
+     * matched keyword in `<strong><font>`, which [threadTitle] keeps as plain text while still
+     * stripping the 精华/热度 badges.
+     */
+    fun parseSearch(html: String, page: Int = 1): ForumThreadPage {
+        val doc = Jsoup.parse(html)
+        val threads = doc.select("li.forumlist_li").mapNotNull { parseThreadRow(it, fid = null) }
+        return ForumThreadPage(
+            fid = 0,
+            threads = threads,
+            page = page,
+            totalPages = parseTotalPages(doc),
+        )
+    }
+
+    private fun parseThreadRow(li: Element, fid: Int?): ForumThread? {
         val titleLink = li.selectFirst("div.mmlist_li_box h2 a") ?: return null
         val tid = TID_IN_HREF.find(titleLink.attr("href"))?.groupValues?.get(1)?.toIntOrNull() ?: return null
+        // A board listing knows its fid from the request, but a search result mixes boards: there
+        // the row's own board breadcrumb link (`forum-<fid>-1.html`) is the only source.
+        val rowFid = fid ?: li.selectFirst("a[href*=forum-]")?.let { link ->
+            FORUM_HREF.find(link.attr("href"))?.groupValues?.get(1)?.toIntOrNull()
+        } ?: 0
         val authorLink = li.selectFirst("h2 a.top_user")
         val avatar = li.selectFirst("img.top_tximg")
         val stats = li.select("div.comiis_xznalist_bottom span.comiis_tm").map { it.text().filterDigits().toIntOrNull() ?: 0 }
@@ -116,7 +141,7 @@ object ForumHtmlParser {
         val digest = li.selectFirst("div.mmlist_li_box h2 span.bg_c")?.text()?.contains("精") == true
         return ForumThread(
             tid = tid,
-            fid = fid,
+            fid = rowFid,
             title = threadTitle(titleLink),
             summary = li.selectFirst("div.list_body a")?.text()?.trim(),
             authorName = authorLink?.text()?.trim().orEmpty(),

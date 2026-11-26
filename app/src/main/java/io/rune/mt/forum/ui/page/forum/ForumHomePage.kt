@@ -18,6 +18,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -46,6 +48,7 @@ import org.koin.androidx.compose.koinViewModel
 import timber.log.Timber
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -84,6 +87,11 @@ fun ForumHomePage(
         listState = listState,
         verticalPadding = 12.dp,
     ) {
+        // The search entry sits above the board grid: it is its own entry point, not a board.
+        item(key = "forum_search_entry") {
+            ForumSearchEntryCard(onClick = { navigator.push(Route.ForumSearch()) })
+        }
+
         when {
             state.isLoading -> item { ForumLoadingCard() }
 
@@ -135,6 +143,43 @@ fun ForumHomePage(
 }
 /** The grid stays three columns wide on phones, matching the site's shortcut block. */
 private const val FORUM_GRID_COLUMNS = 3
+
+/**
+ * Entry card of the in-forum search, placed above the board grid.
+ *
+ * The site offers search only from a tucked-away tab, so the home screen gives it one visible row;
+ * it is rendered before the grid and never depends on the index request finishing.
+ */
+@Composable
+private fun ForumSearchEntryCard(onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp),
+        onClick = onClick,
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(imageVector = Icons.Rounded.Search, contentDescription = null)
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.forum_search),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = stringResource(R.string.forum_search_hint),
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
 
 /** Reply count above which a thread is shown with a 热门 chip. */
 private const val HOT_REPLY_THRESHOLD = 20

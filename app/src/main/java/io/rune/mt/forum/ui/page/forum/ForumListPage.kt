@@ -42,6 +42,7 @@ import io.rune.mt.forum.ui.navigation.LocalNavigator
 import io.rune.mt.forum.ui.navigation.Route
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Search
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBackButton
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopAppBar
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopBarIconButton
@@ -114,6 +115,18 @@ fun ForumListPage(
                 scrollBehavior = chrome.scrollBehavior,
                 navigationIcon = { MiuixBackButton(onClick = { navigator.pop() }) },
                 actions = {
+                    MiuixTopBarIconButton(
+                        onClick = {
+                            // Carry the board name as the search field's initial hint; a blank
+                            // name (not resolved yet) still opens the page.
+                            navigator.push(Route.ForumSearch(forumName.ifBlank { state.forumName }))
+                        },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Search,
+                            contentDescription = stringResource(R.string.forum_search),
+                        )
+                    }
                     MiuixTopBarIconButton(
                         onClick = { navigator.push(Route.NewThread(fid, forumName.ifBlank { state.forumName })) },
                     ) {

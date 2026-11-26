@@ -19,11 +19,14 @@ import io.rune.mt.forum.domain.forum.model.ForumThreadPage
 import io.rune.mt.forum.domain.forum.model.ForumUser
 import io.rune.mt.forum.domain.forum.model.NewThreadImage
 import io.rune.mt.forum.domain.forum.model.NewThreadResult
+import io.rune.mt.forum.domain.forum.repository.ForumLoginRequiredException
 import io.rune.mt.forum.domain.forum.repository.ForumRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 import timber.log.Timber
@@ -43,6 +46,15 @@ class ForumRepositoryImpl(
 
     private val _session = MutableStateFlow(ForumSession())
     override val session: StateFlow<ForumSession> = _session.asStateFlow()
+
+    /** The id Discuz assigned to the last search, so page 2+ reuses the server-side result set. */
+    private data class SearchSession(val keyword: String, val searchid: String)
+
+    /** First POST hop: the parsed inline response plus the `searchid` the server minted. */
+    private class OpenedSearch(val inline: ForumThreadPage, val searchid: String?)
+
+    private var searchSession: SearchSession? = null
+    private val searchMutex = Mutex()
 
     override suspend fun getHome(): ForumHomeData = withContext(Dispatchers.IO) {
         // One request: the board grid and the server-ranked 热帖排行 block live on the same page.
@@ -74,6 +86,79 @@ class ForumRepositoryImpl(
         val html = http.getHtml("thread-$tid-$page-1.html")
         ForumHtmlParser.parseThreadDetail(html, tid, page)
     }
+
+    // ---- In-forum search (论坛内搜索) ----------------------------------------
+
+    override suspend fun searchThreads(keyword: String, page: Int): ForumThreadPage =
+        withContext(Dispatchers.IO) {
+            val query = keyword.trim()
+            require(query.isNotEmpty()) { "搜索关键词不能为空" }
+            // Discuz keeps the result set server-side under a `searchid` minted by the POST, so the
+            // mint and the page request are one transaction: two screens searching at once must
+            // not overwrite each other's id in between.
+            searchMutex.withLock {
+                if (page == 1) {
+                    val opened = openSearch(query)
+                    if (opened.searchid == null) return@withLock opened.inline
+                    searchSession = SearchSession(query, opened.searchid)
+                    // A direct 302 lands on the list itself; an intermediate page carries only the
+                    // searchid, so only then is a second GET needed.
+                    if (opened.inline.threads.isNotEmpty()) return@withLock opened.inline
+                    return@withLock readSearchPage(opened.searchid, page)
+                }
+                val cached = searchSession?.takeIf { it.keyword == query }
+                val searchid = cached?.searchid
+                    ?: openSearch(query).searchid
+                    ?: throw IllegalStateException("搜索会话已失效，请重新搜索")
+                searchSession = SearchSession(query, searchid)
+                readSearchPage(searchid, page)
+            }
+        }
+
+    /**
+     * First hop: load the search form, mint a `searchid` with the verified POST, and return both
+     * the raw response and the id. The response is the result list when OkHttp followed a 302.
+     */
+    private suspend fun openSearch(keyword: String): OpenedSearch {
+        val formHtml = http.getHtml(SEARCH_FORM_PATH)
+        if (ForumHtmlParser.isLoginRequired(formHtml)) throw ForumLoginRequiredException()
+        val formhash = ForumHtmlParser.parseFormhash(formHtml)
+            ?: throw IllegalStateException("无法读取搜索表单，请重新登录后再试")
+        val postHtml = http.postForm(
+            SEARCH_FORM_PATH,
+            mapOf(
+                "formhash" to formhash,
+                "srchtxt" to keyword,
+                "searchsubmit" to "yes",
+                "mod" to "forum",
+                "mobile" to "2",
+                "srchfid" to "all",
+            ),
+        )
+        if (ForumHtmlParser.isLoginRequired(postHtml)) throw ForumLoginRequiredException()
+        val inline = ForumHtmlParser.parseSearch(postHtml, page = 1)
+        val notice = ForumHtmlParser.extractNotice(postHtml)
+        if (inline.threads.isEmpty() && notice != null && SEARCH_FAILURE.containsMatchIn(notice)) {
+            throw IllegalStateException(notice)
+        }
+        return OpenedSearch(inline, SEARCH_ID.find(postHtml)?.groupValues?.get(1))
+    }
+
+    /** Second hop: read one page of an existing search result set. */
+    private suspend fun readSearchPage(searchid: String, page: Int): ForumThreadPage {
+        val html = http.getHtml(searchPagePath(searchid, page))
+        if (ForumHtmlParser.isLoginRequired(html)) throw ForumLoginRequiredException()
+        val result = ForumHtmlParser.parseSearch(html, page)
+        val notice = ForumHtmlParser.extractNotice(html)
+        if (result.threads.isEmpty() && notice != null && SEARCH_FAILURE.containsMatchIn(notice)) {
+            // Discuz rate-limits searches; the server's own wording is the only useful message.
+            throw IllegalStateException(notice)
+        }
+        return result
+    }
+
+    private fun searchPagePath(searchid: String, page: Int): String =
+        "search.php?mod=forum&searchid=$searchid&orderby=lastpost&ascdesc=desc&searchsubmit=yes&page=$page&mobile=2"
 
     override suspend fun reply(
         tid: Int,
@@ -316,5 +401,17 @@ class ForumRepositoryImpl(
     private companion object {
         /** Discuz error notices that mean a write did not go through. */
         val ERROR_WORDS = Regex("抱歉|非法|错误|不能|失败|无权限|权限不足|间隔")
+
+        /** Mobile search form; the same URL takes the POST that mints a `searchid`. */
+        const val SEARCH_FORM_PATH = "search.php?mod=forum&mobile=2"
+
+        /** `searchid` is echoed by the result pager and by the intermediate redirect page. */
+        val SEARCH_ID = Regex("""searchid=(\d+)""")
+
+        /**
+         * Notices that mean the search itself was rejected (login/permission/flood control).
+         * A plain "没有找到" empty result must stay a successful empty page, not an error.
+         */
+        val SEARCH_FAILURE = Regex("""搜索间隔|用户组|权限|非法|请先登录|登录后|禁止|限制""")
     }
 }

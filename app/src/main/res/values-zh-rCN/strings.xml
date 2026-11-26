@@ -172,4 +172,9 @@
     <string name="thread_action_like">推荐本帖</string>
     <string name="thread_action_follow_author">关注楼主</string>
     <string name="forum_new_thread">发帖</string>
+    <string name="forum_search">搜索</string>
+    <string name="forum_search_hint">搜索论坛主题…</string>
+    <string name="forum_search_empty">没有找到相关主题</string>
+    <string name="forum_search_action">搜索</string>
+    <string name="forum_search_login_required">登录后即可搜索论坛主题</string>
 </resources>

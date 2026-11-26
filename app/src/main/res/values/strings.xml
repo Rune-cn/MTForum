@@ -172,4 +172,9 @@
     <string name="thread_action_like">Upvote this thread</string>
     <string name="thread_action_follow_author">Follow the author</string>
     <string name="forum_new_thread">New thread</string>
+    <string name="forum_search">Search</string>
+    <string name="forum_search_hint">Search threads…</string>
+    <string name="forum_search_empty">No matching threads.</string>
+    <string name="forum_search_action">Search</string>
+    <string name="forum_search_login_required">Sign in to search the forum.</string>
 </resources>
