@@ -9,6 +9,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import io.rune.mt.forum.data.forum.model.ForumSmilies
+import io.rune.mt.forum.data.forum.network.ForumUrls
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
@@ -27,7 +28,6 @@ import timber.log.Timber
  */
 internal object ForumBodyParser {
 
-    private const val SITE_URL = "https://bbs.binmt.cc"
     private const val TAG = "ForumBodyParser"
     private const val SMILEY_PATH = "static/image/smiley"
 
@@ -284,15 +284,13 @@ internal object ForumBodyParser {
             raw.startsWith("file:") -> lazy
             else -> raw
         }
-        return normaliseUrl(candidate)
+        return ForumUrls.absolute(candidate)
     }
 
     private fun isSmiley(element: Element): Boolean =
         element.hasAttr("smilieid") ||
             element.attr("src").contains(SMILEY_PATH) ||
             element.attr("file").contains(SMILEY_PATH)
-
-    /** Turns protocol-relative and root-relative sources into absolute URLs. */
 
     /**
      * Parses the `#RRGGBB` / `#RGB` / `rgb(…)` colour syntax Discuz emits.
@@ -324,16 +322,6 @@ internal object ForumBodyParser {
                 "gray", "grey" -> Color(0xFF808080)
                 else -> null
             }
-        }
-    }
-    private fun normaliseUrl(raw: String): String? {
-        val value = raw.trim()
-        return when {
-            value.isEmpty() -> null
-            value.startsWith("http://") || value.startsWith("https://") -> value
-            value.startsWith("//") -> "https:$value"
-            value.startsWith("/") -> "$SITE_URL$value"
-            else -> "$SITE_URL/$value"
         }
     }
 }

@@ -13,6 +13,7 @@ import io.rune.mt.forum.core.crash.CrashHandler
 import io.rune.mt.forum.core.safemode.SafeMode
 import io.rune.mt.forum.core.env.AppConfig
 import io.rune.mt.forum.data.forum.repository.ForumSessionStore
+import io.rune.mt.forum.data.forum.network.ForumCookieJar
 import io.rune.mt.forum.di.init.appModules
 import io.rune.mt.forum.domain.forum.repository.ForumRepository
 import kotlinx.coroutines.CancellationException
@@ -33,6 +34,7 @@ class App : Application(), KoinComponent {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val forumRepository by inject<ForumRepository>()
     private val forumSessionStore by inject<ForumSessionStore>()
+    private val forumCookieJar by inject<ForumCookieJar>()
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(LocaleManager.wrap(newBase))
@@ -45,8 +47,13 @@ class App : Application(), KoinComponent {
         super.onCreate()
 
         // Forum CDNs filter on UA and Referer, so images need our own loader rather than the
-        // Coil default (which left some avatars blank).
-        SingletonImageLoader.setSafe { ctx -> buildForumImageLoader(ctx) }
+        // Coil default (which left some avatars blank). The session cookie jar is resolved
+        // lazily: `setSafe` only stores the factory, and it runs on the first image request —
+        // by then `startKoin` below has finished. The jar lets Coil load cookie-gated
+        // attachments (`forum.php?mod=image`) and solve the acw challenge on that host.
+        SingletonImageLoader.setSafe { ctx ->
+            buildForumImageLoader(ctx, runCatching { forumCookieJar }.getOrNull())
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             HiddenApiBypass.addHiddenApiExemptions("")

@@ -46,8 +46,11 @@ object ForumHtmlParser {
             Forum(
                 fid = fid,
                 name = (li.selectFirst("p")?.text() ?: link.text()).trim(),
-                iconUrl = img?.attr("comiis_loadimages")?.takeIf { it.isNotBlank() }
-                    ?: img?.attr("abs:src"),
+                iconUrl = ForumUrls.absolute(
+                    img?.attr("comiis_loadimages")?.takeIf { it.isNotBlank() }
+                        ?: img?.attr("data-src")?.takeIf { it.isNotBlank() }
+                        ?: img?.attr("src"),
+                ),
                 description = li.selectFirst("dd")?.text()?.trim(),
             )
         }.distinctBy { it.fid }
@@ -82,6 +85,7 @@ object ForumHtmlParser {
         val titleLink = li.selectFirst("div.mmlist_li_box h2 a") ?: return null
         val tid = TID_IN_HREF.find(titleLink.attr("href"))?.groupValues?.get(1)?.toIntOrNull() ?: return null
         val authorLink = li.selectFirst("h2 a.top_user")
+        val avatar = li.selectFirst("img.top_tximg")
         val stats = li.select("div.comiis_xznalist_bottom span.comiis_tm").map { it.text().filterDigits().toIntOrNull() ?: 0 }
         return ForumThread(
             tid = tid,
@@ -90,7 +94,9 @@ object ForumHtmlParser {
             summary = li.selectFirst("div.list_body a")?.text()?.trim(),
             authorName = authorLink?.text()?.trim().orEmpty(),
             authorUid = UID_IN_HREF.find(authorLink?.attr("href").orEmpty())?.groupValues?.get(1)?.toIntOrNull() ?: 0,
-            authorAvatarUrl = li.selectFirst("img.top_tximg")?.attr("abs:src"),
+            authorAvatarUrl = ForumUrls.absolute(
+                avatar?.attr("comiis_loadimages")?.takeIf { it.isNotBlank() } ?: avatar?.attr("src"),
+            ),
             authorLevel = li.selectFirst("span.top_lev")?.text()?.trim(),
             timeText = li.selectFirst("div.forumlist_li_time span")?.text()?.trim(),
             recommendCount = stats.getOrNull(0) ?: 0,
@@ -112,9 +118,8 @@ object ForumHtmlParser {
         li.select("div.comiis_pyqlist_imgs img")
             .mapNotNull { img ->
                 val raw = img.attr("comiis_loadimages").ifBlank { img.attr("data-src") }.ifBlank { img.attr("src") }
-                if (raw.isBlank() || raw.contains("pic/none.png")) null else raw
+                if (raw.isBlank() || raw.contains("pic/none.png")) null else ForumUrls.absolute(raw)
             }
-            .map { if (it.startsWith("//")) "https:$it" else it }
             .distinct()
             .take(3)
 
@@ -150,12 +155,15 @@ object ForumHtmlParser {
         val pid = PID_ID.find(el.id())?.groupValues?.get(1)?.toLongOrNull() ?: return null
         val content = el.selectFirst("div.comiis_messages")?.html() ?: return null
         val authorLink = el.selectFirst("h2 a.top_user")
+        val avatar = el.selectFirst("img.top_tximg")
         return ForumPost(
             pid = pid,
             tid = tid,
             authorName = authorLink?.text()?.trim().orEmpty(),
             authorUid = UID_IN_HREF.find(authorLink?.attr("href").orEmpty())?.groupValues?.get(1)?.toIntOrNull() ?: 0,
-            authorAvatarUrl = el.selectFirst("img.top_tximg")?.attr("abs:src"),
+            authorAvatarUrl = ForumUrls.absolute(
+                avatar?.attr("comiis_loadimages")?.takeIf { it.isNotBlank() } ?: avatar?.attr("src"),
+            ),
             authorLevel = el.selectFirst("a.top_lev")?.text()?.trim(),
             timeText = el.selectFirst("span.kmtime")?.text()?.trim(),
             location = el.selectFirst("code.comiis_iplocality")?.text()?.trim(),
@@ -179,7 +187,7 @@ object ForumHtmlParser {
             ForumPrivateConversation(
                 uid = uid,
                 name = name.ifBlank { h2 },
-                avatarUrl = a.selectFirst("img")?.let { abs(it.attr("src")) },
+                avatarUrl = ForumUrls.absolute(a.selectFirst("img")?.attr("src")),
                 lastTimeText = date,
                 lastPreview = a.selectFirst("p.f_c")?.text()?.trim()?.takeIf { it.isNotBlank() },
             )
@@ -201,7 +209,7 @@ object ForumHtmlParser {
             ForumPrivateMessage(
                 fromUid = if (isMine) 0 else uid,
                 timeText = el.selectFirst("div.msg_time")?.text()?.trim(),
-                avatarUrl = el.selectFirst("img.msg_avt")?.let { abs(it.attr("src")) },
+                avatarUrl = ForumUrls.absolute(el.selectFirst("img.msg_avt")?.attr("src")),
                 contentHtml = content,
                 isMine = isMine,
             )
@@ -268,13 +276,6 @@ object ForumHtmlParser {
 
     /** Extracts a thread id from a success redirect (`thread-123-1-1.html`). */
     fun resultTid(html: String): Int? = TID_RESULT.find(html)?.groupValues?.get(1)?.toIntOrNull()
-
-    private fun abs(url: String): String? = when {
-        url.isBlank() -> null
-        url.startsWith("http") -> url
-        url.startsWith("//") -> "https:$url"
-        else -> "https://bbs.binmt.cc/" + url.removePrefix("/")
-    }
 
     private fun parseTotalPages(doc: Document): Int {
         val last = doc.select("div.pg a").mapNotNull { it.text().filterDigits().toIntOrNull() }.maxOrNull()
