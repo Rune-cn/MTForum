@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.OpenInBrowser
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.ThumbUp
@@ -19,6 +20,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.SemanticsNodeInteraction
@@ -38,6 +40,8 @@ import io.rune.mt.forum.ui.page.forum.ThreadActions
 import io.rune.mt.forum.ui.page.forum.ThreadActionsBackHandler
 import io.rune.mt.forum.ui.page.forum.ThreadActionsGlassMenu
 import io.rune.mt.forum.ui.page.forum.ThreadActionsState
+import io.rune.mt.forum.ui.page.forum.ThreadMenuBackdropSource
+import io.rune.mt.forum.ui.page.forum.threadMenuBackdrop
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopAppBar
 import io.rune.mt.forum.ui.theme.AppTheme
 import org.junit.Rule
@@ -48,11 +52,15 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.blur.LayerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.glass.GlassPopupDefaults
 import top.yukonga.miuix.kmp.squircle.LocalSquircleEnabled
 import java.io.File
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /**
@@ -81,6 +89,7 @@ class ThreadActionsPopupLayoutTest {
         ThreadActionItem("Like", Icons.Rounded.ThumbUp) {},
         ThreadActionItem("Follow author", Icons.Rounded.PersonAdd) {},
         ThreadActionItem("Copy link", Icons.Rounded.Link) {},
+        ThreadActionItem("Open in browser", Icons.Rounded.OpenInBrowser) {},
         ThreadActionItem("Share", Icons.Rounded.Share) {},
     )
 
@@ -92,6 +101,7 @@ class ThreadActionsPopupLayoutTest {
             ThreadActionItem(context.getString(R.string.thread_action_like), Icons.Rounded.ThumbUp) {},
             ThreadActionItem(context.getString(R.string.thread_action_follow_author), Icons.Rounded.PersonAdd) {},
             ThreadActionItem(context.getString(R.string.thread_action_copy_link), Icons.Rounded.Link) {},
+            ThreadActionItem(context.getString(R.string.thread_action_open_browser), Icons.Rounded.OpenInBrowser) {},
             ThreadActionItem(context.getString(R.string.thread_action_share), Icons.Rounded.Share) {},
         )
     }
@@ -158,17 +168,23 @@ class ThreadActionsPopupLayoutTest {
         assertEquals(root.width, host.width, tolerancePx, "popup host width must equal the page width")
         assertEquals(root.height, host.height, tolerancePx, "popup host height must equal the page height")
 
-        // With these short labels the icon rows still settle at the glass menu's minimum width.
-        assertEquals(
-            with(compose.density) { GlassPopupDefaults.MinWidth.toPx() },
-            panelRight - panelLeft,
-            tolerancePx,
-            "panel must be the settled ${GlassPopupDefaults.MinWidth} wide",
+        // The panel is sized from its content: the six production labels ("Open in browser"
+        // included) are wider than the glass menu's minimum, so the settled width is the
+        // content width. Assert the bounds the library guarantees rather than a fixed width.
+        val minWidth = with(compose.density) { GlassPopupDefaults.MinWidth.toPx() }
+        val safeMargin = with(compose.density) { GlassPopupDefaults.SafeMargin.toPx() }
+        assertTrue(
+            panelRight - panelLeft >= minWidth - tolerancePx,
+            "panel must be at least the glass menu's $minWidth px wide: got ${panelRight - panelLeft}px",
+        )
+        assertTrue(
+            panelRight - panelLeft <= root.width - 2 * safeMargin + tolerancePx,
+            "panel must stay inside the safe margins: got ${panelRight - panelLeft}px for a " +
+                "${root.width}px page with a $safeMargin px margin",
         )
 
         // The library only end-aligns without clamping when the anchor keeps `safeMargin` from
         // the window edge; assert the harness is in that regime so the next check is meaningful.
-        val safeMargin = with(compose.density) { GlassPopupDefaults.SafeMargin.toPx() }
         assertTrue(
             anchor.right <= root.right - safeMargin,
             "harness anchor must sit inside the safe margin: anchor.right=${anchor.right} " +
@@ -233,8 +249,15 @@ class ThreadActionsPopupLayoutTest {
     }
 
     @Test
-    fun `glass menu rows show the five english action labels`() {
-        val expected = listOf("Favorite", "Upvote this thread", "Follow the author", "Copy link", "Share")
+    fun `glass menu rows show the six english action labels in order`() {
+        val expected = listOf(
+            "Favorite",
+            "Upvote this thread",
+            "Follow the author",
+            "Copy link",
+            "Open in browser",
+            "Share",
+        )
         val rows = productionItems()
         assertEquals(expected, rows.map { it.label }, "Robolectric must resolve the English default strings")
 
@@ -246,6 +269,60 @@ class ThreadActionsPopupLayoutTest {
         expected.forEach { label ->
             compose.onNodeWithText(label).assertExists()
         }
+
+        // Row order is the contract: in-app actions first, then the divider, then system share
+        // last (`ThreadActionsGlassMenu` draws the separator immediately before the last row).
+        val tops = expected.map { label ->
+            compose.onNodeWithText(label).fetchSemanticsNode().positionInRoot.y
+        }
+        assertTrue(
+            tops.zipWithNext().all { (top, next) -> top < next },
+            "menu rows must be laid out top-to-bottom in action order: $expected -> $tops",
+        )
+        assertEquals(
+            "Share",
+            expected.last(),
+            "system share must stay the last row so the divider before it remains meaningful",
+        )
+    }
+
+    @Test
+    fun `menu samples the page chrome backdrop never the page backdrop`() {
+        // Real LayerBackdrop instances: miuix's LayerBackdrop class is final, so the two
+        // candidate layers are materialised through rememberLayerBackdrop under Robolectric.
+        var chromeLayer: LayerBackdrop? = null
+        var pageLayer: LayerBackdrop? = null
+        compose.setContent {
+            chromeLayer = rememberLayerBackdrop { drawRect(Color.Black) }
+            pageLayer = rememberLayerBackdrop { drawRect(Color.White) }
+        }
+        compose.waitForIdle()
+
+        val chrome = checkNotNull(chromeLayer)
+        val page = checkNotNull(pageLayer)
+
+        // Production passes `chrome.backdrop` from `rememberMiuixPageChrome` and the ambient
+        // `MiuixComponentScope.pageBackdrop`; the selector is the single decision point and
+        // `ThreadActionsGlassMenu` hands its result straight to GlassPopup(backdrop = ...).
+        val choice = threadMenuBackdrop(chrome, page, blurDisabled = false)
+        assertEquals(ThreadMenuBackdropSource.Content, choice.source)
+        assertSame(chrome, choice.layer, "the popup must sample the page-chrome content layer")
+        assertTrue(choice.layer !== page, "the popup must never sample the page-level layer")
+
+        // SafeMode's crash latch forces the opaque fallback even while a chrome layer exists.
+        val safe = threadMenuBackdrop(chrome, page, blurDisabled = true)
+        assertEquals(ThreadMenuBackdropSource.None, safe.source)
+        assertNull(safe.layer, "SafeMode must pass backdrop = null")
+
+        // A page layer alone is never a candidate: sampling it would source the panel itself.
+        val noChrome = threadMenuBackdrop(null, page, blurDisabled = false)
+        assertEquals(ThreadMenuBackdropSource.None, noChrome.source)
+        assertNull(noChrome.layer)
+
+        // Defence in depth: the page layer arriving in the chrome slot is refused as well.
+        val miswired = threadMenuBackdrop(page, page, blurDisabled = false)
+        assertEquals(ThreadMenuBackdropSource.None, miswired.source)
+        assertNull(miswired.layer)
     }
 
     @Test

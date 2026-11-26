@@ -121,9 +121,13 @@ Compose 页面（Miuix 组件，OS3/OS4 自适应）
    `getThreads(fid, page, typeId)` 拼接筛选；UI 用 `TabRow`，无分类的版块不显示。
 16. **置顶公告没有 byline**：站点公告条只输出标题。不要用空作者渲染问号头像：
    `ForumViewModel.enrichNoticeAuthors()` 按 tid 补抓线程页 OP，失败时卡片显示置顶图钉。
-17. **OS4 菜单玻璃用页面 backdrop**：`ThreadActionsGlassMenu` 取
-   `currentMiuixComponentScope().pageBackdrop` 传给 `GlassPopup`，与主题设置下拉一致；
-   真机需确认 Android 16 不触发 hwui 采样崩溃（HANDOVER §11 / §15.6）。
+17. **OS4 菜单玻璃采样页面内容层，绝不能用页面 backdrop**：`ForumThreadPage` 把
+   `chrome.backdrop`（`rememberMiuixPageChrome`，录制在页面根 `Box` 内的内容子树）传给
+   `ThreadActionsGlassMenu`，经 `threadMenuBackdrop(chrome, page)` 决策（`SafeMode.blurDisabled`
+   时传 `null`，走 opaque 兜底）；内联 `GlassPopup` 组合在该录制子树**之外**，故不成环。
+   `pageBackdrop` 由 app 级 host 录制在整棵导航树外，而 `GlassPopup` 就在同一棵树里 →
+   采样它就是 RenderNode 自环（hwui 渲染线程 `computeTransformImpl` 栈溢出，HANDOVER §11 / §15.8）。
+   改这里要一起验证预测返回（组合顺序不变）。
 18. **私信/输入框的 IME inset 不要叠加**：用
    `WindowInsets.navigationBars.union(WindowInsets.ime)` 一次性取较大底边距，
    并把 composer 实测高度加进列表底部 padding。

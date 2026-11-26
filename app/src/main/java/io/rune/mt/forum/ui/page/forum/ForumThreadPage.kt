@@ -6,6 +6,7 @@ package io.rune.mt.forum.ui.page.forum
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.OpenInBrowser
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.Reply
 import androidx.compose.material.icons.rounded.Share
@@ -46,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import android.content.Intent
+import android.net.Uri
 
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -117,6 +119,7 @@ fun ForumThreadPage(
     val likeLabel = stringResource(R.string.thread_action_like)
     val followLabel = stringResource(R.string.thread_action_follow_author)
     val copyLabel = stringResource(R.string.thread_action_copy_link)
+    val openBrowserLabel = stringResource(R.string.thread_action_open_browser)
     val threadUrl = "https://bbs.binmt.cc/thread-$tid-1-1.html"
     val shareLabel = stringResource(R.string.thread_action_share)
     val sharePrefix = stringResource(R.string.thread_share_prefix)
@@ -133,6 +136,16 @@ fun ForumThreadPage(
         ThreadActionItem(copyLabel, Icons.Rounded.Link) {
             clipboard?.setText(threadUrl)
             scope.launch { snackbarHostState.showSnackbar(copiedText) }
+        },
+        // Escape hatch to the site itself: some flows (attachments, login quirks) only work in
+        // the real browser. A device can have no activity for VIEW http(s) at all, so the launch
+        // is guarded — a menu entry must never be able to kill the app.
+        ThreadActionItem(openBrowserLabel, Icons.Rounded.OpenInBrowser) {
+            runCatching {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(threadUrl)))
+            }.onFailure { error ->
+                Timber.tag("ForumThreadPage").w(error, "no activity to open %s", threadUrl)
+            }
         },
         // A real system share sheet, not a clipboard copy disguised as sharing.
         ThreadActionItem(shareLabel, Icons.Rounded.Share) {
@@ -267,8 +280,14 @@ fun ForumThreadPage(
         }
 
         // Root-level overlay: this fillMaxSize page box is the popup host, which is what the
-        // glass panel is measured and clamped against.
-        ThreadActionsGlassMenu(items = threadActions, state = actionsState)
+        // glass panel is measured and clamped against. It samples the page-chrome content
+        // layer (recorded on the list Box above, outside this overlay), never the page-level
+        // backdrop that contains the popup itself — that was the hwui RenderNode cycle.
+        ThreadActionsGlassMenu(
+            items = threadActions,
+            state = actionsState,
+            backdrop = chrome.backdrop,
+        )
 
         // Registered *after* the menu: the navigation-event dispatcher prioritises the most
         // recently composed enabled handler, so while the menu is open this predictive handler

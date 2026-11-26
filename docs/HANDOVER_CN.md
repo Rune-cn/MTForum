@@ -865,6 +865,7 @@ size/align/table 去标记）。
   一致；面板尺寸/圆角/内边距用库默认，预测返回的 `graphicsLayer` 变换与组合顺序不变。
   ⚠️ 真机未验证：`backdrop` 采样自身图层在 Android 16 上有 hwui 风险（§11），
   装机后需开菜单/旋转/复测 logcat；若崩溃则退回 `null` 或把菜单挪到录制层之外。
+  **该风险已在真机复现并修正，见 §15.9（改为采样页面内容层 `chrome.backdrop`，不再用 `pageBackdrop`）。**
 
 ### 15.7 验证
 
@@ -901,3 +902,81 @@ size/align/table 去标记）。
   `:app:testStableDebugUnitTest` → **37 suites / 197 tests / 0 failures / 0 errors**；
   `:app:lintVitalStableRelease` → BUILD SUCCESSFUL。
 - 真机未验证项：点头像进主页的实际手感（头像/名字共用一个 12dp 圆角的点击区）。
+
+### 15.9 真机崩溃：三点菜单玻璃采样自环（2026-11-27）
+
+**崩溃签名**（Android 16 / vivo，VERSION 26.11.5；渲染线程，fatal）：
+
+```
+signal 11 (SIGSEGV), code 2 (SEGV_ACCERR), fault addr ...
+Cause: stack pointer is close to top of stack; likely stack overflow.
+name: RenderThread
+#00..#512  libhwui.so (android::uirenderer::computeTransformImpl(DirtyStack const*, Matrix4*)+0/+36)
+```
+
+**触发**：打开帖子页右上角三点菜单（OS4 玻璃菜单）。这是独立于 §11 blur 录制之外的
+**第二个 RenderNode 环**，与「模糊」偏好是否打开无关：OS4 host 本身就会建 backdrop。
+
+**根因**：`ThreadActionsGlassMenu` 把 `MiuixComponentScope.pageBackdrop` 传给 `GlassPopup`。
+`pageBackdrop` 是 app 级 host 在**整棵导航树外面**录制的图层（`SettingsActivity`：
+`Box(...).then(scope.pageBackdropModifier) { AppNavContainer(...) }`）。而 `GlassPopup` 是
+**内联 overlay**（`Box(fillMaxSize)` 遮罩 + 窗口坐标 place 面板，见 §12.1），它本身组合在
+同一棵导航树里 → 面板采样了一个**包含面板自己**的图层 → RenderNode 环 → hwui 沿
+`DirtyStack` 递归 512 帧 → 渲染线程栈溢出 SIGSEGV。顶栏玻璃不崩，是因为顶栏采样内容层且
+它在该录制层**之外**。
+
+**修复**：
+- 帖子页把 `chrome.backdrop`（`rememberMiuixPageChrome`，由 `chrome.contentBackdropModifier`
+  以 `Modifier.layerBackdrop` 录制在内容 `Box`——`PullToRefresh`/`LazyColumn` 子树——上）
+  作为 `backdrop` 参数传给 `ThreadActionsGlassMenu`。
+- 纯函数 `threadMenuBackdrop(chromeBackdrop, pageBackdrop)` 是**唯一决策点**：
+  `SafeMode.blurDisabled=true` → `None/null`；`chromeBackdrop == null` → `None/null`；
+  传入的 chrome 层与 `pageBackdrop` 同一实例（误接）→ `None/null`；否则 → `Content(chromeBackdrop)`。
+  `GlassPopup(backdrop = threadMenuBackdrop(...).layer)` 直接使用该结果，没有第二个判断点。
+- **为什么不会再有环**：`chrome.backdrop` 的录制范围是页面根 `Box` 内的内容子树；
+  `GlassPopup` 组合在外层页面 `Box` 里、作为 `Scaffold` 的兄弟，**不在**该录制子树内 →
+  面板不可能采样到包含自己的图层。顶栏（`MiuixTopAppBar(backdrop = chrome.backdrop)`）
+  采样同一实例且真机不崩，是经验证据。
+- 首版曾按说明改用 `MiuixComponentScope.contentBackdrop`，但本仓库没有任何页面把内容录进
+  该层（页面都用 `chrome.contentBackdropModifier` / `chrome.backdrop`），采样它只会退回
+  opaque 兜底；现已改为上面的 `chrome.backdrop`。
+- `SafeMode.blurDisabled` 在 `Application.onCreate` 里同步读取，**不是**组合状态；因此菜单
+  显式判断它。注意：`MiuixComponentHost` 自己的 backdrop 工厂（私有
+  `rememberMiuixLayerBackdrop`）目前**不读** `SafeMode`（只有
+  `rememberMiuixBlurBackdrop` 读），所以 `useOs4` 不会因 SafeMode 变为 false——不能依赖
+  `currentMiuixComponentScope().useOs4` 做这层保护。
+- 未改 `MiuixPreferences.kt` 的主题下拉：`GlassDropdownPreference(renderInRootScaffold = …)`
+  是真实 popup window，不在录制层内，不构成自环。
+
+**验证**：`ThreadActionsPopupLayoutTest` 的
+`menu samples the page chrome backdrop never the page backdrop`：用两个真实
+`rememberLayerBackdrop` 实例断言——选中的是调用方传入的 chrome 层、`!==` page 层，
+`SafeMode` 命中 → `None/null`，chrome 层缺失 → `None/null`，chrome 槽误接 page 层 → `None/null`。
+生产代码里 `backdrop = threadMenuBackdrop(...).layer` 是同一表达式，选择器即唯一决策点
+（`GlassPopup` 的内部参数无法在 Robolectric 里反射读取）。
+
+⚠️ **本机无模拟器/无设备，真机复测仍未完成**。若装机仍崩，回退顺序：
+1) 菜单传 `null`（纯 opaque 兜底，§11 处理 3）；
+2) 把菜单改成真实 popup window（或移出录制层）。
+
+**遗留风险**：`chrome.backdrop` 为 `null` 的情况（`enableBlur=false`、或 OS4 未生效/平台不支持
+render effect、或 SafeMode 命中）→ 面板走库的 opaque 兜底，这是可接受的降级；
+**真机上的玻璃观感仍未验证**（本机无设备/模拟器），需要装机看「面板是否真的透出列表内容」。
+
+### 15.10 帖子菜单：在浏览器打开
+
+- 帖子页三点菜单新增「在浏览器打开」（复用三语键 `thread_action_open_browser`），
+  顺序：收藏 / 顶赞 / 关注楼主 / 复制链接 / 在浏览器打开 / 分享；分享仍在最后一行，
+  菜单「最后一行前画分隔线」的语义不变。
+- 打开 `https://bbs.binmt.cc/thread-<tid>-1-1.html`（`Intent.ACTION_VIEW`），用 `runCatching`
+  兜住「设备没有可处理 http 的 Activity」等失败，只 `Timber.w`，不崩。
+- 测试：`ThreadActionsPopupLayoutTest` 的 label 用例扩到 6 行并断言纵向顺序
+  （in-app 动作在前、系统分享最后）；README 功能表同步。
+
+**验证（含第二轮 `chrome.backdrop` 修正后复跑）**：
+
+- `:app:compileStableDebugKotlin` → BUILD SUCCESSFUL
+- `:app:testStableDebugUnitTest` → BUILD SUCCESSFUL，**36 suites / 193 tests / 0 failures / 0 errors**
+  （`menu samples the page chrome backdrop never the page backdrop`；label 用例 6 行 + 顺序断言）
+- `:app:lintVitalStableRelease` → BUILD SUCCESSFUL（`Lint found no new issues`）
+- ⚠️ 本机无设备/模拟器：真机上「菜单不再崩溃」与玻璃观感**均未复测**。

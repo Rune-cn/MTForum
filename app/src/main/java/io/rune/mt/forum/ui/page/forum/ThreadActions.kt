@@ -25,6 +25,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import io.rune.mt.forum.R
+import io.rune.mt.forum.core.safemode.SafeMode
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopBarIconButton
 import io.rune.mt.forum.ui.page.miuix.widgets.currentMiuixComponentScope
 import io.rune.mt.forum.ui.theme.AppTheme
@@ -35,6 +36,7 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.ListPopupColumn
 import top.yukonga.miuix.kmp.basic.ListPopupDefaults
 import top.yukonga.miuix.kmp.basic.PopupPositionProvider
+import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.glass.GlassPopup
 import top.yukonga.miuix.kmp.glass.GlassPopupDefaults
 import top.yukonga.miuix.kmp.glass.GlassPopupItem
@@ -164,7 +166,8 @@ internal fun ThreadActionsBackHandler(state: ThreadActionsState) {
 }
 
 /**
- * Trailing overflow button for the thread screen (favourite / like / follow author / copy / share).
+ * Trailing overflow button for the thread screen (favourite / like / follow author / copy link /
+ * open in browser / share).
  *
  * This only draws the three-dot button and publishes its window bounds; the menu itself is
  * composed by [ThreadActionsGlassMenu] in the page's root `BoxScope`. Two placement bugs lived
@@ -225,6 +228,60 @@ internal fun ThreadActions(
     }
 }
 
+/** Which recorded layer the thread overflow menu samples. */
+internal enum class ThreadMenuBackdropSource {
+    /** The page chrome's content layer, which the inline popup sits outside of. */
+    Content,
+
+    /** Nothing is sampled; the glass panel uses its opaque fallback fill. */
+    None,
+}
+
+/** Chosen sampling surface plus its provenance, so the choice can be asserted in tests. */
+internal data class ThreadMenuBackdrop(
+    val source: ThreadMenuBackdropSource,
+    val layer: LayerBackdrop?,
+)
+
+/**
+ * Picks the layer [ThreadActionsGlassMenu] may sample.
+ *
+ * Candidates:
+ *
+ *  - [chromeBackdrop]: `MiuixPageChrome.backdrop` of the thread page (`rememberMiuixPageChrome`),
+ *    recorded by `Modifier.layerBackdrop` on the content `Box` *inside* the page root, via
+ *    `chrome.contentBackdropModifier`. [ThreadActionsGlassMenu] is composed as a sibling of the
+ *    `Scaffold` in the **outer** page `Box`, i.e. outside that recorded subtree, so the panel can
+ *    never source itself. The OS4 top app bar samples this very same instance
+ *    (`MiuixTopAppBar(backdrop = chrome.backdrop)`) and does not crash — the empirical argument
+ *    for its safety.
+ *  - `MiuixComponentScope.pageBackdrop`: **never** a candidate. The app-wide host records it
+ *    around the whole navigation tree, and this inline popup is composed inside that tree, so
+ *    sampling it would make the panel source a layer containing the panel: a RenderNode cycle
+ *    hwui walks until the render thread overflows its stack (`computeTransformImpl`, `SIGSEGV`
+ *    in `RenderThread`; `docs/HANDOVER_CN.md` §11 / §15.8).
+ *
+ * [pageBackdrop] is still accepted so the invariant "never sample the page layer" is explicit and
+ * testable, and a caller that accidentally wires the page layer into the chrome slot is rejected.
+ *
+ * [SafeMode.blurDisabled] is honoured explicitly: after a crash dump this session must build no
+ * sampling path at all, and the menu then falls back to the library's opaque fill. The latch is
+ * plain state set in `Application.onCreate`, not part of the composition, so it is read here
+ * rather than observed.
+ */
+internal fun threadMenuBackdrop(
+    chromeBackdrop: LayerBackdrop?,
+    pageBackdrop: LayerBackdrop?,
+    blurDisabled: Boolean = SafeMode.blurDisabled,
+): ThreadMenuBackdrop = when {
+    blurDisabled -> ThreadMenuBackdrop(ThreadMenuBackdropSource.None, null)
+    chromeBackdrop == null -> ThreadMenuBackdrop(ThreadMenuBackdropSource.None, null)
+    // Defence in depth: refuse the layer containing the panel even if it arrives in the chrome
+    // slot by mistake.
+    chromeBackdrop === pageBackdrop -> ThreadMenuBackdrop(ThreadMenuBackdropSource.None, null)
+    else -> ThreadMenuBackdrop(ThreadMenuBackdropSource.Content, chromeBackdrop)
+}
+
 /**
  * The OS4 glass overflow menu, anchored to the top bar button through [state].
  *
@@ -237,28 +294,42 @@ internal fun ThreadActions(
  * 24dp icon size, 8dp icon-to-label gap, 20dp horizontal padding, press highlight and text style
  * all come from `GlassPopupDefaults` rather than from a bare text column. A separator before the
  * last row keeps the system-share row apart from the in-app rows (favourite / like / follow /
- * copy link), the way Miuix's own dropdown menus draw section breaks.
+ * copy link / open in browser), the way Miuix's own dropdown menus draw section breaks.
  *
- * This is the same presentation the theme-settings dropdowns use: the panel samples the page's
- * recorded `MiuixComponentScope.pageBackdrop`, so OS4 gets the blurred glass rather than the
- * opaque fallback fill. The backdrop is recorded by the app-wide host (`SettingsActivity` applies
- * `pageBackdropModifier` to the root that contains the navigation tree), which is why this
- * composable must live at the page root inside that tree instead of in the top bar.
+ * ## Which layer may be sampled
+ *
+ * The page passes in `chrome.backdrop` — the layer `rememberMiuixPageChrome` records with
+ * `Modifier.layerBackdrop` on the content `Box` (the `PullToRefresh`/`LazyColumn` subtree)
+ * *inside* the page root. This menu is composed as a sibling of the `Scaffold` in the outer page
+ * `Box`, so the panel is **not** inside that recorded subtree and the crash cycle cannot form.
+ * The OS4 top app bar samples the same instance today and does not crash.
+ *
+ * The app-wide `MiuixComponentScope.pageBackdrop` is the opposite: the host records it around the
+ * whole navigation tree (`SettingsActivity` applies `pageBackdropModifier` to the root `Box`
+ * around `AppNavContainer`), and this popup lives inside that tree. Passing it to `GlassPopup`
+ * made the panel sample a layer containing the panel: the panel's RenderNode became its own
+ * ancestor, hwui walked the cycle in `computeTransformImpl(DirtyStack const*, Matrix4*)` until
+ * the render thread overflowed its stack, and the process died with `SIGSEGV` in `RenderThread`
+ * (documented in `docs/HANDOVER_CN.md` §11 and §15.8; reproduced on Android 16 / vivo with this
+ * menu). [threadMenuBackdrop] owns the choice and also honours the blur kill-switch from
+ * [SafeMode] (see its KDoc).
+ *
+ * @param backdrop Page-chrome content layer from the caller (`chrome.backdrop`); `null` when the
+ * page has no blur/glass layer, in which case the panel falls back to its opaque fill.
  */
 @Composable
 internal fun BoxScope.ThreadActionsGlassMenu(
     items: List<ThreadActionItem>,
     state: ThreadActionsState,
     modifier: Modifier = Modifier,
+    backdrop: LayerBackdrop? = null,
 ) {
     if (items.isEmpty() || !AppTheme.useMiuixOs4) return
 
-    // The page backdrop the app-wide MiuixComponentHost records around the navigation tree.
-    // Passing it to the popup's glass surface is what makes the panel a real blurred glass
-    // panel; with `null` the library falls back to an opaque fill and the menu looks flat.
-    // It stays null under OS3 or when render effects are unsupported, where the popup is not
-    // composed at all, and in previews/tests composed without a MiuixComponentHost.
-    val componentScope = currentMiuixComponentScope()
+    // The popup samples the page-chrome content layer passed by the page, never the page-level
+    // layer that contains it (hwui RenderNode cycle). threadMenuBackdrop() also returns null
+    // when the SafeMode crash latch is on, so the panel falls back to its opaque fill instead.
+    val pageBackdrop = currentMiuixComponentScope().pageBackdrop
 
     // While a predictive-back gesture is in flight the panel follows the finger: scale down,
     // fade out and shift towards the swipe edge. At rest (progress 0) these are exactly the
@@ -276,11 +347,9 @@ internal fun BoxScope.ThreadActionsGlassMenu(
         show = state.expanded,
         onDismissRequest = { state.close() },
         anchorBounds = state.anchorBounds,
-        // Same sampling surface as the theme-settings dropdowns (MiuixPreferences.kt): the page
-        // layer recorded by the app-wide host, not a window-level snapshot. The panel is an
-        // inline overlay inside that layer, so its coordinates resolve against the same window
-        // the backdrop was recorded in.
-        backdrop = componentScope.pageBackdrop,
+        // The same call the selector is tested on: the value handed to GlassPopup is exactly
+        // threadMenuBackdrop()'s result, so there is no second decision point to drift.
+        backdrop = threadMenuBackdrop(backdrop, pageBackdrop).layer,
         modifier = panelModifier,
         // Same glass recipe as GlassDropdownPreference, and the same popup defaults the
         // dropdown passes (24dp corner radius, 8dp vertical content padding, 200/288/416dp
