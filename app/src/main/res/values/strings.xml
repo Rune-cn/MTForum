@@ -179,4 +179,14 @@
     <string name="forum_notices_empty">No notices yet.</string>
     <string name="forum_notices_login_required">Sign in required</string>
     <string name="forum_notices_login_hint">Your notices appear here after you sign in.</string>
+    <string name="forum_thread_board_format">Board: %1$s</string>
+    <string name="reply_composer_title">Reply</string>
+    <string name="reply_composer_title_to_format">Reply to @%1$s</string>
+    <string name="reply_composer_hint">Write a reply…</string>
+    <string name="reply_composer_smiley">Emoji</string>
+    <string name="reply_composer_smiley_hide">Hide emoji</string>
+    <string name="reply_composer_send">Send</string>
+    <string name="reply_composer_sending">Sending…</string>
+    <string name="reply_error_thread_not_ready">The thread is still loading. Try again in a moment.</string>
+    <string name="reply_error_failed">Reply failed</string>
 </resources>

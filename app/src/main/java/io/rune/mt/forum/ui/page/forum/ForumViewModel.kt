@@ -3,6 +3,7 @@ package io.rune.mt.forum.ui.page.forum
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.rune.mt.forum.R
 import io.rune.mt.forum.domain.forum.model.Forum
 import io.rune.mt.forum.domain.forum.model.ForumGuideView
 import io.rune.mt.forum.domain.forum.model.ForumHotEntry
@@ -65,6 +66,8 @@ data class ForumThreadState(
     val tid: Int = 0,
     val fid: Int? = null,
     val title: String = "",
+    /** Board the thread belongs to, read from the thread page breadcrumb (null while loading). */
+    val forumName: String? = null,
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
     val isAppending: Boolean = false,
@@ -285,6 +288,7 @@ class ForumViewModel(
                 _threadState.update {
                     it.copy(
                         posts = it.posts + detail.posts.filterNot { post -> post.pid in known },
+                        forumName = detail.forumName ?: it.forumName,
                         page = detail.page,
                         totalPages = detail.totalPages,
                         formhash = detail.formhash ?: it.formhash,
@@ -313,11 +317,11 @@ class ForumViewModel(
     fun requestReply(quote: ForumPost? = null) {
         val thread = _threadState.value
         if (session.value.user == null) {
-            _replyState.value = ReplyState(error = "请先登录后再回复")
+            _replyState.value = ReplyState(errorRes = R.string.login_required_message)
             return
         }
         if (thread.formhash == null) {
-            _replyState.value = ReplyState(error = "帖子尚未加载完成，请稍候")
+            _replyState.value = ReplyState(errorRes = R.string.reply_error_thread_not_ready)
             return
         }
         _replyState.value = ReplyState(
@@ -328,11 +332,11 @@ class ForumViewModel(
     }
 
     fun dismissReply() {
-        _replyState.value = _replyState.value.copy(visible = false, error = null)
+        _replyState.value = _replyState.value.copy(visible = false, error = null, errorRes = null)
     }
 
     fun updateReplyText(text: String) {
-        _replyState.value = _replyState.value.copy(text = text, error = null)
+        _replyState.value = _replyState.value.copy(text = text, error = null, errorRes = null)
     }
 
     fun submitReply() {
@@ -341,7 +345,7 @@ class ForumViewModel(
         if (composer.text.isBlank() || composer.isSubmitting) return
         val formhash = thread.formhash ?: return
         viewModelScope.launch {
-            _replyState.value = composer.copy(isSubmitting = true, error = null)
+            _replyState.value = composer.copy(isSubmitting = true, error = null, errorRes = null)
             val result = runCatching {
                 repository.reply(
                     tid = thread.tid,
@@ -365,7 +369,8 @@ class ForumViewModel(
                 Timber.tag(TAG).e(error, "reply failed tid=%d", thread.tid)
                 _replyState.value = composer.copy(
                     isSubmitting = false,
-                    error = error.message ?: "回复失败",
+                    error = error.message,
+                    errorRes = if (error.message == null) R.string.reply_error_failed else null,
                 )
             }
         }
@@ -567,6 +572,7 @@ class ForumViewModel(
                     it.copy(
                         tid = detail.tid,
                         title = detail.title.ifBlank { it.title },
+                        forumName = detail.forumName ?: it.forumName,
                         isLoading = false,
                         isRefreshing = false,
                         isAppending = false,

@@ -87,18 +87,14 @@ object ForumHtmlParser {
     fun parseThreadPage(html: String, fid: Int, page: Int): ForumThreadPage {
         val doc = Jsoup.parse(html)
         val threads = doc.select("li.forumlist_li").mapNotNull { parseThreadRow(it, fid) }
-        val notice = doc.select("div.comiis_forumlist_top li").mapNotNull { li ->
-            val a = li.selectFirst("a") ?: return@mapNotNull null
-            val tid = TID_IN_HREF.find(a.attr("href"))?.groupValues?.get(1)?.toIntOrNull() ?: return@mapNotNull null
-            ForumThread(
-                tid = tid,
-                fid = fid,
-                title = a.text().replace("置顶", "").trim(),
-                authorName = "",
-                authorUid = 0,
-                pinned = true,
-            )
-        }
+        // The 置顶 strip (`div.comiis_forumlist_top`) uses the same row furniture as a regular
+        // listing row when the template renders one (byline, avatar, time, counts), so both shapes
+        // go through the same parser instead of a title-only special case. The flag is forced on
+        // because the strip itself is the site's 置顶 marker.
+        // Direct `ul > li` only: a full pinned row repeats the stats block's own `<li>` elements
+        // (reply/view counts), and those are cells of the row, not extra rows.
+        val notice = doc.select("div.comiis_forumlist_top > ul > li")
+            .mapNotNull { parseThreadRow(it, fid, pinned = true) }
         return ForumThreadPage(
             fid = fid,
             threads = threads,
@@ -108,16 +104,33 @@ object ForumHtmlParser {
         )
     }
 
-    private fun parseThreadRow(li: Element, fid: Int): ForumThread? {
-        val titleLink = li.selectFirst("div.mmlist_li_box h2 a") ?: return null
+    /**
+     * Parses one listing row.
+     *
+     * A regular row (`li.forumlist_li`) carries its byline, avatar, time and counts in the
+     * `forumlist_li_top` / `comiis_xznalist_bottom` blocks. The 置顶 strip uses a `li` that may
+     * either be title-only (the global announcements, which the site prints without a byline) or
+     * a full row with the same furniture; both are read here, so the strip gets an avatar/time
+     * whenever the markup actually carries one instead of being hard-coded to a blank author.
+     */
+    private fun parseThreadRow(li: Element, fid: Int, pinned: Boolean = false): ForumThread? {
+        val titleLink = li.selectFirst("div.mmlist_li_box h2 a")
+            ?: li.selectFirst("h2 a[href*=thread-]")
+            ?: li.selectFirst("a[href*=thread-]")
+            ?: return null
         val tid = TID_IN_HREF.find(titleLink.attr("href"))?.groupValues?.get(1)?.toIntOrNull() ?: return null
         val authorLink = li.selectFirst("h2 a.top_user")
-        val avatar = li.selectFirst("img.top_tximg")
-        val stats = li.select("div.comiis_xznalist_bottom span.comiis_tm").map { it.text().filterDigits().toIntOrNull() ?: 0 }
+        val avatar = li.selectFirst("img.top_tximg") ?: li.selectFirst("img[comiis_loadimages], img[src]")
+        val stats = li.select("div.comiis_xznalist_bottom span.comiis_tm")
+            .ifEmpty { li.select("span.comiis_tm") }
+            .map { it.text().filterDigits().toIntOrNull() ?: 0 }
         // 精华 rows carry a `<span class="bg_c f_f">精</span>` badge inside the title area (the
         // same slot that holds the 热度 badge). The badge text is not part of the title, so both
         // the flag and the title are derived structurally, never by sniffing a leading 精.
         val digest = li.selectFirst("div.mmlist_li_box h2 span.bg_c")?.text()?.contains("精") == true
+        val time = li.selectFirst("div.forumlist_li_time span")
+            ?: li.selectFirst("span.kmtime")
+            ?: li.selectFirst("div.comiis_postli_time span")
         return ForumThread(
             tid = tid,
             fid = fid,
@@ -129,11 +142,11 @@ object ForumHtmlParser {
                 avatar?.attr("comiis_loadimages")?.takeIf { it.isNotBlank() } ?: avatar?.attr("src"),
             ),
             authorLevel = li.selectFirst("span.top_lev")?.text()?.trim(),
-            timeText = li.selectFirst("div.forumlist_li_time span")?.text()?.trim(),
+            timeText = time?.text()?.trim(),
             recommendCount = stats.getOrNull(0) ?: 0,
             replyCount = stats.getOrNull(1) ?: 0,
             viewCount = stats.getOrNull(2) ?: 0,
-            pinned = li.selectFirst("em.comiis_xifont")?.text()?.contains("置顶") == true,
+            pinned = pinned || li.selectFirst("em.comiis_xifont")?.text()?.contains("置顶") == true,
             digest = digest,
             imageUrls = parseThumbnails(li),
         )
@@ -149,7 +162,9 @@ object ForumHtmlParser {
      */
     private fun threadTitle(anchor: Element): String {
         val copy = anchor.clone()
-        copy.select("span.bg_c, span.bg_a, i.comiis_font").remove()
+        // `em.comiis_xifont` is the 置顶 marker inside the announcement strip; it is a status,
+        // not part of the title, and the row parser reports it through `pinned` instead.
+        copy.select("span.bg_c, span.bg_a, i.comiis_font, em.comiis_xifont").remove()
         return copy.text().cleanTitle()
     }
 
@@ -189,6 +204,7 @@ object ForumHtmlParser {
             tid = tid,
             fid = FID_IN_HREF.find(html)?.groupValues?.get(1)?.toIntOrNull(),
             title = doc.selectFirst("title")?.text()?.substringBefore(" - MT论坛")?.trim().orEmpty(),
+            forumName = parseForumName(doc),
             posts = posts,
             page = page,
             totalPages = parseTotalPages(doc),
@@ -322,6 +338,28 @@ object ForumHtmlParser {
 
     /** Extracts a thread id from a success redirect (`thread-123-1-1.html`). */
     fun resultTid(html: String): Int? = TID_RESULT.find(html)?.groupValues?.get(1)?.toIntOrNull()
+
+    /**
+     * Board name of a thread page.
+     *
+     * The Comiis mobile template prints the board as the header crumb `a.kmtit` (linking to
+     * `forum-{fid}-1.html`); the desktop template uses `#pt` and a `div.comiis_nav` crumb. When a
+     * template renders no crumb at all, the `<title>标题 - 版块 - MT论坛</title>` shape still carries
+     * the board as the second segment. `MT论坛` is the site name, never a board.
+     */
+    private fun parseForumName(doc: Document): String? {
+        val crumb = doc.selectFirst("a.kmtit[href*=forum-]")
+            ?: doc.selectFirst("#pt a[href*=forum-]")
+            ?: doc.selectFirst("div.comiis_nav a[href*=forum-]")
+            ?: doc.selectFirst("h2.flex a[href*=forum-]")
+        crumb?.text()?.cleanTitle()?.takeIf { it.isNotBlank() }?.let { return it }
+
+        val title = doc.selectFirst("title")?.text().orEmpty()
+            .removeSuffix(" - MT论坛")
+            .trim()
+        val parts = title.split(" - ").map { it.trim() }.filter { it.isNotBlank() }
+        return parts.getOrNull(1)?.takeIf { it != "MT论坛" && it.isNotBlank() }
+    }
 
     private fun parseTotalPages(doc: Document): Int {
         val last = doc.select("div.pg a").mapNotNull { it.text().filterDigits().toIntOrNull() }.maxOrNull()
