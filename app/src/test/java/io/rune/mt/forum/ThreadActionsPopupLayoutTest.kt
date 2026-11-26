@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.OpenInBrowser
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.ThumbUp
@@ -89,6 +90,7 @@ class ThreadActionsPopupLayoutTest {
         ThreadActionItem("Like", Icons.Rounded.ThumbUp) {},
         ThreadActionItem("Follow author", Icons.Rounded.PersonAdd) {},
         ThreadActionItem("Copy link", Icons.Rounded.Link) {},
+        ThreadActionItem("Open in browser", Icons.Rounded.OpenInBrowser) {},
         ThreadActionItem("Share", Icons.Rounded.Share) {},
     )
 
@@ -100,6 +102,7 @@ class ThreadActionsPopupLayoutTest {
             ThreadActionItem(context.getString(R.string.thread_action_like), Icons.Rounded.ThumbUp) {},
             ThreadActionItem(context.getString(R.string.thread_action_follow_author), Icons.Rounded.PersonAdd) {},
             ThreadActionItem(context.getString(R.string.thread_action_copy_link), Icons.Rounded.Link) {},
+            ThreadActionItem(context.getString(R.string.thread_action_open_browser), Icons.Rounded.OpenInBrowser) {},
             ThreadActionItem(context.getString(R.string.thread_action_share), Icons.Rounded.Share) {},
         )
     }
@@ -247,8 +250,15 @@ class ThreadActionsPopupLayoutTest {
     }
 
     @Test
-    fun `glass menu rows show the five english action labels`() {
-        val expected = listOf("Favorite", "Upvote this thread", "Follow the author", "Copy link", "Share")
+    fun `glass menu rows show the six english action labels in order`() {
+        val expected = listOf(
+            "Favorite",
+            "Upvote this thread",
+            "Follow the author",
+            "Copy link",
+            "Open in browser",
+            "Share",
+        )
         val rows = productionItems()
         assertEquals(expected, rows.map { it.label }, "Robolectric must resolve the English default strings")
 
@@ -260,6 +270,21 @@ class ThreadActionsPopupLayoutTest {
         expected.forEach { label ->
             compose.onNodeWithText(label).assertExists()
         }
+
+        // Row order is the contract: in-app actions first, then the divider, then system share
+        // last (`ThreadActionsGlassMenu` draws the separator immediately before the last row).
+        val tops = expected.map { label ->
+            compose.onNodeWithText(label).fetchSemanticsNode().positionInRoot.y
+        }
+        assertTrue(
+            tops.zipWithNext().all { (top, next) -> top < next },
+            "menu rows must be laid out top-to-bottom in action order: $expected -> $tops",
+        )
+        assertEquals(
+            "Share",
+            expected.last(),
+            "system share must stay the last row so the divider before it remains meaningful",
+        )
     }
 
     @Test

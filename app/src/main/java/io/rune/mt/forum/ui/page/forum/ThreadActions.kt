@@ -167,7 +167,8 @@ internal fun ThreadActionsBackHandler(state: ThreadActionsState) {
 }
 
 /**
- * Trailing overflow button for the thread screen (favourite / like / follow author / copy / share).
+ * Trailing overflow button for the thread screen (favourite / like / follow author / copy link /
+ * open in browser / share).
  *
  * This only draws the three-dot button and publishes its window bounds; the menu itself is
  * composed by [ThreadActionsGlassMenu] in the page's root `BoxScope`. Two placement bugs lived
@@ -280,7 +281,7 @@ internal fun threadMenuBackdrop(
  * 24dp icon size, 8dp icon-to-label gap, 20dp horizontal padding, press highlight and text style
  * all come from `GlassPopupDefaults` rather than from a bare text column. A separator before the
  * last row keeps the system-share row apart from the in-app rows (favourite / like / follow /
- * copy link), the way Miuix's own dropdown menus draw section breaks.
+ * copy link / open in browser), the way Miuix's own dropdown menus draw section breaks.
  *
  * ## Which layer may be sampled
  *

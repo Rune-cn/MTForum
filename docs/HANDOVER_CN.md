@@ -926,3 +926,21 @@ name: RenderThread
 （`chrome.contentBackdropModifier`），而 `MiuixComponentScope.contentBackdrop` 在本仓库目前
 没有被任何页面用于录制内容。按本轮要求菜单采样后者；若真机上面板只有底色、没有真实模糊，
 下一步应把 `chrome.backdrop` 传进菜单（同样不在录制层内，但确实录了内容）。
+
+### 15.9 帖子菜单：在浏览器打开
+
+- 帖子页三点菜单新增「在浏览器打开」（复用三语键 `thread_action_open_browser`），
+  顺序：收藏 / 顶赞 / 关注楼主 / 复制链接 / 在浏览器打开 / 分享；分享仍在最后一行，
+  菜单「最后一行前画分隔线」的语义不变。
+- 打开 `https://bbs.binmt.cc/thread-<tid>-1-1.html`（`Intent.ACTION_VIEW`），用 `runCatching`
+  兜住「设备没有可处理 http 的 Activity」等失败，只 `Timber.w`，不崩。
+- 测试：`ThreadActionsPopupLayoutTest` 的 label 用例扩到 6 行并断言纵向顺序
+  （in-app 动作在前、系统分享最后）；README 功能表同步。
+
+**验证（本轮两处改动同一棵树）**：
+
+- `:app:compileStableDebugKotlin` → BUILD SUCCESSFUL
+- `:app:testStableDebugUnitTest` → BUILD SUCCESSFUL，**36 suites / 193 tests / 0 failures / 0 errors**
+  （新增 `menu samples the content backdrop never the page backdrop`；label 用例改为 6 行）
+- `:app:lintVitalStableRelease` → BUILD SUCCESSFUL（`Lint found no new issues`）
+- ⚠️ 本机无设备/模拟器：真机上「菜单不再崩溃」与玻璃观感**均未复测**。
