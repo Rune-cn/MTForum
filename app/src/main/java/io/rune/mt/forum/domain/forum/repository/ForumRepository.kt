@@ -44,6 +44,16 @@ interface ForumRepository {
     /** Full thread with its replies. */
     suspend fun getThreadDetail(tid: Int, page: Int = 1): ForumThreadDetail
 
+    /**
+     * In-forum search (`search.php?mod=forum`) for [keyword]; [page] is 1-based.
+     *
+     * Discuz mints a server-side `searchid` with a form POST and serves the list from
+     * `search.php?mod=forum&searchid=…`; both hops go through [io.rune.mt.forum.data.forum.network.ForumHttpClient].
+     * The site gates search behind a login, so an anonymous call fails with
+     * [ForumLoginRequiredException] rather than returning an empty page.
+     */
+    suspend fun searchThreads(keyword: String, page: Int = 1): ForumThreadPage
+
     /** Posts a reply. Returns the raw server response for error surfacing. */
     suspend fun reply(tid: Int, fid: Int, message: String, formhash: String, noticeAuthor: String?): String
 

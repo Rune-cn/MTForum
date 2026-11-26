@@ -191,4 +191,9 @@
     <string name="reply_composer_sending">发送中…</string>
     <string name="reply_error_thread_not_ready">帖子尚未加载完成，请稍候</string>
     <string name="reply_error_failed">回复失败</string>
+    <string name="forum_search">搜索</string>
+    <string name="forum_search_hint">搜索论坛主题…</string>
+    <string name="forum_search_empty">没有找到相关主题</string>
+    <string name="forum_search_action">搜索</string>
+    <string name="forum_search_login_required">登录后即可搜索论坛主题</string>
 </resources>

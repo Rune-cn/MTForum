@@ -24,6 +24,7 @@ import io.rune.mt.forum.ui.page.forum.ForumConversationPage
 import io.rune.mt.forum.ui.page.forum.ForumHomePage
 import io.rune.mt.forum.ui.page.forum.ForumListPage
 import io.rune.mt.forum.ui.page.forum.ForumNoticesPage
+import io.rune.mt.forum.ui.page.forum.ForumSearchPage
 import io.rune.mt.forum.ui.page.forum.ForumThreadPage
 import io.rune.mt.forum.ui.page.forum.NewThreadPage
 import io.rune.mt.forum.ui.page.login.MiuixLoginPage
@@ -186,6 +187,13 @@ fun AppNavContainer(
             }
             entry<Route.Notices>(swipeDismiss = swipeBackDirection) {
                 ForumNoticesPage(
+                    enableBlur = useBlur,
+                    outerPadding = PaddingValues(),
+                )
+            }
+            entry<Route.ForumSearch>(swipeDismiss = swipeBackDirection) { arg ->
+                ForumSearchPage(
+                    initialKeyword = arg.keyword,
                     enableBlur = useBlur,
                     outerPadding = PaddingValues(),
                 )

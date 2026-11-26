@@ -223,20 +223,46 @@ object ForumHtmlParser {
     }
 
     /**
-     * Parses one listing row.
+     * Parses a search result page (`search.php?mod=forum&searchid=…`).
+     *
+     * The Comiis search result reuses the board listing's row DOM (`li.forumlist_li`), but rows
+     * come from different boards, so [parseThreadRow] is called with `fid = null` and the row's
+     * own board link (`forum-<fid>-1.html`) supplies the fid.
+     */
+    fun parseSearch(html: String, page: Int = 1): ForumThreadPage {
+        val doc = Jsoup.parse(html)
+        val threads = doc.select("li.forumlist_li").mapNotNull { parseThreadRow(it, fid = null) }
+        return ForumThreadPage(
+            fid = 0,
+            threads = threads,
+            page = page,
+            totalPages = parseTotalPages(doc),
+        )
+    }
+
+    /**
+     * Parses one listing row, and the same row DOM inside a search result page.
      *
      * A regular row (`li.forumlist_li`) carries its byline, avatar, time and counts in the
      * `forumlist_li_top` / `comiis_xznalist_bottom` blocks. The 置顶 strip uses a `li` that may
      * either be title-only (the global announcements, which the site prints without a byline) or
      * a full row with the same furniture; both are read here, so the strip gets an avatar/time
      * whenever the markup actually carries one instead of being hard-coded to a blank author.
+     *
+     * [fid] is null for search results, where a page mixes boards: the row's own board link
+     * (`forum-<fid>-1.html`) is then the only board source.
      */
-    private fun parseThreadRow(li: Element, fid: Int, pinned: Boolean = false): ForumThread? {
+    private fun parseThreadRow(li: Element, fid: Int?, pinned: Boolean = false): ForumThread? {
         val titleLink = li.selectFirst("div.mmlist_li_box h2 a")
             ?: li.selectFirst("h2 a[href*=thread-]")
             ?: li.selectFirst("a[href*=thread-]")
             ?: return null
         val tid = TID_IN_HREF.find(titleLink.attr("href"))?.groupValues?.get(1)?.toIntOrNull() ?: return null
+        // A board listing knows its fid from the request, but a search result mixes boards: there
+        // the row's own board breadcrumb link (`forum-<fid>-1.html`) is the only source.
+        val rowFid = fid ?: li.selectFirst("a[href*=forum-]")?.let { link ->
+            FORUM_HREF.find(link.attr("href"))?.groupValues?.get(1)?.toIntOrNull()
+        } ?: 0
         val authorLink = li.selectFirst("h2 a.top_user")
         val avatar = li.selectFirst("img.top_tximg") ?: li.selectFirst("img[comiis_loadimages], img[src]")
         val stats = li.select("div.comiis_xznalist_bottom span.comiis_tm")
@@ -251,7 +277,7 @@ object ForumHtmlParser {
             ?: li.selectFirst("div.comiis_postli_time span")
         return ForumThread(
             tid = tid,
-            fid = fid,
+            fid = rowFid,
             title = threadTitle(titleLink),
             summary = li.selectFirst("div.list_body a")?.text()?.trim(),
             authorName = authorLink?.text()?.trim().orEmpty(),

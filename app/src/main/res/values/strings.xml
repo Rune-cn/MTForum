@@ -191,4 +191,9 @@
     <string name="reply_composer_sending">Sending…</string>
     <string name="reply_error_thread_not_ready">The thread is still loading. Try again in a moment.</string>
     <string name="reply_error_failed">Reply failed</string>
+    <string name="forum_search">Search</string>
+    <string name="forum_search_hint">Search threads…</string>
+    <string name="forum_search_empty">No matching threads.</string>
+    <string name="forum_search_action">Search</string>
+    <string name="forum_search_login_required">Sign in to search the forum.</string>
 </resources>
