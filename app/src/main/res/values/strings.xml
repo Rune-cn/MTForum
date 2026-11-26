@@ -172,4 +172,14 @@
     <string name="thread_action_like">Upvote this thread</string>
     <string name="thread_action_follow_author">Follow the author</string>
     <string name="forum_new_thread">New thread</string>
+    <string name="forum_thread_board_format">Board: %1$s</string>
+    <string name="reply_composer_title">Reply</string>
+    <string name="reply_composer_title_to_format">Reply to @%1$s</string>
+    <string name="reply_composer_hint">Write a reply…</string>
+    <string name="reply_composer_smiley">Emoji</string>
+    <string name="reply_composer_smiley_hide">Hide emoji</string>
+    <string name="reply_composer_send">Send</string>
+    <string name="reply_composer_sending">Sending…</string>
+    <string name="reply_error_thread_not_ready">The thread is still loading. Try again in a moment.</string>
+    <string name="reply_error_failed">Reply failed</string>
 </resources>

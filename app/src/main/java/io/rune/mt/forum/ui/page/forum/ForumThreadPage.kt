@@ -11,10 +11,10 @@ import androidx.compose.material.icons.rounded.Reply
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -31,8 +31,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -45,22 +45,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.layout.ContentScale
 import android.content.Intent
 
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil3.compose.AsyncImage
 import io.rune.mt.forum.R
 import io.rune.mt.forum.domain.forum.model.ForumPost
 import io.rune.mt.forum.ui.navigation.LocalNavigator
+import io.rune.mt.forum.ui.navigation.Route
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBackButton
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopAppBar
 import io.rune.mt.forum.ui.page.miuix.widgets.rememberMiuixPageChrome
@@ -74,7 +72,6 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.interfaces.ExperimentalScrollBarApi
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -226,7 +223,17 @@ fun ForumThreadPage(
                                     items(items = state.posts, key = { "post_${it.pid}" }) { post ->
                                         ForumPostCard(
                                             post = post,
-                                            onReply = { viewModel.requestReply(it) },
+                                            forumName = state.forumName,
+                                            onAuthorClick = { author ->
+                                                // `authorUid == 0` means the row carried no profile
+                                                // link (guest/deleted account); pushing a profile
+                                                // for uid 0 would 404, so the card skips it.
+                                                if (author.authorUid != 0) {
+                                                    navigator.push(
+                                                        Route.UserProfile(author.authorUid, author.authorName),
+                                                    )
+                                                }
+                                            },
                                             onImageClick = { viewerUrl = it },
                                         )
                                     }
@@ -286,37 +293,73 @@ fun ForumThreadPage(
  * One floor of a thread.
  *
  * The site itself does not print floor numbers, so the client derives them: the OP is 「楼主」
- * and each subsequent post is 沙发/板凳/…-style ordinal. The OP card is visually anchored with a
- * primary rule and a tinted header so a long thread stays readable.
+ * and each subsequent post is 沙发/板凳/…-style ordinal. The OP keeps the tinted surface and the
+ * OP badge so a long thread stays scannable, and the body is wrapped in a [SelectionContainer]
+ * (text selection only; image taps still reach [ForumHtmlText]) so a reader can copy a floor.
+ * The duplicate per-floor 回复 button was removed: the page's floating reply FAB is the single
+ * reply entry point.
  */
 @Composable
 internal fun ForumPostCard(
     post: ForumPost,
-    onReply: (ForumPost) -> Unit,
     modifier: Modifier = Modifier,
+    forumName: String? = null,
     onImageClick: (String) -> Unit = {},
+    onAuthorClick: (ForumPost) -> Unit = {},
 ) {
     val op = post.isOp
+    val level = post.authorLevel?.takeIf { it.isNotBlank() }
+    val meta = buildList {
+        level?.let(::add)
+        post.timeText?.takeIf { it.isNotBlank() }?.let(::add)
+        post.location?.takeIf { it.isNotBlank() }?.let(::add)
+    }
+    val authorClickable = Modifier.clickable(enabled = post.authorUid != 0) { onAuthorClick(post) }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(bottom = 12.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(18.dp))
             .background(
                 if (op) MiuixTheme.colorScheme.surfaceContainerHigh
                 else MiuixTheme.colorScheme.surfaceContainer,
-            )
-            .padding(14.dp),
+            ),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            ForumAvatar(url = post.authorAvatarUrl, name = post.authorName, size = 32.dp)
+        // Board label on the OP card only: it answers "where am I?" without repeating the app bar
+        // title, and a long thread's later floors do not need it.
+        if (op && !forumName.isNullOrBlank()) {
+            Text(
+                text = stringResource(R.string.forum_thread_board_format, forumName),
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = MiuixTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp, top = if (op && !forumName.isNullOrBlank()) 8.dp else 14.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            ForumAvatar(
+                url = post.authorAvatarUrl,
+                name = post.authorName,
+                size = 36.dp,
+                modifier = authorClickable,
+            )
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = post.authorName,
+                        modifier = authorClickable,
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -326,13 +369,8 @@ internal fun ForumPostCard(
                         else stringResource(R.string.forum_reply_badge),
                     )
                 }
-                val meta = buildList {
-                    post.authorLevel?.takeIf { it.isNotBlank() }?.let(::add)
-                    post.timeText?.takeIf { it.isNotBlank() }?.let(::add)
-                    post.location?.takeIf { it.isNotBlank() }?.let(::add)
-                }
                 if (meta.isNotEmpty()) {
-                    Spacer(Modifier.height(2.dp))
+                    Spacer(Modifier.height(3.dp))
                     Text(
                         text = meta.joinToString(" · "),
                         fontSize = 11.sp,
@@ -345,6 +383,7 @@ internal fun ForumPostCard(
             if (post.floor != null && post.floor > 0) {
                 Text(
                     text = stringResource(R.string.forum_floor_format, post.floor),
+                    modifier = Modifier.padding(start = 8.dp, top = 2.dp),
                     fontSize = 11.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
@@ -353,26 +392,23 @@ internal fun ForumPostCard(
 
         // A hairline separates the byline from the body; without it a multi-paragraph post ran
         // straight into the header and the two read as one block.
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(12.dp))
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .padding(horizontal = 16.dp)
                 .height(1.dp)
-                .background(MiuixTheme.colorScheme.outline.copy(alpha = 0.12f)),
+                .background(MiuixTheme.colorScheme.outline.copy(alpha = 0.2f)),
         )
-        Spacer(Modifier.height(10.dp))
-        ForumHtmlText(html = post.contentHtml, onImageClick = onImageClick)
-
-        Spacer(Modifier.height(6.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-        ) {
-            TextButton(
-                text = stringResource(R.string.thread_action_reply),
-                onClick = { onReply(post) },
+        Spacer(Modifier.height(12.dp))
+        SelectionContainer {
+            ForumHtmlText(
+                html = post.contentHtml,
+                modifier = Modifier.padding(horizontal = 16.dp),
+                onImageClick = onImageClick,
             )
         }
+        Spacer(Modifier.height(14.dp))
     }
 }
 

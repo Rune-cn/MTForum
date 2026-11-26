@@ -172,4 +172,14 @@
     <string name="thread_action_like">推荐本帖</string>
     <string name="thread_action_follow_author">关注楼主</string>
     <string name="forum_new_thread">发帖</string>
+    <string name="forum_thread_board_format">版块：%1$s</string>
+    <string name="reply_composer_title">回复</string>
+    <string name="reply_composer_title_to_format">回复 @%1$s</string>
+    <string name="reply_composer_hint">说点什么…</string>
+    <string name="reply_composer_smiley">表情</string>
+    <string name="reply_composer_smiley_hide">收起表情</string>
+    <string name="reply_composer_send">发送</string>
+    <string name="reply_composer_sending">发送中…</string>
+    <string name="reply_error_thread_not_ready">帖子尚未加载完成，请稍候</string>
+    <string name="reply_error_failed">回复失败</string>
 </resources>

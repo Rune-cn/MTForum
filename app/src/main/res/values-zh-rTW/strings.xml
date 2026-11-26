@@ -172,4 +172,14 @@
     <string name="thread_action_like">推薦本帖</string>
     <string name="thread_action_follow_author">關注樓主</string>
     <string name="forum_new_thread">發帖</string>
+    <string name="forum_thread_board_format">版塊：%1$s</string>
+    <string name="reply_composer_title">回覆</string>
+    <string name="reply_composer_title_to_format">回覆 @%1$s</string>
+    <string name="reply_composer_hint">說點什麼…</string>
+    <string name="reply_composer_smiley">表情</string>
+    <string name="reply_composer_smiley_hide">收起表情</string>
+    <string name="reply_composer_send">傳送</string>
+    <string name="reply_composer_sending">傳送中…</string>
+    <string name="reply_error_thread_not_ready">帖子尚未載入完成，請稍候</string>
+    <string name="reply_error_failed">回覆失敗</string>
 </resources>
