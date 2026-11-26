@@ -42,7 +42,6 @@ import io.rune.mt.forum.ui.page.forum.ThreadActionsGlassMenu
 import io.rune.mt.forum.ui.page.forum.ThreadActionsState
 import io.rune.mt.forum.ui.page.forum.ThreadMenuBackdropSource
 import io.rune.mt.forum.ui.page.forum.threadMenuBackdrop
-import io.rune.mt.forum.ui.page.miuix.widgets.MiuixComponentScope
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopAppBar
 import io.rune.mt.forum.ui.theme.AppTheme
 import org.junit.Rule
@@ -288,41 +287,42 @@ class ThreadActionsPopupLayoutTest {
     }
 
     @Test
-    fun `menu samples the content backdrop never the page backdrop`() {
-        // Real LayerBackdrop instances: miuix's LayerBackdrop class is final, so a fabricated
-        // scope needs two remembered layers. The selector is pure; the composition here only
-        // materialises the two candidate layers cheaply under Robolectric.
-        var contentLayer: LayerBackdrop? = null
+    fun `menu samples the page chrome backdrop never the page backdrop`() {
+        // Real LayerBackdrop instances: miuix's LayerBackdrop class is final, so the two
+        // candidate layers are materialised through rememberLayerBackdrop under Robolectric.
+        var chromeLayer: LayerBackdrop? = null
         var pageLayer: LayerBackdrop? = null
         compose.setContent {
-            contentLayer = rememberLayerBackdrop { drawRect(Color.Black) }
+            chromeLayer = rememberLayerBackdrop { drawRect(Color.Black) }
             pageLayer = rememberLayerBackdrop { drawRect(Color.White) }
         }
         compose.waitForIdle()
 
-        val content = checkNotNull(contentLayer)
+        val chrome = checkNotNull(chromeLayer)
         val page = checkNotNull(pageLayer)
-        val scope = MiuixComponentScope(
-            useOs4 = true,
-            contentBackdrop = content,
-            pageBackdrop = page,
-        )
 
-        val choice = threadMenuBackdrop(scope, blurDisabled = false)
+        // Production passes `chrome.backdrop` from `rememberMiuixPageChrome` and the ambient
+        // `MiuixComponentScope.pageBackdrop`; the selector is the single decision point and
+        // `ThreadActionsGlassMenu` hands its result straight to GlassPopup(backdrop = ...).
+        val choice = threadMenuBackdrop(chrome, page, blurDisabled = false)
         assertEquals(ThreadMenuBackdropSource.Content, choice.source)
-        assertSame(content, choice.layer, "the popup must sample the page-content layer")
+        assertSame(chrome, choice.layer, "the popup must sample the page-chrome content layer")
         assertTrue(choice.layer !== page, "the popup must never sample the page-level layer")
 
-        // SafeMode's crash latch forces the opaque fallback even while a content layer exists.
-        val safe = threadMenuBackdrop(scope, blurDisabled = true)
+        // SafeMode's crash latch forces the opaque fallback even while a chrome layer exists.
+        val safe = threadMenuBackdrop(chrome, page, blurDisabled = true)
         assertEquals(ThreadMenuBackdropSource.None, safe.source)
         assertNull(safe.layer, "SafeMode must pass backdrop = null")
 
         // A page layer alone is never a candidate: sampling it would source the panel itself.
-        val pageOnly = MiuixComponentScope(useOs4 = true, pageBackdrop = page)
-        val pageOnlyChoice = threadMenuBackdrop(pageOnly, blurDisabled = false)
-        assertEquals(ThreadMenuBackdropSource.None, pageOnlyChoice.source)
-        assertNull(pageOnlyChoice.layer)
+        val noChrome = threadMenuBackdrop(null, page, blurDisabled = false)
+        assertEquals(ThreadMenuBackdropSource.None, noChrome.source)
+        assertNull(noChrome.layer)
+
+        // Defence in depth: the page layer arriving in the chrome slot is refused as well.
+        val miswired = threadMenuBackdrop(page, page, blurDisabled = false)
+        assertEquals(ThreadMenuBackdropSource.None, miswired.source)
+        assertNull(miswired.layer)
     }
 
     @Test

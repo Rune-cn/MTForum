@@ -280,8 +280,14 @@ fun ForumThreadPage(
         }
 
         // Root-level overlay: this fillMaxSize page box is the popup host, which is what the
-        // glass panel is measured and clamped against.
-        ThreadActionsGlassMenu(items = threadActions, state = actionsState)
+        // glass panel is measured and clamped against. It samples the page-chrome content
+        // layer (recorded on the list Box above, outside this overlay), never the page-level
+        // backdrop that contains the popup itself — that was the hwui RenderNode cycle.
+        ThreadActionsGlassMenu(
+            items = threadActions,
+            state = actionsState,
+            backdrop = chrome.backdrop,
+        )
 
         // Registered *after* the menu: the navigation-event dispatcher prioritises the most
         // recently composed enabled handler, so while the menu is open this predictive handler

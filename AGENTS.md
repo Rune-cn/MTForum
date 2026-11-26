@@ -99,11 +99,13 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     `getThreads(fid, page, typeId)` 拼接筛选，UI 用 `TabRow`，无分类版块不显示。
 22. **置顶公告的 byline 要补**：公告条只有标题，`ForumViewModel.enrichNoticeAuthors()`
     按 tid 补抓线程页 OP；未解析到时卡片显示置顶图钉，**不要**渲染空作者问号头像。
-23. **OS4 菜单玻璃采样内容层，绝不能用页面 backdrop**：`ThreadActionsGlassMenu` 经
-    `threadMenuBackdrop()` 取 `MiuixComponentScope.contentBackdrop`（`SafeMode.blurDisabled`
-    时传 `null`，走 opaque 兜底）。`pageBackdrop` 的录制范围包含内联 `GlassPopup` 自身 →
-    RenderNode 自环 → Android 16 渲染线程栈溢出（`computeTransformImpl`；见 HANDOVER §11 / §15.8）。
-    改这里要一起验证预测返回（组合顺序不变）。
+23. **OS4 菜单玻璃采样页面内容层，绝不能用页面 backdrop**：`ForumThreadPage` 把
+    `chrome.backdrop`（录制在页面根 `Box` 内的内容子树）传给 `ThreadActionsGlassMenu`，
+    经 `threadMenuBackdrop(chrome, page)` 决策（`SafeMode.blurDisabled` 时传 `null`，走
+    opaque 兜底）；内联 `GlassPopup` 在该录制子树**之外**，不会成环。`pageBackdrop` 的录制
+    范围包含内联 `GlassPopup` 自身 → RenderNode 自环 → Android 16 渲染线程栈溢出
+    （`computeTransformImpl`；见 HANDOVER §11 / §15.8）。改这里要一起验证预测返回
+    （组合顺序不变）。
 24. **IME inset 不要叠加**：用 `navigationBars.union(ime)` 一次性取较大底边距；
     输入框高度要计入列表底部 padding。
 
