@@ -211,3 +211,55 @@ GET home.php?mod=space&uid={uid}&do=thread&view=me&from=space&mobile=2  # 最近
 - 匿名访问 302 登录页；样本 `space_profile.html` / `space_profile_own.html` / `space_threads.html`。
 - 收藏页的 `formhash` 只出现在退出链接 `member.php?mod=logging&action=logout&formhash=...`
   （HTML 转义成 `&amp;formhash=`），所以 `parseFormhash` 需要 `formhash=` 兜底（见 §13）。
+
+---
+
+## 21. 正文渲染（2026-11-27 实测 + 样本）
+
+### 21.1 核心事实
+
+帖子以 **BBCode 存储**，Comiis 移动模板在服务端渲染成 **HTML**；客户端拿到 HTML，正文渲染
+即忠实还原这段 HTML。实测单个 BBCode 标签的输出：
+
+| 发送的 BBCode | 模板输出 HTML |
+|---|---|
+| `[b]` `[i]` `[u]` `[s]` | `<strong>` `<i>` `<u>` `<strike>` |
+| `[color=#ff0000]` / `[color=blue]` | `<font color="#ff0000">` / `<font color="blue">` |
+| `[size=5]` | **服务端丢弃**，文本变无样式 |
+| `[align=center]` | `<div align="center">…</div>` |
+| `[quote]`（普通回复） | 纯文本 + `<br>`，无 blockquote |
+| `[quote]`（引用回复） | `div.comiis_quote > blockquote`；作者行 `<font color="#999999">作者 发表于 …</font>` |
+| `[code]` | `div.comiis_blockcode > .b_l > ol > li`（每 `<li>` 一行，可含 `<br>`/`&nbsp;`） |
+| `[url=…]text[/url]` | `<a href="…" target="_blank">text</a>` |
+| `[list][*]` | `<ul><li>` |
+| `[table][tr][td]` | `<table><tr><td>…` |
+| `[hr]` | `<hr class="l" />` |
+| 表情 | `<img src="…/static/image/smiley/…" smilieid="…">` |
+| 附件 | `div.comiis_attach`：`a[href*=mod=attachment]` + `p.attach_tit > span.f_ok`（名）+ `p.attach_size`（大小/下载次数） |
+
+模板自身还输出两类注释块：`div.comiis_modact`（「本主题由 X 于 … 加入精华」）与
+`i.pstatus`（「本帖最后由 X 于 … 编辑」）。正文图片 `span.comiis_postimg img` 的真实地址在
+`comiis_loadimages`（`src` 是 `none.png` 占位）。
+
+### 21.2 DOM 选择器
+
+- 正文容器：`div.comiis_postli` → `div.comiis_messages`（`ForumHtmlParser.parsePost`）。
+- 代码块：`div.comiis_blockcode > div.b_l > ol > li`，行内 `<br>` 为额外换行，`&nbsp;` 为缩进。
+- 标题：`font[size="6|5|4|2"]`（常包 `strong`）。
+- 引用：`div.comiis_quote > blockquote`，作者取含「发表于」的 `font[color=#999999]`。
+- 附件：`div.comiis_attach`；文件名 `span.f_ok`，说明 `p.attach_size`，链接 `a[href*=mod=attachment]`。
+- 分隔线：`hr.l`。
+- 表格：`table/tr/td`。
+
+上述选择器的解析/归块逻辑集中在 `ui/page/forum/ForumBodyParser.kt`（不进 `ForumHtmlParser`，
+因为它是对已解析正文的二次渲染，不是页面抓取）。
+
+### 21.3 样本
+
+- `app/src/test/resources/forum/rich_166223.html` —— 社区 BBCode⇄HTML 研究帖，正文含
+  39 个 `comiis_blockcode`、`font size=6/5/4` 标题、`hr.l`、`comiis_quote`、`comiis_attach`、
+  `pstatus`、`comiis_modact`，是正文渲染的主回归样本。
+- `app/src/test/resources/forum/rich_bbcode_reply.html` —— 一个回复里几乎放全了行内标签：
+  `strong/i/u/strike`、`font color`、`align=center`、`comiis_blockcode`、`a`、`ul`、`table`、
+  `hr`、表情。
+

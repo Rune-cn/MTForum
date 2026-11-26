@@ -163,10 +163,11 @@ class ForumRichTextTest {
     }
 
     @Test
-    fun `bbcode list becomes separate items without markers`() {
-        val text = ForumBodyParser.parse("[list][*]第一项[*]第二项[/list]")
-            .filterIsInstance<ForumBodyBlock.Paragraph>()
-            .joinToString("|") { it.text.text }
+    fun `bbcode list becomes list rows without markers`() {
+        val blocks = ForumBodyParser.parse("[list][*]第一项[*]第二项[/list]")
+        val list = blocks.filterIsInstance<ForumBodyBlock.BulletList>().firstOrNull()
+        assertTrue("expected a list block, got $blocks", list != null)
+        val text = list!!.items.joinToString("|") { it.text.text }
         assertTrue("both items must render, got: $text", text.contains("第一项") && text.contains("第二项"))
         assertFalse("list markers must not leak, got: $text", text.contains("[*]") || text.contains("[list]"))
     }
@@ -206,10 +207,15 @@ class ForumRichTextTest {
 
     @Test
     fun `bbcode size align and table markers are stripped`() {
-        val text = ForumBodyParser.parse("[align=center][size=4]标题[/size][/align][table][tr][td]单元格[/td][/tr][/table]")
-            .filterIsInstance<ForumBodyBlock.Paragraph>()
-            .joinToString("|") { it.text.text }
-        assertTrue("text must survive, got: $text", text.contains("标题") && text.contains("单元格"))
-        assertFalse("markers must not leak, got: $text", text.contains("[size=") || text.contains("[td]") || text.contains("[align="))
+        val blocks = ForumBodyParser.parse("[align=center][size=4]标题[/size][/align][table][tr][td]单元格[/td][/tr][/table]")
+        val heading = blocks.filterIsInstance<ForumBodyBlock.Heading>().joinToString("|") { it.text.text }
+        val tableText = blocks.filterIsInstance<ForumBodyBlock.Table>()
+            .flatMap { it.rows }.flatten().joinToString("|") { it.text }
+        val all = heading + "|" + tableText
+        assertTrue("text must survive, got: $all", all.contains("标题") && all.contains("单元格"))
+        assertFalse(
+            "markers must not leak, got: $all",
+            all.contains("[size=") || all.contains("[td]") || all.contains("[align="),
+        )
     }
 }

@@ -111,6 +111,12 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     （组合顺序不变）。
 24. **IME inset 不要叠加**：用 `navigationBars.union(ime)` 一次性取较大底边距；
     输入框高度要计入列表底部 padding。
+25. **正文渲染只在 `ForumBodyParser`/`ForumHtmlText`**：帖子正文从 HTML 到块的逻辑就放这两处
+    （正文 DOM 选择器不留散到别处；`ForumHtmlParser` 只负责页面抓取与楼层切分）。**代码块
+    `div.comiis_blockcode` 绝不能被拍平成段落**——每个 `<li>` 是一行、行内还可能有 `<br>`/
+    `&nbsp;` 缩进，必须整块取出行并保持等宽与对齐；标题（`font[size]`）、引用、表格、附件、
+    `hr`、`i.pstatus`、`div.comiis_modact` 同理各自成块。真实正文是 HTML，切勿对其跑 BBCode
+    正则转换（代码里合法含 `[b]` 等字面量）。
 
 ## Miuix 双风格（OS3 / OS4）
 

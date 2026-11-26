@@ -52,8 +52,8 @@ app/src/main/java/io/rune/mt/forum/
 │   │   │   ├── NewThreadPage.kt      发新帖（标题/正文/图片附件）
 │   │   │   ├── NewThreadViewModel.kt 发帖表单与提交
 │   │   │   ├── ForumImageViewer.kt   全屏图片查看（双指缩放/拖动）
-│   │   │   ├── ForumHtmlText.kt      正文渲染组件
-│   │   │   ├── ForumBodyParser.kt    HTML/BBCode → AnnotatedString 块
+│   │   │   ├── ForumHtmlText.kt      正文渲染组件 + 块模型（段落/标题/代码/引用/列表/表格/附件）
+│   │   │   ├── ForumBodyParser.kt    正文 HTML → 块列表（dom 选择器只在此处；代码块不拍平）
 │   │   │   ├── ForumAvatar.kt        统一头像组件
 │   │   │   ├── ForumViewModel.kt     VM + 各页面 State
 │   │   │   ├── ReplyComposer.kt      回复框（引用 + 表情）
