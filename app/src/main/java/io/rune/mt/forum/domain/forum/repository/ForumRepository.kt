@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package io.rune.mt.forum.domain.forum.repository
 
-import io.rune.mt.forum.domain.forum.model.Forum
 import io.rune.mt.forum.domain.forum.model.ForumConversationDetail
 import io.rune.mt.forum.domain.forum.model.ForumFavorite
+import io.rune.mt.forum.domain.forum.model.ForumGuideView
+import io.rune.mt.forum.domain.forum.model.ForumHomeData
 import io.rune.mt.forum.domain.forum.model.ForumPost
 import io.rune.mt.forum.domain.forum.model.ForumPrivateConversation
 import io.rune.mt.forum.domain.forum.model.ForumSession
+import io.rune.mt.forum.domain.forum.model.ForumThread
 import io.rune.mt.forum.domain.forum.model.ForumThreadDetail
 import io.rune.mt.forum.domain.forum.model.ForumThreadPage
 import io.rune.mt.forum.domain.forum.model.NewThreadImage
@@ -16,14 +18,14 @@ import kotlinx.coroutines.flow.StateFlow
 /** Data entry point for every MT 论坛 screen. */
 interface ForumRepository {
 
-    /** Board index (版块列表). */
-    suspend fun getForums(): List<Forum>
+    /** Forum home (`forum.php`): board tiles plus the site's own 热帖排行, from one request. */
+    suspend fun getHome(): ForumHomeData
 
     /** Board listing, [page] is 1-based. */
     suspend fun getThreads(fid: Int, page: Int = 1): ForumThreadPage
 
-    /** Hot / featured threads from the guide. */
-    suspend fun getHotThreads(page: Int = 1): List<io.rune.mt.forum.domain.forum.model.ForumThread>
+    /** One page of a 导读 view ([view]); [page] is 1-based. */
+    suspend fun getGuideThreads(view: ForumGuideView, page: Int = 1): List<ForumThread>
 
     /** Full thread with its replies. */
     suspend fun getThreadDetail(tid: Int, page: Int = 1): ForumThreadDetail

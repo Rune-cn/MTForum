@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,6 +35,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import io.rune.mt.forum.R
 import io.rune.mt.forum.domain.forum.model.Forum
+import io.rune.mt.forum.domain.forum.model.ForumHotEntry
 import io.rune.mt.forum.domain.forum.model.ForumThread
 import io.rune.mt.forum.ui.navigation.LocalNavigator
 import io.rune.mt.forum.ui.navigation.Route
@@ -51,11 +51,11 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * Forum root: the board grid (版块宫格) followed by the hot-thread list.
+ * Forum root: the board grid (版块宫格) followed by the site's 热帖排行 block.
  *
  * The grid is a three-column layout of icon tiles, mirroring the mobile site's own board
- * shortcut block. Both sections come from one refresh: pulling down reloads the index and the
- * hot list together, so the page never shows a half-updated pair.
+ * shortcut block. Both sections come from one `forum.php` request, and the ranking is rendered in
+ * the server's order with the server's rank numbers — never re-sorted client-side.
  */
 @Composable
 fun ForumHomePage(
@@ -110,23 +110,21 @@ fun ForumHomePage(
                     }
                 }
 
-                if (state.hotThreads.isNotEmpty()) {
+                if (state.hotRanking.isNotEmpty()) {
                     item { SmallTitle(stringResource(R.string.forum_hot_ranking)) }
-                    itemsIndexed(
-                        items = state.hotThreads
-                            .sortedByDescending { it.replyCount * 2 + it.viewCount / 10 }
-                            .take(HOT_RANKING_SIZE),
-                        key = { _, thread -> "hot_${thread.tid}" },
-                    ) { index, thread ->
+                    items(
+                        // The site already ranked these rows; render them verbatim, in site order.
+                        items = state.hotRanking,
+                        key = { entry -> "hot_${entry.tid}" },
+                    ) { entry ->
                         ForumRankCard(
-                            rank = index + 1,
-                            thread = thread,
-                            onClick = { navigator.push(Route.ForumThread(thread.tid, thread.title)) },
+                            entry = entry,
+                            onClick = { navigator.push(Route.ForumThread(entry.tid, entry.title)) },
                         )
                     }
                 }
 
-                if (state.forums.isEmpty() && state.hotThreads.isEmpty()) {
+                if (state.forums.isEmpty() && state.hotRanking.isEmpty()) {
                     item { ForumEmptyCard(stringResource(R.string.forum_empty_threads)) }
                 }
 
@@ -137,9 +135,6 @@ fun ForumHomePage(
 }
 /** The grid stays three columns wide on phones, matching the site's shortcut block. */
 private const val FORUM_GRID_COLUMNS = 3
-
-/** How many entries the home page shows in the trending ranking (guide shows them all). */
-private const val HOT_RANKING_SIZE = 10
 
 /** Reply count above which a thread is shown with a 热门 chip. */
 private const val HOT_REPLY_THRESHOLD = 20
@@ -432,16 +427,16 @@ internal fun ForumBadge(text: String, modifier: Modifier = Modifier) {
 }
 
 /**
- * A ranked hot thread.
+ * One row of the site's 热帖排行 block.
  *
- * Ranking is computed client-side from the fields the list page actually exposes — replies weigh
- * double, views are scaled down — so the order is stable without an extra request. The top three
- * get a tinted rank badge so the leaderboard reads at a glance.
+ * The site supplies the rank, the title and the link — nothing else — so the row shows exactly
+ * that instead of inventing reply/view metadata. Ranking is never recomputed: the list is
+ * rendered in server order with the server's own badge number, and the top three keep the
+ * tinted badge they have on the site.
  */
 @Composable
 private fun ForumRankCard(
-    rank: Int,
-    thread: ForumThread,
+    entry: ForumHotEntry,
     onClick: () -> Unit,
 ) {
     Card(
@@ -457,40 +452,26 @@ private fun ForumRankCard(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = rank.toString(),
+                    text = entry.rank.toString(),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (rank <= 3) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    color = if (entry.rank <= 3) {
+                        MiuixTheme.colorScheme.primary
+                    } else {
+                        MiuixTheme.colorScheme.onSurfaceVariantSummary
+                    },
                 )
             }
             Spacer(Modifier.width(10.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = thread.title,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = buildString {
-                        if (thread.authorName.isNotBlank()) append(thread.authorName)
-                        if (thread.replyCount > 0) {
-                            if (isNotEmpty()) append(" · ")
-                            append(stringResource(R.string.forum_thread_replies_format, thread.replyCount))
-                        }
-                        if (thread.viewCount > 0) {
-                            if (isNotEmpty()) append(" · ")
-                            append(stringResource(R.string.forum_thread_views_format, thread.viewCount))
-                        }
-                    },
-                    fontSize = 11.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            Text(
+                text = entry.title,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                lineHeight = 21.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }

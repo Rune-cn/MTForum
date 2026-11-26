@@ -2,25 +2,31 @@
 package io.rune.mt.forum.ui.page.forum
 
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.rune.mt.forum.R
+import io.rune.mt.forum.domain.forum.model.ForumGuideView
 import io.rune.mt.forum.ui.navigation.LocalNavigator
 import io.rune.mt.forum.ui.navigation.Route
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixPageScaffold
 import io.rune.mt.forum.ui.page.miuix.widgets.rememberMiuixPageChrome
 import org.koin.androidx.compose.koinViewModel
+import top.yukonga.miuix.kmp.basic.TabRow
 
 /**
- * 导读 tab: the site's "最新发表" guide (`forum.php?mod=guide&view=newthread`).
+ * 导读 tab: the site's guide, split into its five views (最新 / 热门 / 精华 / 回复 / 抢沙发).
  *
- * Unlike the home tab — which shows a top-10 ranking — this page is the full list and pages
- * through the guide, matching what the site's own 导读 entry offers.
+ * All five render the same thread-list DOM and differ only by the `view` query parameter, so the
+ * screen is a Miuix [TabRow] over one independently paged list per view. Switching a tab shows
+ * that view's own rows (never the previous tab's) and re-selecting a cached view is instant.
  */
 @Composable
 fun ForumGuidePage(
@@ -30,10 +36,15 @@ fun ForumGuidePage(
     viewModel: ForumViewModel = koinViewModel(),
 ) {
     val state by viewModel.guideState.collectAsStateWithLifecycle()
+    val current = state.current
     val chrome = rememberMiuixPageChrome(enableBlur)
     val navigator = LocalNavigator.current
+    val listState = rememberLazyListState()
+    val views = ForumGuideView.entries
 
     LaunchedEffect(Unit) { viewModel.loadGuideIfNeeded() }
+    // A tab switch starts that view at its own first row instead of inheriting the scroll offset.
+    LaunchedEffect(state.selected) { listState.scrollToItem(0) }
 
     MiuixPageScaffold(
         title = title,
@@ -41,32 +52,48 @@ fun ForumGuidePage(
         outerPadding = outerPadding,
         horizontalPadding = 12.dp,
         verticalPadding = 12.dp,
+        listState = listState,
     ) {
-        if (state.isLoading) {
-            item { ForumLoadingCard() }
-        } else if (state.error != null && state.threads.isEmpty()) {
-            item {
+        item(key = "guide_tabs") {
+            // Miuix TabRow scrolls horizontally on its own and paints the selected tab with the
+            // theme's selected container in both OS3 and OS4, so no style branch is needed.
+            TabRow(
+                tabs = views.map { stringResource(it.labelRes) },
+                selectedTabIndex = state.selected.ordinal,
+                onTabSelected = { index -> viewModel.selectGuideView(views[index]) },
+                modifier = Modifier.padding(bottom = 10.dp),
+            )
+        }
+
+        when {
+            current.isLoading -> item { ForumLoadingCard() }
+
+            current.error != null && current.threads.isEmpty() -> item {
                 ForumErrorCard(
-                    message = state.error.orEmpty(),
+                    message = current.error.orEmpty(),
                     onRetry = viewModel::refreshGuide,
                 )
             }
-        } else if (state.threads.isEmpty()) {
-            item { ForumEmptyCard(text = stringResource(R.string.forum_empty_threads)) }
-        } else {
-            items(items = state.threads, key = { "guide_${it.tid}" }) { thread ->
-                ForumThreadCard(
-                    thread = thread,
-                    onClick = { navigator.push(Route.ForumThread(thread.tid, thread.title)) },
-                )
+
+            current.threads.isEmpty() -> item {
+                ForumEmptyCard(text = stringResource(R.string.forum_empty_threads))
             }
-            item {
-                ForumPagingFooter(
-                    page = state.page,
-                    totalPages = state.totalPages,
-                    isAppending = state.isAppending,
-                    onLoadMore = viewModel::loadMoreGuide,
-                )
+
+            else -> {
+                items(items = current.threads, key = { "guide_${state.selected.value}_${it.tid}" }) { thread ->
+                    ForumThreadCard(
+                        thread = thread,
+                        onClick = { navigator.push(Route.ForumThread(thread.tid, thread.title)) },
+                    )
+                }
+                item {
+                    ForumPagingFooter(
+                        page = current.page,
+                        totalPages = current.totalPages,
+                        isAppending = current.isAppending,
+                        onLoadMore = viewModel::loadMoreGuide,
+                    )
+                }
             }
         }
     }

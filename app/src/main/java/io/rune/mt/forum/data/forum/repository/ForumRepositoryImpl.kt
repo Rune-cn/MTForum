@@ -6,9 +6,10 @@ import io.rune.mt.forum.data.forum.network.ForumHtmlParser
 import io.rune.mt.forum.data.forum.network.ForumHttpClient
 import io.rune.mt.forum.data.forum.network.ForumUrls
 import io.rune.mt.forum.data.forum.network.MultipartPart
-import io.rune.mt.forum.domain.forum.model.Forum
 import io.rune.mt.forum.domain.forum.model.ForumConversationDetail
 import io.rune.mt.forum.domain.forum.model.ForumFavorite
+import io.rune.mt.forum.domain.forum.model.ForumGuideView
+import io.rune.mt.forum.domain.forum.model.ForumHomeData
 import io.rune.mt.forum.domain.forum.model.ForumNewThreadForm
 import io.rune.mt.forum.domain.forum.model.ForumPrivateConversation
 import io.rune.mt.forum.domain.forum.model.ForumSession
@@ -43,8 +44,13 @@ class ForumRepositoryImpl(
     private val _session = MutableStateFlow(ForumSession())
     override val session: StateFlow<ForumSession> = _session.asStateFlow()
 
-    override suspend fun getForums(): List<Forum> = withContext(Dispatchers.IO) {
-        ForumHtmlParser.parseForums(http.getHtml("forum.php"))
+    override suspend fun getHome(): ForumHomeData = withContext(Dispatchers.IO) {
+        // One request: the board grid and the server-ranked 热帖排行 block live on the same page.
+        val html = http.getHtml("forum.php")
+        ForumHomeData(
+            forums = ForumHtmlParser.parseForums(html),
+            hotRanking = ForumHtmlParser.parseHotRanking(html),
+        )
     }
 
     override suspend fun getThreads(fid: Int, page: Int): ForumThreadPage = withContext(Dispatchers.IO) {
@@ -52,14 +58,13 @@ class ForumRepositoryImpl(
         ForumHtmlParser.parseThreadPage(html, fid, page)
     }
 
-    override suspend fun getHotThreads(page: Int): List<ForumThread> = withContext(Dispatchers.IO) {
-        // `view=hot` redirects to the portal home (no thread list at all), which is why the guide
-        // tab used to render empty. `view=newthread` and `view=digest` are the real 导读 lists and
-        // share the board listing's DOM, so the board parser can read them unchanged.
-        val html = http.getHtml("forum.php?mod=guide&view=newthread&page=$page")
-        val page1 = ForumHtmlParser.parseThreadPage(html, fid = 0, page = page)
-        page1.notice + page1.threads
-    }
+    override suspend fun getGuideThreads(view: ForumGuideView, page: Int): List<ForumThread> =
+        withContext(Dispatchers.IO) {
+            // Every 导读 view renders the same thread-list DOM as a board listing, including
+            // `view=hot`; the board parser reads them unchanged.
+            val html = http.getHtml(ForumUrls.guidePath(view, page))
+            ForumHtmlParser.parseThreadPage(html, fid = 0, page = page).threads
+        }
 
     override suspend fun getThreadDetail(tid: Int, page: Int): ForumThreadDetail = withContext(Dispatchers.IO) {
         // Discuz puts the page number in the SECOND path segment (thread-{tid}-{page}-1.html).

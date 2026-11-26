@@ -148,6 +148,11 @@
     <string name="forum_pinned_badge">Pinned</string>
     <string name="forum_reply_badge">Reply</string>
     <string name="nav_guide">Guide</string>
+    <string name="forum_guide_tab_latest">Latest</string>
+    <string name="forum_guide_tab_hot">Hot</string>
+    <string name="forum_guide_tab_digest">Digest</string>
+    <string name="forum_guide_tab_reply">Replies</string>
+    <string name="forum_guide_tab_sofa">Sofa</string>
     <string name="nav_messages">Messages</string>
     <string name="logout_confirm_title">Sign out?</string>
     <string name="logout_confirm_message">Your saved session will be removed from this device.</string>
@@ -165,7 +170,7 @@
     <string name="forum_tag_featured">Featured</string>
     <string name="forum_tag_with_image">Image</string>
     <string name="forum_tag_hot">Hot</string>
-    <string name="forum_hot_ranking">Trending</string>
+    <string name="forum_hot_ranking">Hot threads</string>
     <string name="thread_action_more">More actions</string>
     <string name="thread_action_like">Upvote this thread</string>
     <string name="thread_action_follow_author">Follow the author</string>

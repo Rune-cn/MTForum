@@ -4,6 +4,8 @@ package io.rune.mt.forum.ui.page.forum
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.rune.mt.forum.domain.forum.model.Forum
+import io.rune.mt.forum.domain.forum.model.ForumGuideView
+import io.rune.mt.forum.domain.forum.model.ForumHotEntry
 import io.rune.mt.forum.domain.forum.model.ForumPost
 import io.rune.mt.forum.domain.forum.model.ForumThread
 import io.rune.mt.forum.domain.forum.repository.ForumRepository
@@ -16,12 +18,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
-/** State of the board index (版块宫格) plus the hot-thread preview. */
+/** State of the board index (版块宫格) plus the site's 热帖排行 block. */
 data class ForumHomeState(
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
     val forums: List<Forum> = emptyList(),
-    val hotThreads: List<ForumThread> = emptyList(),
+    /** Already ranked by the site; never re-sorted, never truncated. */
+    val hotRanking: List<ForumHotEntry> = emptyList(),
     val error: String? = null,
     /** True after a successful load; keeps re-entry from re-fetching the index. */
     val loaded: Boolean = false,
@@ -42,6 +45,19 @@ data class ForumListState(
     val loaded: Boolean = false,
 ) {
     val canLoadMore: Boolean get() = page < totalPages
+}
+
+/**
+ * State of the 导读 screen: one independently paged [ForumListState] per view plus the selected
+ * tab. Keeping a map (instead of one shared list) is what stops a tab switch from flashing the
+ * previous tab's rows, and what makes re-selecting a cached view instant.
+ */
+data class ForumGuideState(
+    val selected: ForumGuideView = ForumGuideView.Latest,
+    val views: Map<ForumGuideView, ForumListState> = emptyMap(),
+) {
+    val current: ForumListState
+        get() = views[selected] ?: ForumListState()
 }
 
 /** State of a thread: the floors loaded so far. */
@@ -110,18 +126,14 @@ class ForumViewModel(
             }
             try {
                 Timber.tag(TAG).i("loadHome refresh=%s", refresh)
-                val forums = repository.getForums()
-                // The hot list is decoration: failing it must not blank the board grid.
-                val hot = runCatching { repository.getHotThreads() }
-                    .onFailure { e -> Timber.tag(TAG).w(e, "loadHotThreads failed, ignoring") }
-                    .getOrDefault(emptyList())
+                val home = repository.getHome()
                 _homeState.value = ForumHomeState(
                     isLoading = false,
-                    forums = forums,
-                    hotThreads = hot,
+                    forums = home.forums,
+                    hotRanking = home.hotRanking,
                     loaded = true,
                 )
-                Timber.tag(TAG).i("loadHome ok forums=%d hot=%d", forums.size, hot.size)
+                Timber.tag(TAG).i("loadHome ok forums=%d ranking=%d", home.forums.size, home.hotRanking.size)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Exception) {
@@ -430,25 +442,47 @@ class ForumViewModel(
     }
 
     // ---- Guide (导读) ---------------------------------------------------------
-    private val _guideState = MutableStateFlow(ForumListState())
-    val guideState: StateFlow<ForumListState> = _guideState.asStateFlow()
+    private val _guideState = MutableStateFlow(ForumGuideState())
+    val guideState: StateFlow<ForumGuideState> = _guideState.asStateFlow()
+
+    /** One in-flight job per view: switching tabs must not cancel the other view's request. */
+    private val guideJobs = mutableMapOf<ForumGuideView, Job>()
 
     fun loadGuideIfNeeded() {
-        if (_guideState.value.loaded) return
-        loadGuidePage(page = 1, refresh = false)
+        val view = _guideState.value.selected
+        if (_guideState.value.views[view]?.loaded == true) return
+        loadGuidePage(view, page = 1, refresh = false)
     }
 
-    fun refreshGuide() = loadGuidePage(page = 1, refresh = true)
+    /** Switches the visible tab; a view whose page 1 is already cached renders instantly. */
+    fun selectGuideView(view: ForumGuideView) {
+        if (_guideState.value.selected == view) return
+        _guideState.update { it.copy(selected = view) }
+        if (_guideState.value.views[view]?.loaded == true) return
+        loadGuidePage(view, page = 1, refresh = false)
+    }
+
+    fun refreshGuide() {
+        val view = _guideState.value.selected
+        loadGuidePage(view, page = 1, refresh = true)
+    }
 
     fun loadMoreGuide() {
-        val current = _guideState.value
+        val state = _guideState.value
+        val current = state.current
         if (current.isAppending || current.page >= current.totalPages) return
-        loadGuidePage(page = current.page + 1, refresh = false, append = true)
+        loadGuidePage(state.selected, page = current.page + 1, refresh = false, append = true)
     }
 
-    private fun loadGuidePage(page: Int, refresh: Boolean, append: Boolean = false) {
-        viewModelScope.launch {
-            _guideState.update {
+    private fun loadGuidePage(
+        view: ForumGuideView,
+        page: Int,
+        refresh: Boolean,
+        append: Boolean = false,
+    ) {
+        guideJobs[view]?.cancel()
+        guideJobs[view] = viewModelScope.launch {
+            updateGuideView(view) {
                 it.copy(
                     isLoading = !refresh && !append,
                     isRefreshing = refresh,
@@ -456,16 +490,22 @@ class ForumViewModel(
                     error = null,
                 )
             }
-            runCatching { repository.getHotThreads(page) }
+            runCatching { repository.getGuideThreads(view, page) }
                 .onSuccess { threads ->
-                    _guideState.update { prev ->
-                        val merged = if (append) prev.threads + threads.filterNot { t -> prev.threads.any { it.tid == t.tid } } else threads
+                    Timber.tag(TAG).i("loadGuidePage view=%s page=%d threads=%d", view.value, page, threads.size)
+                    updateGuideView(view) { prev ->
+                        val merged = if (append) {
+                            prev.threads + threads.filterNot { thread -> prev.threads.any { it.tid == thread.tid } }
+                        } else {
+                            threads
+                        }
                         prev.copy(
                             threads = merged,
                             page = page,
-                            // The guide endpoint reports no reliable page count, so keep paging
-                            // while the server still returns a full page.
-                            totalPages = if (threads.size >= 40) page + 1 else page,
+                            // The guide list carries a real pager, but the repository returns rows
+                            // only; keep paging while the server still returns a full page. The
+                            // full list is 50 rows, while sofa has 12 rows and no pager at all.
+                            totalPages = if (threads.size >= GUIDE_FULL_PAGE) page + 1 else page,
                             loaded = true,
                             isLoading = false,
                             isRefreshing = false,
@@ -474,8 +514,9 @@ class ForumViewModel(
                     }
                 }
                 .onFailure { error ->
-                    Timber.tag(TAG).e(error, "loadGuidePage(%d) failed", page)
-                    _guideState.update {
+                    if (error is CancellationException) throw error
+                    Timber.tag(TAG).e(error, "loadGuidePage view=%s page=%d failed", view.value, page)
+                    updateGuideView(view) {
                         it.copy(
                             isLoading = false,
                             isRefreshing = false,
@@ -484,6 +525,14 @@ class ForumViewModel(
                         )
                     }
                 }
+        }
+    }
+
+    /** Patches one view's slice without disturbing the other tabs. */
+    private fun updateGuideView(view: ForumGuideView, transform: (ForumListState) -> ForumListState) {
+        _guideState.update { state ->
+            val previous = state.views[view] ?: ForumListState()
+            state.copy(views = state.views + (view to transform(previous)))
         }
     }
 
@@ -538,5 +587,8 @@ class ForumViewModel(
 
     private companion object {
         const val TAG = "ForumViewModel"
+
+        /** A full 导读 page holds 50 rows; anything shorter is the last page (sofa: 12). */
+        const val GUIDE_FULL_PAGE = 40
     }
 }

@@ -4,6 +4,7 @@ package io.rune.mt.forum.data.forum.network
 import io.rune.mt.forum.domain.forum.model.Forum
 import io.rune.mt.forum.domain.forum.model.ForumConversationDetail
 import io.rune.mt.forum.domain.forum.model.ForumFavorite
+import io.rune.mt.forum.domain.forum.model.ForumHotEntry
 import io.rune.mt.forum.domain.forum.model.ForumPost
 import io.rune.mt.forum.domain.forum.model.ForumPrivateConversation
 import io.rune.mt.forum.domain.forum.model.ForumPrivateMessage
@@ -56,6 +57,28 @@ object ForumHtmlParser {
         }.distinctBy { it.fid }
     }
 
+    /**
+     * Parses the server-rendered 热帖排行 block of the forum home page.
+     *
+     * The list is already ranked by the site: rows are read in document order and the badge
+     * number comes from the `em`, never from the list index and never re-sorted. The block has
+     * only rank/title/link, so no reply/view data is inferred. `a.text()` also contains the
+     * leading rank number, hence the `title` attribute is preferred.
+     */
+    fun parseHotRanking(html: String): List<ForumHotEntry> {
+        val doc = Jsoup.parse(html)
+        return doc.select("div.comiis_mh_txtlist_phb ul li").mapIndexedNotNull { index, li ->
+            val link = li.selectFirst("a[href]") ?: return@mapIndexedNotNull null
+            val tid = TID_IN_HREF.find(link.attr("href"))?.groupValues?.get(1)?.toIntOrNull()
+                ?: return@mapIndexedNotNull null
+            val rank = li.selectFirst("em")?.text()?.filterDigits()?.toIntOrNull() ?: (index + 1)
+            val title = link.attr("title").trim().ifBlank {
+                link.text().removePrefix(rank.toString()).cleanTitle()
+            }
+            ForumHotEntry(rank = rank, tid = tid, title = title)
+        }
+    }
+
     /** Parses a board listing (`forum.php?mod=forumdisplay&fid=`). */
     fun parseThreadPage(html: String, fid: Int, page: Int): ForumThreadPage {
         val doc = Jsoup.parse(html)
@@ -90,7 +113,9 @@ object ForumHtmlParser {
         return ForumThread(
             tid = tid,
             fid = fid,
-            title = titleLink.text().trim(),
+            // Hot/digest guide rows prefix the title with an icon-font glyph inside the anchor;
+            // text() returns that private-use codepoint, so strip it instead of showing tofu.
+            title = titleLink.text().cleanTitle(),
             summary = li.selectFirst("div.list_body a")?.text()?.trim(),
             authorName = authorLink?.text()?.trim().orEmpty(),
             authorUid = UID_IN_HREF.find(authorLink?.attr("href").orEmpty())?.groupValues?.get(1)?.toIntOrNull() ?: 0,
@@ -283,4 +308,10 @@ object ForumHtmlParser {
     }
 
     private fun String.filterDigits(): String = filter { it.isDigit() }
+
+    /** Drops the icon-font glyphs (U+E000..U+F8FF) the mobile template inlines into text. */
+    private fun String.cleanTitle(): String =
+        replace(ICON_GLYPHS, "").trim()
+
+    private val ICON_GLYPHS = Regex("[\\uE000-\\uF8FF]")
 }
