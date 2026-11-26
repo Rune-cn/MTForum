@@ -230,4 +230,8 @@
     <string name="favorites_delete_failed">删除收藏失败。</string>
     <string name="favorites_login_required_title">登录后查看收藏</string>
     <string name="favorites_login_required_desc">收藏属于你的账号。</string>
+    <!-- Post body rendering (正文渲染) -->
+    <string name="forum_body_code_label">代码</string>
+    <string name="forum_body_copy">复制</string>
+    <string name="forum_body_copied">已复制</string>
 </resources>

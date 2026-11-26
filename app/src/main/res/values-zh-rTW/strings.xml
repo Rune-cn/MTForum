@@ -230,4 +230,8 @@
     <string name="favorites_delete_failed">刪除收藏失敗。</string>
     <string name="favorites_login_required_title">登入後查看收藏</string>
     <string name="favorites_login_required_desc">收藏屬於你的帳號。</string>
+    <!-- Post body rendering (正文渲染) -->
+    <string name="forum_body_code_label">程式碼</string>
+    <string name="forum_body_copy">複製</string>
+    <string name="forum_body_copied">已複製</string>
 </resources>

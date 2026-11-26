@@ -230,4 +230,8 @@
     <string name="favorites_delete_failed">Couldn’t remove the favourite.</string>
     <string name="favorites_login_required_title">Sign in to view favourites</string>
     <string name="favorites_login_required_desc">Favourites belong to your account.</string>
+    <!-- Post body rendering (正文渲染) -->
+    <string name="forum_body_code_label">Code</string>
+    <string name="forum_body_copy">Copy</string>
+    <string name="forum_body_copied">Copied</string>
 </resources>
