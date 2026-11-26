@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package io.rune.mt.forum.ui.page.forum
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.runtime.Composable
@@ -13,26 +16,37 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import io.rune.mt.forum.R
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopBarIconButton
 import io.rune.mt.forum.ui.theme.AppTheme
 import top.yukonga.miuix.kmp.basic.DropdownImpl
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.ListPopupColumn
 import top.yukonga.miuix.kmp.basic.ListPopupDefaults
+import top.yukonga.miuix.kmp.basic.PopupPositionProvider
 import top.yukonga.miuix.kmp.glass.GlassPopup
 import top.yukonga.miuix.kmp.glass.GlassPopupDefaults
 import top.yukonga.miuix.kmp.glass.GlassPopupItem
 import top.yukonga.miuix.kmp.material.GlassDefaults
-import top.yukonga.miuix.kmp.basic.PopupPositionProvider
 import top.yukonga.miuix.kmp.window.WindowListPopup
 
-/** One entry of the thread overflow menu. */
+/**
+ * One entry of the thread overflow menu.
+ *
+ * [icon] is consumed by the OS4 `GlassPopupItem`, which has its own leading-icon slot
+ * (`icon: ImageVector?`), so the glass row keeps the library's native padding, 24dp icon,
+ * press effect and text style instead of being hand-built inside the panel. The OS3
+ * `DropdownImpl` row is text-only by Miuix's classic convention and ignores the icon.
+ */
 internal data class ThreadActionItem(
     val label: String,
+    val icon: ImageVector,
     val onClick: () -> Unit,
 )
 
@@ -60,6 +74,24 @@ internal class ThreadActionsState {
 /** Remembers a [ThreadActionsState] for one thread screen. */
 @Composable
 internal fun rememberThreadActionsState(): ThreadActionsState = remember { ThreadActionsState() }
+
+/**
+ * Dismisses the open overflow menu on the system back gesture instead of popping the thread.
+ *
+ * Must be called from the page root. The callback exists in the activity's
+ * `OnBackPressedDispatcher` at all times, but `enabled` follows [ThreadActionsState.expanded]:
+ *
+ *  - while the menu is shut the callback is disabled, so the dispatcher never selects it and
+ *    `NavDisplay`'s predictive-back gesture driver remains the only active back handler — no
+ *    gesture is stolen from navigation;
+ *  - while the menu is open the callback is enabled. It was registered after the nav-level one
+ *    (the nav stack composes above the page), so the dispatcher prefers it: a back press /
+ *    committed gesture closes the menu and is consumed, so the thread is not popped.
+ */
+@Composable
+internal fun ThreadActionsBackHandler(state: ThreadActionsState) {
+    BackHandler(enabled = state.expanded) { state.expanded = false }
+}
 
 /**
  * Trailing overflow button for the thread screen (favourite / like / follow author / copy / share).
@@ -130,6 +162,12 @@ internal fun ThreadActions(
  * content, so the panel is measured against the whole page rather than the button's cell — the
  * component's own KDoc asks for exactly that. Emits nothing under OS3, where [ThreadActions]
  * opens a real [WindowListPopup] window instead.
+ *
+ * Each row is the library's own [GlassPopupItem] with its `icon` slot filled, so icon/tint,
+ * 24dp icon size, 8dp icon-to-label gap, 20dp horizontal padding, press highlight and text style
+ * all come from `GlassPopupDefaults` rather than from a bare text column. A separator before the
+ * last row keeps the system-share row apart from the in-app rows (favourite / like / follow /
+ * copy link), the way Miuix's own dropdown menus draw section breaks.
  */
 @Composable
 internal fun BoxScope.ThreadActionsGlassMenu(
@@ -150,13 +188,29 @@ internal fun BoxScope.ThreadActionsGlassMenu(
         modifier = modifier,
         visuals = GlassPopupDefaults.visuals(style = GlassDefaults.style(AppTheme.isDark)),
     ) {
-        items.forEach { item ->
+        items.forEachIndexed { index, item ->
+            if (index == items.lastIndex) {
+                // Same recipe as Miuix's (private) GlassMenuDivider: the glass panel's divider
+                // paddings and thickness with the theme divider color.
+                HorizontalDivider(
+                    modifier = Modifier.padding(
+                        horizontal = GlassPopupDefaults.DividerPaddingHorizontal,
+                        vertical = GlassPopupDefaults.DividerPaddingVertical,
+                    ),
+                    thickness = GlassPopupDefaults.DividerThickness,
+                )
+            }
             GlassPopupItem(
                 text = item.label,
                 onClick = {
                     state.expanded = false
                     item.onClick()
                 },
+                // The library row is 44dp tall; raising the outer minimum to 48dp extends the
+                // full-width selectable area to the platform touch-target minimum while the
+                // panel padding keeps the visual row height unchanged.
+                modifier = Modifier.heightIn(min = 48.dp),
+                icon = item.icon,
             )
         }
     }

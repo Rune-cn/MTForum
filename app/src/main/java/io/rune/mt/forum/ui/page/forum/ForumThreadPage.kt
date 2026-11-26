@@ -4,7 +4,12 @@
 package io.rune.mt.forum.ui.page.forum
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.Reply
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -122,17 +127,18 @@ fun ForumThreadPage(
         .only(WindowInsetsSides.Horizontal)
         .asPaddingValues()
 
-    // One list feeds both the top-bar button and the root-level OS4 menu.
+    // One list feeds both the top-bar button and the root-level OS4 menu. Each row carries the
+    // icon its action shows under OS4; the OS3 window popup stays text-only by convention.
     val threadActions = listOf(
-        ThreadActionItem(favoriteLabel) { viewModel.favoriteCurrentThread() },
-        ThreadActionItem(likeLabel) { viewModel.recommendCurrentThread() },
-        ThreadActionItem(followLabel) { viewModel.followCurrentThreadAuthor() },
-        ThreadActionItem(copyLabel) {
+        ThreadActionItem(favoriteLabel, Icons.Rounded.FavoriteBorder) { viewModel.favoriteCurrentThread() },
+        ThreadActionItem(likeLabel, Icons.Rounded.ThumbUp) { viewModel.recommendCurrentThread() },
+        ThreadActionItem(followLabel, Icons.Rounded.PersonAdd) { viewModel.followCurrentThreadAuthor() },
+        ThreadActionItem(copyLabel, Icons.Rounded.Link) {
             clipboard?.setText(threadUrl)
             scope.launch { snackbarHostState.showSnackbar(copiedText) }
         },
         // A real system share sheet, not a clipboard copy disguised as sharing.
-        ThreadActionItem(shareLabel) {
+        ThreadActionItem(shareLabel, Icons.Rounded.Share) {
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_SUBJECT, state.title.ifBlank { title })
@@ -142,6 +148,9 @@ fun ForumThreadPage(
         },
     )
     val actionsState = rememberThreadActionsState()
+    // Back closes the open menu instead of leaving the thread; disabled while the menu is shut so
+    // the nav-level predictive-back gesture keeps sole ownership of back.
+    ThreadActionsBackHandler(state = actionsState)
 
     LaunchedEffect(tid) {
         Timber.tag("ForumThreadPage").i("thread shown tid=%d", tid)
