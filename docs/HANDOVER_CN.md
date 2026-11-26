@@ -265,15 +265,21 @@ Coil 走 `BitmapFactoryDecoder` 只出首帧，首帧透明的 GIF 看起来就�
    条件移除会在同帧销毁子组合并崩溃（`Could not resolve state for movable content`）。
 10. **禁止日志打印 Cookie 明文**，只可打 uid / isLoggedIn。
 11. **提交**：Conventional Commits，主体 ≤72 字符，不加 AI 署名。
-12. **OS4 预测式返回只有一条实现路径**：动效在
+12. **预测式返回只有一条实现路径**：动效在
     `ui/animation/predictiveback/MiuixOs4NavTransition.kt`（`miuixOs4NavTransition()`），由
     `appNavTransition(…, useMiuixOs4=…)` 选择；`NavDisplayEffects` 的圆角/压暗也在
-    `AppNavContainer` 统一给。**不要**在 NavDisplay 的 entry 里注册 `BackHandler` /
-    `NavigationBackHandler`——那会抢走 `NavDisplay` 自己的手势驱动（= 没有跟手预览）。
-    唯一允许的是「菜单展开时关菜单」的 `BackHandler(enabled = expanded)`（`ThreadActionsBackHandler`）。
+    `AppNavContainer` 统一给。**不要**在 NavDisplay 的 entry 里注册常驻 `BackHandler` /
+    `PredictiveBackHandler`——那会抢走 `NavDisplay` 自己的手势驱动（= 没有跟手预览）。
+    唯一允许的可预测处理器是**菜单展开时**的 `ThreadActionsBackHandler`：必须组合在
+    `ThreadActionsGlassMenu` **之后**（navigation-event 调度器优先“最近组合且 enabled”的处理器），
+    `enabled = state.expanded`，把 `NavBackEvent.progress` 写进
+    `ThreadActionsState.dismissProgress` 驱动面板缩放/淡出；菜单关着时必须 disabled。
 13. **首页排行必须是站点顺序**：`parseHotRanking()` 读 `div.comiis_mh_txtlist_phb ul li`
     的文档顺序 + `em` 名次 + `a[title]`，**禁止**客户端按回复/浏览重排（v14 及以前就是错的）。
     导读视图一律走 `ForumUrls.guidePath(view, page)`，不要自己拼 `mod=guide` URL。
+14. **深链只有一个入口**：外部 URL 只经 `ui/navigation/ForumDeepLink.kt` 的
+    `forumDeepLinkFrom(Uri)` 解析（`ForumDeepLinkState` 负责一次性 hand-off），
+    Manifest 的 intent-filter 与 Activity 的 `onNewIntent` 都只调用它，不要再写第二套 intent 解析。
 
 ---
 
@@ -281,7 +287,7 @@ Coil 走 `BitmapFactoryDecoder` 只出首帧，首帧透明的 GIF 看起来就�
 
 ```bash
 bash tools/build.sh                                # debug 冒烟
-bash tools/build.sh :app:testStableDebugUnitTest    # 112 个测试（21 个 suite），必跑
+bash tools/build.sh :app:testStableDebugUnitTest    # 154 个测试（27 个 suite），必跑
 bash tools/build.sh :app:assembleStableRelease
 bash tools/build.sh :app:lintVitalStableRelease     # 改字符串/资源后必跑
 ```
@@ -307,6 +313,11 @@ bash tools/build.sh :app:lintVitalStableRelease     # 改字符串/资源后必�
 | `ForumBodyImageUrlTest` | 正文图懒加载属性优先于 `src` 占位；`javascript:` 不产生图片块 |
 | `ForumHomeRankingTest` | 首页热帖排行：站点顺序/名次/tid/`title` 属性优先，**不重排** |
 | `ForumGuideViewsTest` | 五个导读 view 的 URL/枚举顺序/三语标签；热帖/沙发样本解析与分页 |
+| `ForumDigestTagTest` | 精华行 `span.bg_c` → `digest=true`、标题去掉「精」/热度徽标；普通行不受影响 |
+| `ThreadActionsDismissVisualsTest` | 菜单预测返回变换：p=0 恒等、p=1 淡出、单调且钳制 |
+| `ForumDeepLinkTest` | 深链解析：thread/forum HTML、`forum.php?mod=` 查询式、`mtforum://`、非法输入 |
+| `ForumDeepLinkNavigationTest` / `ForumDeepLinkActivityTest` / `ForumDeepLinkManifestTest` | 深链导航落点、Activity 冷/热启动一次性 hand-off、合并后 Manifest 的 resolve |
+| `OnlineUpdatePolicyTest` | 更新源选择：`mtforum-stable-*.apk` 优先/任意 apk 兜底/校验文件忽略、版本比较、代理 URL |
 | `Os4PredictiveBackGeometryTest` | OS4 卡片返回几何：端点、单调、逐帧无跳变、像素对齐、scrim 起手为 0 |
 | `Os4PredictiveBackScreenshotTest` | 用真实 transition + 假 `NavTransitionScope` 渲出 p=0.45 的一帧并做像素断言 |
 | `ForumImageScreenshotTest` | **JVM 截图**：真实卡片 + 正文渲染、失败占位块落盘 PNG |
@@ -325,8 +336,10 @@ bash tools/build.sh :app:testStableDebugUnitTest \
 产物统一在 `app/build/ui-screenshots/`（`ThreadActionsPopupLayoutTest` 的菜单图、`ForumImageScreenshotTest`、
 `Os4PredictiveBackScreenshotTest`）。仓库里存了样例：
 [docs/screenshots/os4-thread-actions-menu.png](screenshots/os4-thread-actions-menu.png)、
+[docs/screenshots/os4-thread-actions-predictive-back.png](screenshots/os4-thread-actions-predictive-back.png)
+（菜单展开时手势 p=0.5 的关闭预览）、
 [docs/screenshots/jvm-image-render.png](screenshots/jvm-image-render.png)、
-[docs/screenshots/os4-predictive-back.png](screenshots/os4-predictive-back.png)（p=0.45 的手势中间帧）。
+[docs/screenshots/os4-predictive-back.png](screenshots/os4-predictive-back.png)（页面返回 p=0.45 的手势中间帧）。
 
 ⚠️ miuix 的 squircle 用了 AGSL RuntimeShader，Robolectric 自带 Skia 编译不了
 （`'color' is not a valid layout qualifier`）。截图测试里用
@@ -652,3 +665,93 @@ UI 是 Miuix `TabRow`（会横向滚动，OS3/OS4 都有选中态），列表沿
 - `:app:testStableDebugUnitTest` BUILD SUCCESSFUL — **21 suites / 112 tests / 0 failures**
 - `:app:lintVitalStableRelease` BUILD SUCCESSFUL（三语键同步）
 - 发布 `26.11.3`（versionCode 15，release 签名），APK 由 `manual-stable-release` 工作流构建。
+
+---
+
+## 14. 第四轮真机反馈：菜单预测返回 / 关于 / 精华 / BBCode / 深链（2026-11-26）
+
+机主对上一轮的补充与新增需求：「展开菜单没有预见式返回」「删掉关于的调试」「做好关于的更新」
+「有些帖子还有精华标签」「做好 bbcode 渲染」「加个深链」。仍是 4 个并行 worktree 实现、合并后统一验证。
+
+### 14.1 展开菜单时的预测式返回（上一轮理解修正）
+
+上一轮把「预测式返回」理解成页面返回动画并重做了 `MiuixOs4NavTransition`（保留，见 §13.1）；
+机主实际指的是**三点菜单展开后**：手势返回没有跟手预览，菜单位于 commit 瞬间消失。
+
+- 旧：`ThreadActionsBackHandler` 是普通 `BackHandler(enabled = expanded)`，只有“提交”语义，
+  拖动期间没有任何进度；`GlassPopup` 内部自己的 dismiss 处理器也只会在 commit 关菜单。
+- 新：`ThreadActionsBackHandler` 改用 miuix-nav 的
+  `PredictiveBackHandler(enabled = expanded, onProgress = { collect { dismissProgress = it.progress } })`，
+  状态新增 `ThreadActionsState.dismissProgress`；`ThreadActionsGlassMenu` 用
+  `Modifier.graphicsLayer` 预览：`scale 1 → 0.92`、`alpha 1 → 0.1`、沿手势边平移 `16dp`；
+  commit → `close()`，cancel → 进度归 0。
+- **组合顺序是修复的关键**：`ThreadActionsBackHandler` 必须写在 `ThreadActionsGlassMenu`
+  **之后**（navigation-event 调度器优先最近组合且 enabled 的处理器），否则 GlassPopup 自己的
+  返回处理器会吞掉手势（只关菜单、无预览）。菜单关着时它是 disabled，`NavDisplay` 保持唯一驱动。
+- OS3 的 `WindowListPopup` 是真窗口，无法预测；保持“返回即关”，在 KDoc 中写明。
+
+证据：`ThreadActionsDismissVisualsTest`（3 个：p=0 恒等、p=1 淡出、单调/钳制）+
+`ThreadActionsPopupLayoutTest` 新增 p=0.5 截图
+[screenshots/os4-thread-actions-predictive-back.png](screenshots/os4-thread-actions-predictive-back.png)。
+
+### 14.2 关于页：删掉调试、把更新做成可用
+
+- 删除「调试」分组与「崩溃日志」卡片，同时移除 `AboutState.latestCrashSummary` 与
+  `AboutViewModel.loadLatestCrash()`；崩溃文件**写入**逻辑保留（只是不再在关于页展示）。
+  三语删除 `debug` / `crash_logs` / `crash_logs_empty`。
+- 更新检查原先对本仓库**实际不可用**：`selectOnlineApkAsset()` 只认文件名含 `online` 的资产，
+  而本仓库发布的是 `mtforum-stable-<版本>.apk` → 资产为 null → `downloadUrl` 为空 →
+  更新弹窗的「下载更新」永远 disabled。
+  现在：`mtforum-stable-*` 优先，任意 `.apk` 兜底（忽略 `.sha256` 等校验文件）；
+  版本优先取资产名里的 `-<版本>`，回退 tag（去掉 `v` 前缀）；`canCheckUpdates` 去掉自比的
+  `packageName` 参数，保留「允许联网 / 非 debug / 非 UNSTABLE」三条。
+  `OnlineUpdatePolicyTest` 覆盖稳定资产选择、`26.11.3 > 26.11.2`、`v26.11.3 == 26.11.3`、代理前缀。
+
+### 14.3 列表的「精华」标签
+
+站点精华行在标题锚点里内联 `<span class="bg_c f_f">精</span>`（同槽位还有热度的
+`span.bg_a` + 图标字体）。`parseThreadRow()` 现在：`span.bg_c` 含「精」→ `digest = true`；
+标题用克隆节点去掉 `span.bg_c/span.bg_a/i.comiis_font` 后再 `cleanTitle()`，避免出现「精」
+前缀或私用区乱码。卡片新增 `ForumBadge(精华)`（三语）。
+样本 `board_digest.html` 取自真实 `view=digest` 页；`ForumDigestTagTest` 断言 flag、干净标题与普通行。
+
+### 14.4 BBCode 渲染
+
+`ForumBodyParser.bbcodeToHtml()` 原先只认 quote/b/i/u/s/url/code/color/img/hr，其余标签会原样显示。
+现在补齐（并保证未知/未闭合标签不再泄漏）：
+
+| 类别 | 标签 | 处理 |
+|---|---|---|
+| 引用 | `[quote=作者]` | blockquote + 作者粗体行 |
+| 列表/表格 | `[list]`, `[*]`, `[table]`, `[tr]`, `[td]` | 转成 `<ul><li>` / `<table><tr><td>`，按块渲染 |
+| 隐藏/免费 | `[hide]`, `[free]` | hide 显示「此内容已隐藏」占位（不泄露内容）；free 保留正文 |
+| 附件/媒体 | `[attach]`, `[attachimg]`, `[media]`, `[audio]`, `[flash]` | 附件显示「附件」，媒体保留可读 URL |
+| 链接 | `[email=]`, `[url=]`（含引号 URL）、`[img=宽,高]` | 链接/mailto/图片 |
+| 仅样式 | `[size=]`, `[font=]`, `[backcolor=]`, `[align=]`, `[indent]`, `[float]`, `[p]`, `[md]` | 去标记留文本 |
+| 其余 | `postbg/groupid/rate/player/autolink/music` 等 | 去标记 |
+| 兜底 | 未闭合/未知 Discuz 标签 | `RESIDUAL_TAG` 统一擦除（不误伤正文里的普通方括号） |
+
+`ForumRichTextTest` 新增 6 个用例（作者引用、列表项、隐藏不泄露、附件/媒体可读、未闭合不泄漏、
+size/align/table 去标记）。
+
+### 14.5 深链
+
+- Manifest：`SettingsActivity` 增加 5 组 `VIEW` filter（`thread-*.html`、`forum-*.html`、
+  `/forum.php`、`mtforum://thread/…`、`mtforum://forum/…`，DEFAULT+BROWSABLE，未声明 `autoVerify`），
+  并设 `launchMode="singleTop"` 让运行中的实例走 `onNewIntent`（否则会再叠一个 Activity）。
+- `ForumDeepLink.kt`：`forumDeepLinkFrom(Uri)` 一个纯函数解析全部形态（非法输入返回 null）；
+  `ForumDeepLinkState` 负责一次性 hand-off（冷启动 `savedInstanceState == null` 才导航，旋转/重建不重放）。
+- `SettingsActivity`：冷启动 + `onNewIntent` 投递；`AppNavContainer` 收到后
+  `navigator.replaceAll([Main, route])` 并清空，保证只消费一次。
+- 测试：`ForumDeepLinkTest`(16)、`ForumDeepLinkNavigationTest`(4)、
+  `ForumDeepLinkActivityTest`(6)、`ForumDeepLinkManifestTest`(3，用 `PackageManager` 解析合并后的 manifest)。
+
+⚠️ 未声明 `assetlinks.json`（站点不在我们控制下），所以 Android 12+ 把 `bbs.binmt.cc` 视为
+未验证链接：系统可能仍用浏览器打开，或弹出选择器——这是平台限制，不是应用内跳转失败。
+`forum.php` filter 天生宽（intent-filter 不能按 query 过滤），解析器会拒绝未知 `mod`，只停在主页。
+
+### 14.6 验证与发布
+
+- `:app:testStableDebugUnitTest` → **27 suites / 154 tests / 0 failures**
+- `:app:lintVitalStableRelease` → BUILD SUCCESSFUL
+- 发布 `26.11.4`（versionCode 16，release 签名）。

@@ -100,6 +100,10 @@ Compose 页面（Miuix 组件，OS3/OS4 自适应）
    `LocalSquircleEnabled provides false` 绕开 AGSL。
 9. **预测式返回只有一条实现**：OS4 卡片动效在 `MiuixOs4NavTransition.kt`，由
    `appNavTransition(useMiuixOs4=…)` 选择；`NavDisplayEffects`（圆角/压暗）由 `AppNavContainer` 统一给。
-   entry 内**不得**注册 `BackHandler`/`NavigationBackHandler`（会抢走 NavDisplay 的手势驱动）。
+   entry 内**不得**注册常驻 `BackHandler`/`PredictiveBackHandler`（会抢走 NavDisplay 的手势驱动）。
+   唯一例外：菜单展开时的 `ThreadActionsBackHandler`（miuix `PredictiveBackHandler`，组合在
+   `ThreadActionsGlassMenu` 之后，`enabled = expanded`）。
 10. **首页榜单与导读都是站点数据源**：热帖排行解析 `forum.php` 的 `comiis_mh_txtlist_phb`
    （站点顺序，不重排）；导读走 `ForumUrls.guidePath(view, page)`，五个 view 共用列表解析器。
+11. **深链只有一个入口**：`ForumDeepLink.forumDeepLinkFrom(Uri)` + `ForumDeepLinkState`
+   一次性 hand-off；Manifest filter 与 `onNewIntent` 不另写解析。
