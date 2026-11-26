@@ -342,6 +342,12 @@ class ThreadActionsPopupLayoutTest {
      * The thread page's real composition, minus the ViewModel-driven content: a fillMaxSize page
      * box, the Miuix top bar with [ThreadActions] in its `actions` slot, the page-root back
      * handler, and (for the fixed case) [ThreadActionsGlassMenu] as the page box's last child.
+     *
+     * The app-wide `MiuixComponentHost` is intentionally not mounted: Robolectric's bundled Skia
+     * cannot compile miuix's glass-blur runtime shader (it fails with "cannot swizzle value of
+     * type 'shader'"), so the OS4 page-backdrop path can only be checked on a device. The menu
+     * here renders through GlassPopup's opaque fallback, which still exercises the panel
+     * geometry, the 48dp rows and the predictive-back transform.
      */
     private fun composePage(
         useOs4: Boolean,
