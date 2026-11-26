@@ -64,6 +64,12 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # The repo is edited on Windows, where the checkout does not preserve the Unix
+      # executable bit, so `./gradlew` fails with "Permission denied" (exit 126) on the
+      # Linux runner. Restore it explicitly; harmless if the bit is already set.
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
       - name: Build debug APK
         run: ./gradlew :app:assembleStableDebug --no-daemon
 

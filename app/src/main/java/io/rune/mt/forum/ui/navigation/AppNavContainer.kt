@@ -14,9 +14,11 @@ import androidx.compose.ui.unit.dp
 import io.rune.mt.forum.domain.settings.model.preferences.PredictiveBackAnimation
 import io.rune.mt.forum.domain.settings.model.preferences.ThemeState
 import io.rune.mt.forum.ui.animation.predictiveback.appNavTransition
+import io.rune.mt.forum.ui.page.forum.ForumConversationPage
 import io.rune.mt.forum.ui.page.forum.ForumHomePage
 import io.rune.mt.forum.ui.page.forum.ForumListPage
 import io.rune.mt.forum.ui.page.forum.ForumThreadPage
+import io.rune.mt.forum.ui.page.forum.NewThreadPage
 import io.rune.mt.forum.ui.page.login.MiuixLoginPage
 import io.rune.mt.forum.ui.page.main.settings.SettingsSharedViewModel
 import androidx.compose.foundation.layout.PaddingValues
@@ -126,6 +128,22 @@ fun AppNavContainer(uiState: ThemeState) {
                 ForumThreadPage(
                     tid = arg.tid,
                     title = arg.title,
+                    enableBlur = useBlur,
+                    outerPadding = PaddingValues(),
+                )
+            }
+            entry<Route.PrivateConversation>(swipeDismiss = swipeBackDirection) { arg ->
+                ForumConversationPage(
+                    uid = arg.uid,
+                    name = arg.name,
+                    enableBlur = useBlur,
+                    outerPadding = PaddingValues(),
+                )
+            }
+            entry<Route.NewThread>(swipeDismiss = swipeBackDirection) { arg ->
+                NewThreadPage(
+                    fid = arg.fid,
+                    forumName = arg.name,
                     enableBlur = useBlur,
                     outerPadding = PaddingValues(),
                 )

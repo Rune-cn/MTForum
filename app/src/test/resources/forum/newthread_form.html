@@ -1,0 +1,359 @@
+<html><body><form method="post" id="postform" action="forum.php?mod=post&amp;action=newthread&amp;fid=44&amp;extra=&amp;topicsubmit=yes&amp;mobile=2" enctype="multipart/form-data">
+<input type="hidden" name="formhash" id="formhash" value="16385279">
+<input type="hidden" name="posttime" id="posttime" value="1795625337">
+<input type="hidden" name="delete" id="delete" value="0"> 
+<input type="hidden" name="topicsubmit" value="yes">
+<div class="comiis_post_from mt15 cl">
+<div class="comiis_wzpost comiis_input_style bg_f b_t cl">
+<ul class="cl">
+            <li class="comiis_styli comiis_flex b_b">
+<div class="styli_tit f_c">标题</div>
+<div class="flex"><input type="text" class="comiis_input kmshow" id="needsubject" autocomplete="off" value="" name="subject" placeholder="必填" fwin="login"></div>
+</li>
+				
+	
+ 
+ 
+<li class="comiis_stylino comiis_needmessage mt10">
+<textarea class="comiis_pt" id="needmessage" tabindex="3" autocomplete="off" name="message" placeholder="想和大家分享点什么..." fwin="reply"></textarea>
+</li>
+<div class="comiis_upbox comiis_allowpostimg bg_f cl">
+<ul id="imglist" class="comiis_post_imglist cl">
+<li class="up_btn"><a href="javascript:;" class="bg_e b_ok f_d"><i class="comiis_font"></i><input type="file" name="Filedata" id="filedata" class="kmshow" accept="image/*"></a></li></ul>
+</div> 
+</ul>
+</div><div class="comiis_post_ico comiis_minipost_icot bg_e b_t b_b f_d cl">
+    <div id="comiis_mh_sub">
+        <div class="swiper-wrapper comiis_post_ico">
+            <a href="javascript:;" class="swiper-slide"><i class="comiis_font"><em>表情</em></i></a>
+                                                            <a href="javascript:;" class="swiper-slide"><i class="comiis_font"><em>@朋友</em></i></a>                        <a href="javascript:;" class="swiper-slide"><i class="comiis_font"><em>插入</em></i></a>
+                        <a href="javascript:;" class="swiper-slide comiis_attachkey"><i class="comiis_font"><em>附件</em></i></a>                                    <a href="javascript:;" class="swiper-slide"><i class="comiis_font"><em>高级</em></i></a>
+                        
+        </div>
+    </div>
+</div>
+<div id="comiis_post_tab">
+    <div class="comiis_bqbox bg_f b_b cl" style="display:none;">
+                <div class="comiis_smiley_box">
+            <div class="swiper-wrapper bqbox_c comiis_optimization"></div>
+            <div class="bqbox_b cl"></div>
+        </div>
+        <div class="bqbox_t bg_e comiis_icotxt cl">
+            <ul id="comiis_smilies_key"></ul>
+        </div>
+            </div>
+                        <div class="bg_f b_b cl" style="display:none;">
+        <div class="comiis_styli_m f15 comiis_flex b_b">
+            <div class="flex"><input type="text" id="atkeyword" value="" placeholder="请输入用户名" class="comiis_input kmshow f_c" onkeyup="comiis_atFilter(this.value);"></div>
+            <div class="styli_r"><a href="javascript:;" onclick="comiis_addsmilies('@' + $('#atkeyword').val() + ' ');" class="comiis_sendbtn bg_0 f_f" style="display:block;">@添加</a></div>
+        </div>
+        <div class="comiis_atlist cl"></div>        <div class="comiis_styli_m f_a">@朋友账号，就能提醒他来看帖子</div>
+    </div>
+    <script>
+    var atKeywords = null, atResult = [];
+    function comiis_atFilter(k){
+        atResult = [];
+        comiis_atSearch(k);
+        var newlist = '';
+        if(atResult.length) {
+            $('.comiis_atlist').show();
+            for(i in atResult) {
+                newlist += '<li class="bg_e b_ok"><a href="javascript:;" id="atli_'+i+'" onclick="comiis_addsmilies(this.innerText + \' \')">@' + atResult[i] + '</a></li>';
+            }
+            $('.comiis_atlist').html('<ul>' + newlist + '</ul>');
+        } else {
+            $('.comiis_atlist').hide();
+        }
+    }
+    function comiis_atSearch(kw){
+        if(atKeywords === null) {
+            atKeywords = '';
+            $.ajax({
+                type:'GET',
+                url:'misc.php?mod=getatuser&inajax=1',
+                dataType:'xml',
+            }).success(function(s) {
+                if(s.lastChild.firstChild.nodeValue.length){
+                    atKeywords = s.lastChild.firstChild.nodeValue.split(',');
+                    comiis_atFilter(kw);
+                }
+            });
+        }
+        var lsi = 0;
+        for(i in atKeywords) {
+            if(atKeywords[i].indexOf(kw) !== -1 || kw === '') {
+                atResult[lsi] = kw !== '' ? atKeywords[i].replace(kw, '<b>' + kw + '</b>') : atKeywords[i];
+                lsi++;
+                if(lsi > 10) {
+                    break;
+                }
+            }
+        }
+    }
+    comiis_atFilter('');
+    </script>		
+            <div class="bg_f b_b comiis_input_style cl" style="display:none;">
+        <div class="comiis_post_urlico b_b">
+            <ul>
+                <li><a href="javascript:;" class="comiis_xifont f_0"><i class="comiis_font"></i>文字链接</a></li>
+                <li><a href="javascript:;" class="comiis_xifont f_d"><i class="comiis_font"></i>网络图片</a></li>
+                                <li><a href="javascript:;" class="comiis_xifont f_d"><i class="comiis_font"></i>MP3 音乐</a></li>
+                <li><a href="javascript:;" class="comiis_xifont f_d"><i class="comiis_font"></i>网络视频</a></li>
+                <li><a href="javascript:;" class="comiis_xifont f_d"><i class="comiis_font"></i>Flash</a></li>
+                                <li><a href="javascript:;" class="comiis_xifont f_d"><i class="comiis_font"></i>引用</a></li>
+                <li><a href="javascript:;" class="comiis_xifont f_d"><i class="comiis_font"></i>代码</a></li>                    
+                                <li><a href="javascript:;" class="comiis_xifont f_d"><i class="comiis_font"></i>免费信息</a></li>
+                <li><a href="javascript:;" class="comiis_xifont f_d"><i class="comiis_font"></i>隐藏内容</a></li>                            </ul>
+        </div>
+        <div class="styli_h10 bg_e b_b"></div>
+        <div id="comiis_post_qydiv">
+            <ul>
+                <li>
+                    <div class="comiis_styli_m f15 comiis_flex b_b">
+                        <div class="styli_tit">链接网址</div>
+                        <div class="flex"><input type="text" id="comiis_input_addurl" value="" placeholder="请输入链接网址" class="comiis_input kmshow f_c"></div>
+                    </div>
+                    <div class="comiis_styli_m f15 comiis_flex b_b">
+                        <div class="styli_tit">链接文字</div>
+                        <div class="flex"><input type="text" id="comiis_input_addurl2" value="" placeholder="请输入链接文字" class="comiis_input kmshow f_c"></div>
+                    </div>
+                    <div class="comiis_styli_m f15 comiis_flex">
+                        <div class="styli_tit"><button class="comiis_sendbtn bg_0 f_f" type="button" onclick="comiis_input_data('comiis_input_addurl')">插入</button></div>
+                        <div class="flex"></div>
+                    </div>
+                </li>
+                <li style="display:none">
+                    <div class="comiis_styli_m f15 comiis_flex">
+                        <div class="flex"><input type="text" id="comiis_input_httpurl" value="" placeholder="请输入网络图片网址" class="comiis_input kmshow f_c"></div>
+                        <div class="styli_r"><button class="comiis_sendbtn bg_0 f_f" type="button" onclick="comiis_input_data('comiis_input_httpurl')">插入</button></div>
+                    </div>
+                </li>					
+                                    <li style="display:none">
+                        <div class="comiis_styli_m f15 comiis_flex b_b">
+                            <div class="flex"><input type="text" id="comiis_input_httpmp3" value="" placeholder="请输入网络音乐文件网址" class="comiis_input kmshow f_c"></div>
+                            <div class="styli_r"><button class="comiis_sendbtn bg_0 f_f" type="button" onclick="comiis_input_data('comiis_input_httpmp3')">插入</button></div>
+                        </div>
+                        <div class="comiis_styli_m f_a">支持 wma mp3 ra rm 等音乐格式网址</div>
+                    </li>						
+                    <li style="display:none">
+                        <div class="comiis_styli_m f15 comiis_flex b_b">
+                            <div class="flex"><input type="text" id="comiis_input_httpvideo" value="" placeholder="请输入网络视频网址" class="comiis_input kmshow f_c"></div>
+                            <div class="styli_r"><button class="comiis_sendbtn bg_0 f_f" type="button" onclick="comiis_input_data('comiis_input_httpvideo')">插入</button></div>
+                        </div>
+                        <div class="comiis_styli_m f_a">支持优酷、土豆、56、酷6等视频站的视频网址</div>
+                    </li>
+                    <li style="display:none">
+                        <div class="comiis_styli_m f15 comiis_flex b_b">
+                            <div class="flex"><input type="text" id="comiis_input_httpflash" value="" placeholder="请输入FLASH文件网址" class="comiis_input kmshow f_c"></div>
+                            <div class="styli_r"><button class="comiis_sendbtn bg_0 f_f" type="button" onclick="comiis_input_data('comiis_input_httpflash')">插入</button></div>
+                        </div>
+                        <div class="comiis_styli_m f_a">支持 swf flv 等 Flash 网址</div>
+                    </li>
+                					
+                <li style="display:none">
+                    <div class="comiis_styli_m f15" style="padding-top:12px;">
+                        <div class="bg_e comiis_p5" style="border-radius:4px"><textarea class="comiis_pt kmshow f_c" id="comiis_input_httpquote" style="font-size:15px" placeholder="请输入需要插入的引用"></textarea></div>
+                    </div>
+                    <div class="comiis_styli_m f15 comiis_flex" style="padding-top:0;">							
+                        <div class="styli_tit"><button class="comiis_sendbtn bg_0 f_f" type="button" onclick="comiis_input_data('comiis_input_httpquote')">插入</button></div>
+                        <div class="flex"></div>
+                    </div>
+                                    </li>					
+                <li style="display:none">
+                    <div class="comiis_styli_m f15" style="padding-top:12px;">
+                        <div class="bg_e comiis_p5" style="border-radius:4px"><textarea class="comiis_pt kmshow f_c" id="comiis_input_httpcode" style="font-size:15px" placeholder="请输入需要插入的代码"></textarea></div>
+                    </div>
+                    <div class="comiis_styli_m f15 comiis_flex" style="padding-top:0;">
+                        <div class="styli_tit"><button class="comiis_sendbtn bg_0 f_f" type="button" onclick="comiis_input_data('comiis_input_httpcode')">插入</button></div>
+                        <div class="flex"></div>
+                    </div>
+                                    </li>
+                                    <li style="display:none">
+                        <div class="comiis_styli_m f15" style="padding-top:12px;">
+                            <div class="bg_e comiis_p5" style="border-radius:4px"><textarea class="comiis_pt kmshow f_c" id="comiis_input_httpfree" style="font-size:15px" placeholder="如果您设置了帖子收费，请输入购买前可免费浏览的内容"></textarea></div>
+                        </div>
+                        <div class="comiis_styli_m f15 comiis_flex" style="padding-top:0;">
+                            <div class="styli_tit"><button class="comiis_sendbtn bg_0 f_f" type="button" onclick="comiis_input_data('comiis_input_httpfree')">插入</button></div>
+                            <div class="flex"></div>
+                        </div>
+                                            </li>
+                                            <li style="display:none">
+                            <div class="comiis_styli_m f15" style="padding-top:12px;">
+                                <div class="bg_e comiis_p5" style="border-radius:4px"><textarea class="comiis_pt kmshow f_c" id="comiis_input_httphide" style="font-size:15px" placeholder="请输入要隐藏的信息内容"></textarea></div>
+                            </div>
+                            <div class="comiis_styli_m f14 comiis_flex" style="padding-top:0;">								
+                                <div style="margin-right:5px;">积分大于</div>
+                                <div class="flex"><input type="text" id="comiis_input_httphide_a" value="" placeholder="可不填" class="comiis_input kmshow b_b f_c" style="padding:5px 0;"></div>
+                                <div style="margin:0 5px;">可见，隐藏天数</div>
+                                <div class="flex"><input type="text" id="comiis_input_httphide_b" value="" placeholder="可不填" class="comiis_input kmshow b_b f_c" style="padding:5px 0;"></div>
+                                <div style="margin-left:5px;">天</div>
+                            </div>
+                            <div class="comiis_styli_m f15 comiis_flex" style="padding-top:0;">                                    
+                                <div class="styli_tit"><button class="comiis_sendbtn bg_0 f_f" type="button" onclick="comiis_input_data('comiis_input_httphide')">插入</button></div>
+                                <div class="flex f_a" style="text-align:right;font-size:13px">不设置积分和天数，默认为回复可见</div>
+                            </div>
+                                                    </li>
+                                                </ul>
+        </div>
+    </div>
+    <script>
+    function comiis_input_data(a) {
+        var b = $('#'+a).val();
+        if(b == ''){
+            popup.open('请输入需要插入的内容', 'alert');
+        }else{
+            if(a == 'comiis_input_httpurl'){
+                comiis_addsmilies('[img]'+b+'[/img]');
+            }else if(a == 'comiis_input_addurl'){
+                var c = $('#'+a+'2').val();
+                comiis_addsmilies('[url='+b+']'+(c ? c : b)+'[/url]');
+            }else if(a == 'comiis_input_httpmp3'){
+                comiis_addsmilies('[audio]'+b+'[/audio]');
+            }else if(a == 'comiis_input_httpvideo'){
+                comiis_addsmilies('[media=x,500,375]'+b+'[/media]');
+            }else if(a == 'comiis_input_httpflash'){
+                comiis_addsmilies('[flash]'+b+'[/flash]');
+            }else if(a == 'comiis_input_httpquote'){
+                comiis_addsmilies('[quote]'+b+'[/quote]');
+            }else if(a == 'comiis_input_httpcode'){
+                comiis_addsmilies('[code]'+b+'[/code]');					
+            }else if(a == 'comiis_input_httpfree'){
+                comiis_addsmilies('[free]'+b+'[/free]');					
+            }else if(a == 'comiis_input_httphide'){
+                var c = $('#'+a+'_a').val();
+                var d = $('#'+a+'_b').val();
+                comiis_addsmilies('[hide'+((c != '' || d != '') ? '=' : '')+(d ? 'd'+d : '') +((c != '' && d != '') ? ',' : '')+c+']'+b+'[/hide]');
+            }
+        }
+    }
+    $('.comiis_post_urlico ul li').on('click', function() {
+        $('.comiis_post_urlico ul li a').removeClass('f_d f_0').addClass("f_d");
+        $(this).find('a').removeClass('f_d').addClass("f_0");
+        $("#comiis_post_qydiv ul li").hide().eq($(this).index()).fadeIn();
+    });
+    </script>
+            <div class="bg_f b_b cl comiis_input_style" style="display:none;">
+        <div class="comiis_upbox_attach bg_f cl">
+            <p><span class="y f_d">大小限制: 1MB</span><a href="javascript:;" class="kmbtn bg_0 f_f"><i class="comiis_font"></i>上传文件<input type="file" name="Filedata" id="filedatas" class="kmshow"></a></p>
+            <ul id="comiis_upattach">
+                        </ul>
+        </div>
+    </div>
+    		
+    		
+        <div class="bg_f b_b cl" style="display:none;">
+        <div class="comiis_over_box comiis_input_style">
+            <ul>
+            	
+                                                                    <input type="hidden" name="htmlon" id="htmlon" class="pc" value="0" disabled>
+                            <li class="comiis_styli_m f15 comiis_flex b_b comiis_hiddenreplies">
+                    <div class="flex">回帖仅作者可见</div>
+                    <div class="styli_r">
+                        <input type="checkbox" name="hiddenreplies" id="hiddenreplies" class="comiis_checkbox_key" value="1">
+                        <label for="hiddenreplies" class="wauto"><code class="bg_f b_ok comiis_checkbox comiis_checkbox_close"></code></label>
+                    </div>	
+                </li>
+                                        <li class="comiis_styli_m f15 comiis_flex b_b">
+                    <div class="flex">回帖倒序排列</div>
+                    <div class="styli_r">
+                        <input type="checkbox" name="ordertype" id="ordertype" value="1" class="comiis_checkbox_key">
+                        <label for="ordertype" class="wauto"><code class="bg_f b_ok comiis_checkbox comiis_checkbox_close"></code></label>
+                    </div>	
+                </li>
+                                        <li class="comiis_styli_m f15 comiis_flex b_b">
+                    <div class="flex">接收回复通知</div>
+                    <div class="styli_r">
+                        <input type="checkbox" name="allownoticeauthor" id="allownoticeauthor" value="1" class="comiis_checkbox_key" checked>
+                        <label for="allownoticeauthor" class="wauto"><code class="bg_f b_ok comiis_checkbox comiis_checkbox_close"></code></label>
+                    </div>	
+                </li>
+                                        <li class="comiis_styli_m f15 comiis_flex b_b">
+                    <div class="flex">使用个人签名</div>
+                    <div class="styli_r">
+                        <input type="checkbox" name="usesig" id="usesig" value="1" class="comiis_checkbox_key" checked>
+                        <label for="usesig" class="wauto"><code class="bg_f b_ok comiis_checkbox comiis_checkbox_close"></code></label>
+                    </div>	
+                </li>		
+                        </ul>
+        </div>
+    </div>
+     
+         
+</div><script>
+function getreplycredit() {
+var replycredit_extcredits = $('#replycredit_extcredits').val();
+var replycredit_times = $('#replycredit_times').val();
+var credit_once = parseInt(replycredit_extcredits) > 0 ? parseInt(replycredit_extcredits) : 0;
+var times = parseInt(replycredit_times) > 0 ? parseInt(replycredit_times) : 0;
+if(parseInt(credit_once * times) - have_replycredit > 0) {
+var real_reply_credit = Math.ceil(parseInt(credit_once * times) - have_replycredit + ((parseInt(credit_once * times) - have_replycredit) * creditstax));
+} else {
+var real_reply_credit = Math.ceil(parseInt(credit_once * times) - have_replycredit);
+}
+
+var reply_credits_sum = Math.ceil(parseInt(credit_once * times));
+
+if(real_reply_credit > userextcredit) {
+$('#replycredit').html('<b>回帖奖励积分总额过大('+real_reply_credit+')</b>');
+} else {
+if(have_replycredit > 0 && real_reply_credit < 0) {
+$('#replycredit').html("<font>返还"+Math.abs(real_reply_credit)+"</font>");
+} else {
+$('#replycredit').html(replycredit_result_lang + (real_reply_credit > 0 ? real_reply_credit : 0));
+}
+$('#replycredit_sum').html(reply_credits_sum > 0 ? reply_credits_sum : 0);
+}
+}
+</script>
+	
+<div class="comiis_btnbox cl">
+        <button class="comiis_btn formdialog bg_c f_f" id="postsubmit">发表</button>
+</div>
+        <div class="comiis_btnbox cl" style="padding-top: 0px;">
+            <input type="hidden" id="postsave" name="save" value="">
+                            <button type="button" id="postsubmit" class="comiis_btn formdialog bg_a f_f" value="true" onclick="document.getElementById('postsave').value=1;$('postsubmit').click();"><em>保存草稿</em></button>
+            </div>
+    
+<script>
+    function simulateChangeEvent(element) {
+        const event = new Event('change', { bubbles: true });
+        element.dispatchEvent(event);
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        let twpx_paste_area = document.querySelector("#needmessage");
+        function handlePaste(event) {
+            let fileInput = document.querySelector('#filedata');
+            let items = (event.clipboardData || window.event.clipboardData).items;
+            if (!items) return;
+            let files = [];
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].kind === 'file') {
+                    let item = items[i]; let
+                        blob = item.getAsFile();
+                    if (/image\//.test(blob.type)) {
+                        files.push(blob);
+                    }
+                }
+            }
+            if (files.length > 0) {
+                event.preventDefault(); // 阻止默认的粘贴行为
+                let fileList = new DataTransfer();
+                files.forEach(file => fileList.items.add(file));
+
+
+                fileInput.files = fileList.files;
+
+                simulateChangeEvent(fileInput);
+            }
+        }
+
+        // 初始绑定 paste 事件
+        twpx_paste_area.addEventListener('paste', handlePaste);
+
+    });
+</script>
+<script>var parent = document.getElementsByClassName('comiis_btnbox')[0];</script>
+</div>
+</form>
+</body></html>

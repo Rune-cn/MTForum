@@ -40,13 +40,17 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.rune.mt.forum.R
 import io.rune.mt.forum.ui.navigation.LocalNavigator
 import io.rune.mt.forum.ui.navigation.Route
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Edit
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBackButton
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopAppBar
+import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopBarIconButton
 import io.rune.mt.forum.ui.page.miuix.widgets.rememberMiuixPageChrome
 import io.rune.mt.forum.ui.theme.AppTheme
 import org.koin.androidx.compose.koinViewModel
 import timber.log.Timber
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -109,6 +113,16 @@ fun ForumListPage(
                 backdrop = chrome.backdrop,
                 scrollBehavior = chrome.scrollBehavior,
                 navigationIcon = { MiuixBackButton(onClick = { navigator.pop() }) },
+                actions = {
+                    MiuixTopBarIconButton(
+                        onClick = { navigator.push(Route.NewThread(fid, forumName.ifBlank { state.forumName })) },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Edit,
+                            contentDescription = stringResource(R.string.forum_new_thread),
+                        )
+                    }
+                },
             )
         },
     ) { innerPadding ->

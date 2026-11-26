@@ -2,6 +2,7 @@
 package io.rune.mt.forum.ui.page.forum
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,6 +69,7 @@ fun ForumHtmlText(
     html: String,
     modifier: Modifier = Modifier,
     contentColor: Color = MiuixTheme.colorScheme.onSurface,
+    onImageClick: (String) -> Unit = {},
 ) {
     val linkColor = MiuixTheme.colorScheme.primary
     val quoteColor = MiuixTheme.colorScheme.onSurfaceVariantSummary
@@ -143,7 +145,8 @@ fun ForumHtmlText(
                             .fillMaxWidth()
                             .heightIn(min = 80.dp, max = 480.dp)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(MiuixTheme.colorScheme.surfaceContainerHigh),
+                            .background(MiuixTheme.colorScheme.surfaceContainerHigh)
+                            .clickable { onImageClick(block.url) },
                         contentScale = ContentScale.FillWidth,
                     )
                 }

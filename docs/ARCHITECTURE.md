@@ -36,21 +36,27 @@ app/src/main/java/io/rune/mt/forum/
 ├── ui/
 │   ├── navigation/
 │   │   ├── Routes.kt                 Main / About / Theme / Login / ForumList / ForumThread
+│   │   │                             / PrivateConversation / NewThread
 │   │   └── AppNavContainer.kt        NavDisplay + entry 注册
 │   ├── page/
 │   │   ├── forum/                    论坛页面层
 │   │   │   ├── ForumHomePage.kt      版块宫格 + Top-10 热度榜
-│   │   │   ├── ForumListPage.kt      版块列表 + 标签 + 缩略图
-│   │   │   ├── ForumThreadPage.kt    楼层 + 悬浮回复 + 楼层内引用
+│   │   │   ├── ForumListPage.kt      版块列表 + 标签 + 缩略图（顶栏「发帖」入口）
+│   │   │   ├── ForumThreadPage.kt    楼层 + 悬浮回复 + 楼层内引用 + 图片放大
 │   │   │   ├── ForumGuidePage.kt     导读（全量 + 分页）
-│   │   │   ├── ForumMessagesPage.kt  消息占位
+│   │   │   ├── ForumMessagesPage.kt  私信会话列表
+│   │   │   ├── ForumConversationPage.kt  私信会话（气泡 + 回复框）
+│   │   │   ├── ForumMessagesViewModel.kt 私信列表/会话状态
+│   │   │   ├── NewThreadPage.kt      发新帖（标题/正文/图片附件）
+│   │   │   ├── NewThreadViewModel.kt 发帖表单与提交
+│   │   │   ├── ForumImageViewer.kt   全屏图片查看（双指缩放/拖动）
 │   │   │   ├── ForumHtmlText.kt      正文渲染组件
 │   │   │   ├── ForumBodyParser.kt    HTML/BBCode → AnnotatedString 块
 │   │   │   ├── ForumAvatar.kt        统一头像组件
 │   │   │   ├── ForumViewModel.kt     VM + 各页面 State
 │   │   │   ├── ReplyComposer.kt      回复框（引用 + 表情）
 │   │   │   ├── SmileyPicker.kt       表情选择器
-│   │   │   └── ThreadActions.kt      顶栏溢出菜单（OS3/OS4 双风格）
+│   │   │   └── ThreadActions.kt      顶栏溢出菜单（收藏/顶/关注/复制/分享，OS3/OS4 双风格）
 │   │   ├── login/                    登录页 / VM / 状态
 │   │   ├── main/forum/               论坛 VM 与 State（旧位置，保留兼容）
 │   │   ├── miuix/

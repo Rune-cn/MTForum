@@ -5,9 +5,20 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import timber.log.Timber
+
+/** One file part of a multipart POST (attachment upload). */
+class MultipartPart(
+    val fieldName: String,
+    val fileName: String,
+    val contentType: String,
+    val bytes: ByteArray,
+)
 
 /**
  * Thin HTTP facade for bbs.binmt.cc.
@@ -72,6 +83,44 @@ class ForumHttpClient(
             .build()
         client.newCall(request).execute().use { response ->
             Timber.tag("ForumHttpClient").d("POST %s -> %d", path, response.code)
+            response.body?.string().orEmpty()
+        }
+    }
+
+    /**
+     * Multipart POST used to submit a new thread with image attachments.
+     *
+     * Discuz's mobile new-thread form is `multipart/form-data` and carries the pictures inline as
+     * `Filedata` parts, so file upload is not a separate hop. Wrapped in [Dispatchers.IO] like the
+     * other entry points — the request body can be several megabytes of images.
+     */
+    suspend fun postMultipart(
+        path: String,
+        fields: Map<String, String>,
+        parts: List<MultipartPart>,
+    ): String = withContext(Dispatchers.IO) {
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .apply {
+                fields.forEach { (k, v) -> addFormDataPart(k, v) }
+                parts.forEach { part ->
+                    addFormDataPart(
+                        part.fieldName,
+                        part.fileName,
+                        part.bytes.toRequestBody(part.contentType.toMediaTypeOrNull()),
+                    )
+                }
+            }
+            .build()
+        val request = Request.Builder()
+            .url(BASE_URL + path.removePrefix("/"))
+            .header("User-Agent", MOBILE_UA)
+            .header("Accept-Language", "zh-CN,zh;q=0.9")
+            .header("Referer", BASE_URL + "forum.php")
+            .post(body)
+            .build()
+        client.newCall(request).execute().use { response ->
+            Timber.tag("ForumHttpClient").d("POST(multipart) %s -> %d", path, response.code)
             response.body?.string().orEmpty()
         }
     }

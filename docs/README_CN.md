@@ -12,7 +12,10 @@
 | 帖子详情 | 楼层（楼主/回复区分）、正文富文本渲染、楼层内引用回复 |
 | 回复 | 右下角悬浮按钮、引用上一楼、论坛表情选择器（3 组 257 个） |
 | 登录 | 账号密码登录、会话持久化、退出二次确认 |
-| 消息 | 占位页（私信模块待接入） |
+| 私信 | 会话列表、会话气泡、收发消息 |
+| 收藏 / 关注 / 顶 | 帖子页溢出菜单：收藏、关注楼主、推荐本帖 |
+| 发新帖 | 标题 + 正文 + 表情 + 图片附件（1MB/张） |
+| 图片查看 | 帖子内图片点击全屏，双指缩放、拖动 |
 | 主题 | OS3 / OS4 双风格、动态取色、模糊与玻璃效果 |
 
 ## 技术要点
@@ -40,7 +43,7 @@
 
 ```bash
 bash tools/build.sh                              # debug APK
-bash tools/build.sh :app:testStableDebugUnitTest  # 42 tests
+bash tools/build.sh :app:testStableDebugUnitTest  # 47 tests
 bash tools/build.sh :app:assembleStableRelease
 bash tools/build.sh :app:lintVitalStableRelease
 ```
@@ -50,13 +53,14 @@ bash tools/build.sh :app:lintVitalStableRelease
 ## 验证
 
 ```
-:app:testStableDebugUnitTest    42 tests, 0 failures
+:app:testStableDebugUnitTest    47 tests, 0 failures
 :app:assembleStableRelease      BUILD SUCCESSFUL  (2.3 MB)
 :app:lintVitalStableRelease     BUILD SUCCESSFUL
 ```
 
 测试覆盖：acw 签名（与 JS 参考实现交叉验证）、版块/列表/帖子/楼层解析、导读解析、
-登录表单与失败响应、正文富文本、帖子卡片 Compose 真实渲染、主线程安全。
+登录表单与失败响应、正文富文本、帖子卡片 Compose 真实渲染、主线程安全、
+私信会话/收藏/发帖表单解析。
 
 ## 文档
 

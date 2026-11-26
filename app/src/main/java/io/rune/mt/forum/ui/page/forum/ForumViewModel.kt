@@ -360,6 +360,75 @@ class ForumViewModel(
     }
 
 
+    // ---- Thread quick actions (收藏 / 顶赞 / 关注楼主) ------------------------
+    private val _actionMessage = MutableStateFlow<String?>(null)
+    val actionMessage: StateFlow<String?> = _actionMessage.asStateFlow()
+
+    fun consumeActionMessage() {
+        _actionMessage.value = null
+    }
+
+    private fun authorUidOfThread(): Int? =
+        _threadState.value.posts.firstOrNull { it.isOp }?.authorUid
+            ?: _threadState.value.posts.firstOrNull()?.authorUid
+
+    /** Adds the open thread to favourites (the site has no "un-favourite" here). */
+    fun favoriteCurrentThread() {
+        val thread = _threadState.value
+        if (session.value.user == null) {
+            _actionMessage.value = "请先登录"
+            return
+        }
+        val formhash = thread.formhash ?: run {
+            _actionMessage.value = "帖子尚未加载完成"
+            return
+        }
+        viewModelScope.launch {
+            runCatching { repository.addFavorite(thread.tid, formhash) }
+                .onSuccess { ok -> _actionMessage.value = if (ok) "已收藏本帖" else "收藏失败" }
+                .onFailure { e -> _actionMessage.value = e.message ?: "收藏失败" }
+        }
+    }
+
+    /** 顶/推荐 the open thread; this is irreversible on the site. */
+    fun recommendCurrentThread() {
+        val thread = _threadState.value
+        if (session.value.user == null) {
+            _actionMessage.value = "请先登录"
+            return
+        }
+        val formhash = thread.formhash ?: run {
+            _actionMessage.value = "帖子尚未加载完成"
+            return
+        }
+        viewModelScope.launch {
+            runCatching { repository.recommendThread(thread.tid, formhash) }
+                .onSuccess { ok -> _actionMessage.value = if (ok) "已推荐本帖" else "推荐失败" }
+                .onFailure { e -> _actionMessage.value = e.message ?: "推荐失败" }
+        }
+    }
+
+    /** Follows the OP of the open thread. */
+    fun followCurrentThreadAuthor() {
+        if (session.value.user == null) {
+            _actionMessage.value = "请先登录"
+            return
+        }
+        val uid = authorUidOfThread() ?: run {
+            _actionMessage.value = "楼主信息缺失"
+            return
+        }
+        val formhash = _threadState.value.formhash ?: run {
+            _actionMessage.value = "帖子尚未加载完成"
+            return
+        }
+        viewModelScope.launch {
+            runCatching { repository.followUser(uid, formhash) }
+                .onSuccess { ok -> _actionMessage.value = if (ok) "已关注楼主" else "关注失败" }
+                .onFailure { e -> _actionMessage.value = e.message ?: "关注失败" }
+        }
+    }
+
     // ---- Guide (导读) ---------------------------------------------------------
     private val _guideState = MutableStateFlow(ForumListState())
     val guideState: StateFlow<ForumListState> = _guideState.asStateFlow()

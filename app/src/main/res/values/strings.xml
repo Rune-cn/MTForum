@@ -166,4 +166,8 @@
     <string name="forum_tag_with_image">Image</string>
     <string name="forum_tag_hot">Hot</string>
     <string name="forum_hot_ranking">Trending</string>
+    <string name="thread_action_more">More actions</string>
+    <string name="thread_action_like">Upvote this thread</string>
+    <string name="thread_action_follow_author">Follow the author</string>
+    <string name="forum_new_thread">New thread</string>
 </resources>

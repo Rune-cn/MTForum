@@ -166,4 +166,8 @@
     <string name="forum_tag_with_image">有图</string>
     <string name="forum_tag_hot">热门</string>
     <string name="forum_hot_ranking">热度排行</string>
+    <string name="thread_action_more">更多操作</string>
+    <string name="thread_action_like">推荐本帖</string>
+    <string name="thread_action_follow_author">关注楼主</string>
+    <string name="forum_new_thread">发帖</string>
 </resources>

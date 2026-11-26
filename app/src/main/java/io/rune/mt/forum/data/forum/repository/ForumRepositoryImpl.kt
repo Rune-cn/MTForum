@@ -4,12 +4,19 @@ package io.rune.mt.forum.data.forum.repository
 import io.rune.mt.forum.data.forum.network.ForumCookieJar
 import io.rune.mt.forum.data.forum.network.ForumHtmlParser
 import io.rune.mt.forum.data.forum.network.ForumHttpClient
+import io.rune.mt.forum.data.forum.network.MultipartPart
 import io.rune.mt.forum.domain.forum.model.Forum
+import io.rune.mt.forum.domain.forum.model.ForumConversationDetail
+import io.rune.mt.forum.domain.forum.model.ForumFavorite
+import io.rune.mt.forum.domain.forum.model.ForumNewThreadForm
+import io.rune.mt.forum.domain.forum.model.ForumPrivateConversation
 import io.rune.mt.forum.domain.forum.model.ForumSession
 import io.rune.mt.forum.domain.forum.model.ForumThread
 import io.rune.mt.forum.domain.forum.model.ForumThreadDetail
 import io.rune.mt.forum.domain.forum.model.ForumThreadPage
 import io.rune.mt.forum.domain.forum.model.ForumUser
+import io.rune.mt.forum.domain.forum.model.NewThreadImage
+import io.rune.mt.forum.domain.forum.model.NewThreadResult
 import io.rune.mt.forum.domain.forum.repository.ForumRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -123,6 +130,145 @@ class ForumRepositoryImpl(
         )
     }
 
+    // ---- Private messages (私信) -------------------------------------------
+
+    override suspend fun getConversations(page: Int): List<ForumPrivateConversation> =
+        withContext(Dispatchers.IO) {
+            ForumHtmlParser.parseConversations(http.getHtml("home.php?mod=space&do=pm&page=$page"))
+        }
+
+    override suspend fun getConversation(uid: Int, page: Int): ForumConversationDetail =
+        withContext(Dispatchers.IO) {
+            val html = http.getHtml("home.php?mod=space&do=pm&subop=view&touid=$uid&page=$page")
+            ForumHtmlParser.parseConversation(html, uid)
+        }
+
+    override suspend fun sendPrivateMessage(
+        uid: Int,
+        message: String,
+        formhash: String,
+        pmid: String?,
+    ): Boolean = withContext(Dispatchers.IO) {
+        val pmidPart = if (pmid != null) "&pmid=$pmid" else ""
+        val html = http.postForm(
+            "home.php?mod=spacecp&ac=pm&op=send$pmidPart&daterange=2&pmsubmit=yes&mobile=2",
+            mapOf("formhash" to formhash, "touid" to uid.toString(), "message" to message),
+        )
+        writeSucceeded(html)
+    }
+
+    // ---- Favourites (收藏) --------------------------------------------------
+
+    override suspend fun getFavorites(page: Int): List<ForumFavorite> = withContext(Dispatchers.IO) {
+        ForumHtmlParser.parseFavorites(
+            http.getHtml("home.php?mod=space&do=favorite&view=me&type=all&page=$page"),
+        )
+    }
+
+    override suspend fun addFavorite(tid: Int, formhash: String): Boolean = withContext(Dispatchers.IO) {
+        // The site favourites in two hops: GET renders a small form, POST submits it. A single GET
+        // only returns that form, which is why a naive one-shot request never adds anything.
+        http.getHtml("home.php?mod=spacecp&ac=favorite&type=thread&id=$tid&handlekey=favorite_thread")
+        val html = http.postForm(
+            "home.php?mod=spacecp&ac=favorite&type=thread&id=$tid&spaceuid=&mobile=2",
+            mapOf(
+                "formhash" to formhash,
+                "favoritesubmit" to "true",
+                "handlekey" to "favorite_add",
+                "description" to "",
+                "referer" to "https://bbs.binmt.cc/thread-$tid-1-1.html",
+            ),
+        )
+        writeSucceeded(html)
+    }
+
+    override suspend fun removeFavorite(favid: Long, formhash: String): Boolean = withContext(Dispatchers.IO) {
+        http.getHtml("home.php?mod=spacecp&ac=favorite&op=delete&favid=$favid&type=all")
+        val html = http.postForm(
+            "home.php?mod=spacecp&ac=favorite&op=delete&favid=$favid&type=all&mobile=2",
+            mapOf(
+                "referer" to "https://bbs.binmt.cc/home.php?mod=space&do=favorite&view=me",
+                "deletesubmit" to "true",
+                "formhash" to formhash,
+                "handlekey" to "comiis",
+            ),
+        )
+        writeSucceeded(html)
+    }
+
+    // ---- Follow (关注) ------------------------------------------------------
+
+    override suspend fun followUser(uid: Int, formhash: String): Boolean = withContext(Dispatchers.IO) {
+        writeSucceeded(
+            http.getHtml("home.php?mod=spacecp&ac=follow&op=add&hash=$formhash&fuid=$uid&mobile=2"),
+        )
+    }
+
+    override suspend fun unfollowUser(uid: Int, formhash: String): Boolean = withContext(Dispatchers.IO) {
+        writeSucceeded(
+            http.getHtml("home.php?mod=spacecp&ac=follow&op=del&hash=$formhash&fuid=$uid&mobile=2"),
+        )
+    }
+
+    // ---- Recommend / like (顶·赞) ------------------------------------------
+
+    override suspend fun recommendThread(tid: Int, formhash: String): Boolean = withContext(Dispatchers.IO) {
+        writeSucceeded(
+            http.getHtml(
+                "forum.php?mod=misc&action=recommend&handlekey=recommend_add&do=add&tid=$tid&hash=$formhash",
+            ),
+        )
+    }
+
+    // ---- New thread (发新帖) ------------------------------------------------
+
+    override suspend fun getNewThreadForm(fid: Int): ForumNewThreadForm = withContext(Dispatchers.IO) {
+        ForumHtmlParser.parseNewThreadForm(
+            http.getHtml("forum.php?mod=post&action=newthread&fid=$fid"),
+            fid,
+        )
+    }
+
+    override suspend fun createThread(
+        fid: Int,
+        subject: String,
+        message: String,
+        form: ForumNewThreadForm,
+        images: List<NewThreadImage>,
+    ): NewThreadResult = withContext(Dispatchers.IO) {
+        val posttime = form.posttime ?: (System.currentTimeMillis() / 1000).toString()
+        val fields = mapOf(
+            "formhash" to form.formhash.orEmpty(),
+            "posttime" to posttime,
+            "subject" to subject,
+            "message" to message,
+            "htmlon" to "0",
+            "usesig" to "1",
+            "allownoticeauthor" to "1",
+            "save" to "",
+        )
+        val parts = images.map { MultipartPart("Filedata", it.fileName, it.contentType, it.bytes) }
+        val html = http.postMultipart(
+            "forum.php?mod=post&action=newthread&fid=$fid&extra=&topicsubmit=yes&mobile=2",
+            fields,
+            parts,
+        )
+        if (ForumHtmlParser.isLoginRequired(html)) {
+            return@withContext NewThreadResult.Failure("登录状态已失效，请重新登录")
+        }
+        val notice = ForumHtmlParser.extractNotice(html)
+        val failed = notice != null && ERROR_WORDS.containsMatchIn(notice)
+        if (failed) {
+            NewThreadResult.Failure(notice!!)
+        } else {
+            NewThreadResult.Success(notice, ForumHtmlParser.resultTid(html))
+        }
+    }
+
+    /** A write is considered successful unless it bounced to the login form or returned an error notice. */
+    private fun writeSucceeded(html: String): Boolean =
+        !ForumHtmlParser.isLoginRequired(html) && !ERROR_WORDS.containsMatchIn(ForumHtmlParser.extractNotice(html).orEmpty())
+
     /** Absolute-izes the relative asset URLs the site emits inside profile pages. */
     private fun resolveUrl(url: String): String = when {
         url.startsWith("http") -> url
@@ -165,5 +311,10 @@ class ForumRepositoryImpl(
         if (fromCookieName != null) return fromCookieName
         return raw.entries.firstOrNull { it.key.endsWith("_auth") }
             ?.value?.takeWhile { it.isDigit() }?.toIntOrNull()
+    }
+
+    private companion object {
+        /** Discuz error notices that mean a write did not go through. */
+        val ERROR_WORDS = Regex("抱歉|非法|错误|不能|失败|无权限|权限不足|间隔")
     }
 }

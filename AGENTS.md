@@ -20,12 +20,12 @@
 
 ## 项目布局
 
-- `data/forum/` — 反爬、Cookie、HTTP、HTML 解析、表情目录、仓库
-- `domain/forum/` — 领域模型与仓库接口
-- `ui/page/forum/` — 首页/列表/帖子/导读/消息、正文渲染、回复、表情选择
+- `data/forum/` — 反爬、Cookie、HTTP（含 multipart）、HTML 解析、表情目录、仓库
+- `domain/forum/` — 领域模型与仓库接口（含 `ForumMessaging.kt`：私信/收藏/发帖模型）
+- `ui/page/forum/` — 首页/列表/帖子/导读/私信/发帖、正文渲染、回复、表情选择、图片查看
 - `ui/page/login/` — 登录
 - `ui/page/miuix/` — 设置、主题、关于、共享组件
-- `docs/` — 交接、逆向规格、架构、构建环境
+- `docs/` — 交接、逆向规格（§12–§17 是私信/收藏/关注/顶/发帖/重登）、架构、构建环境
 
 ## 构建与验证
 
@@ -36,7 +36,10 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
 ```
 
 - 改 Kotlin/XML 后**必须**跑 `:app:compileStableDebugKotlin`
-- 改解析器后**必须**跑单元测试
+- 改解析器后**必须**跑单元测试（改解析器须同步 `app/src/test/resources/forum/` 样本）
+- **Kotlin 文件头用 `//` 而非 `#`**：`# SPDX-License-Identifier:` 会被当成非法令牌，整个文件编译失败
+- **不要用 PowerShell 的 `Set-Content -Encoding UTF8` 改写含中文的 Kotlin/XML**：
+   本机 PowerShell 5 会写成 GBK/加 BOM 并破坏全角标点，请用编辑器工具改
 - **如实报告**跑了什么、结果如何
 
 ## 铁律（易踩坑）

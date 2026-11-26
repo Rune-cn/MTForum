@@ -28,8 +28,14 @@ import top.yukonga.miuix.kmp.material.GlassDefaults
 import top.yukonga.miuix.kmp.basic.PopupPositionProvider
 import top.yukonga.miuix.kmp.window.WindowListPopup
 
+/** One entry of the thread overflow menu. */
+internal data class ThreadActionItem(
+    val label: String,
+    val onClick: () -> Unit,
+)
+
 /**
- * Trailing overflow actions for the thread screen: copy link and share.
+ * Trailing overflow actions for the thread screen (favourite / like / follow author / copy / share).
  *
  * Both style branches anchor to the button's real window bounds. Two placement bugs lived here:
  *
@@ -40,17 +46,11 @@ import top.yukonga.miuix.kmp.window.WindowListPopup
  *    which reads as "错位". `ContextMenuPositionProvider` + `TopEnd` right-aligns it properly.
  */
 @Composable
-internal fun ThreadActions(
-    onCopyLink: () -> Unit,
-    onShare: () -> Unit,
-) {
+internal fun ThreadActions(items: List<ThreadActionItem>) {
+    if (items.isEmpty()) return
     var expanded by remember { mutableStateOf(false) }
     // Window-space bounds of the icon button; refreshed on every layout pass.
     var anchorBounds by remember { mutableStateOf(Rect.Zero) }
-
-
-    val copyLabel = stringResource(R.string.thread_action_copy_link)
-    val shareLabel = stringResource(R.string.thread_action_share)
 
     Box {
         MiuixTopBarIconButton(
@@ -59,7 +59,7 @@ internal fun ThreadActions(
         ) {
             Icon(
                 imageVector = Icons.Rounded.MoreVert,
-                contentDescription = copyLabel,
+                contentDescription = stringResource(R.string.thread_action_more),
             )
         }
 
@@ -72,20 +72,15 @@ internal fun ThreadActions(
                 backdrop = null,
                 visuals = GlassPopupDefaults.visuals(style = GlassDefaults.style(AppTheme.isDark)),
             ) {
-                GlassPopupItem(
-                    text = copyLabel,
-                    onClick = {
-                        expanded = false
-                        onCopyLink()
-                    },
-                )
-                GlassPopupItem(
-                    text = shareLabel,
-                    onClick = {
-                        expanded = false
-                        onShare()
-                    },
-                )
+                items.forEach { item ->
+                    GlassPopupItem(
+                        text = item.label,
+                        onClick = {
+                            expanded = false
+                            item.onClick()
+                        },
+                    )
+                }
             }
         } else {
             WindowListPopup(
@@ -96,18 +91,15 @@ internal fun ThreadActions(
                 onDismissRequest = { expanded = false },
             ) {
                 ListPopupColumn {
-                    listOf(copyLabel, shareLabel).forEachIndexed { index, label ->
+                    items.forEachIndexed { index, item ->
                         DropdownImpl(
-                            text = label,
-                            optionSize = 2,
+                            text = item.label,
+                            optionSize = items.size,
                             isSelected = false,
                             index = index,
                             onSelectedIndexChange = {
                                 expanded = false
-                                when (index) {
-                                    0 -> onCopyLink()
-                                    else -> onShare()
-                                }
+                                item.onClick()
                             },
                         )
                     }

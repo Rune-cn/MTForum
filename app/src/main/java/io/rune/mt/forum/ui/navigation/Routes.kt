@@ -36,4 +36,12 @@ sealed interface Route : NavKey {
     /** A thread. `title` travels with the key for the same reason. */
     @Serializable
     data class ForumThread(val tid: Int, val title: String) : Route
+
+    /** One private-message conversation with [uid]. */
+    @Serializable
+    data class PrivateConversation(val uid: Int, val name: String) : Route
+
+    /** Compose a new thread in board [fid] (版块列表页的「发帖」入口). */
+    @Serializable
+    data class NewThread(val fid: Int, val name: String) : Route
 }

@@ -126,6 +126,10 @@ jobs:
           EOF
           chmod 600 keystore/release.jks keystore.properties
 
+      # Windows checkouts drop the Unix executable bit; restore it before invoking the wrapper.
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
       - name: Build Stable release APK
         env:
           GITHUB_ACTOR: ${{ github.actor }}
