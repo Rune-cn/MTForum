@@ -122,6 +122,27 @@ fun ForumThreadPage(
         .only(WindowInsetsSides.Horizontal)
         .asPaddingValues()
 
+    // One list feeds both the top-bar button and the root-level OS4 menu.
+    val threadActions = listOf(
+        ThreadActionItem(favoriteLabel) { viewModel.favoriteCurrentThread() },
+        ThreadActionItem(likeLabel) { viewModel.recommendCurrentThread() },
+        ThreadActionItem(followLabel) { viewModel.followCurrentThreadAuthor() },
+        ThreadActionItem(copyLabel) {
+            clipboard?.setText(threadUrl)
+            scope.launch { snackbarHostState.showSnackbar(copiedText) }
+        },
+        // A real system share sheet, not a clipboard copy disguised as sharing.
+        ThreadActionItem(shareLabel) {
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, state.title.ifBlank { title })
+                putExtra(Intent.EXTRA_TEXT, "$sharePrefix${state.title.ifBlank { title}}\n$threadUrl")
+            }
+            context.startActivity(Intent.createChooser(intent, shareLabel))
+        },
+    )
+    val actionsState = rememberThreadActionsState()
+
     LaunchedEffect(tid) {
         Timber.tag("ForumThreadPage").i("thread shown tid=%d", tid)
         viewModel.openThread(tid, title)
@@ -140,112 +161,101 @@ fun ForumThreadPage(
         }
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        topBar = {
-            MiuixTopAppBar(
-                title = state.title.ifBlank { title },
-                backdrop = chrome.backdrop,
-                scrollBehavior = chrome.scrollBehavior,
-                navigationIcon = { MiuixBackButton(onClick = { navigator.pop() }) },
-                actions = {
-                    ThreadActions(
-                        items = listOf(
-                            ThreadActionItem(favoriteLabel) { viewModel.favoriteCurrentThread() },
-                            ThreadActionItem(likeLabel) { viewModel.recommendCurrentThread() },
-                            ThreadActionItem(followLabel) { viewModel.followCurrentThreadAuthor() },
-                            ThreadActionItem(copyLabel) {
-                                clipboard?.setText(threadUrl)
-                                scope.launch { snackbarHostState.showSnackbar(copiedText) }
-                            },
-                            // A real system share sheet, not a clipboard copy disguised as sharing.
-                            ThreadActionItem(shareLabel) {
-                                val intent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_SUBJECT, state.title.ifBlank { title })
-                                    putExtra(Intent.EXTRA_TEXT, "$sharePrefix${state.title.ifBlank { title}}\n$threadUrl")
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            topBar = {
+                MiuixTopAppBar(
+                    title = state.title.ifBlank { title },
+                    backdrop = chrome.backdrop,
+                    scrollBehavior = chrome.scrollBehavior,
+                    navigationIcon = { MiuixBackButton(onClick = { navigator.pop() }) },
+                    actions = {
+                        // Only the button lives in the bar. The OS4 menu is an inline overlay, so
+                        // it is composed at the page root below instead of inside this cell.
+                        ThreadActions(items = threadActions, state = actionsState)
+                    },
+                )
+            },
+        ) { innerPadding ->
+            // Reply lives on a floating button at the bottom-right so it is reachable while
+            // reading, instead of competing with the title for the top bar.
+            Box(modifier = Modifier.fillMaxSize()) {
+                val contentPadding = forumInsets(
+                    inner = innerPadding,
+                    horizontal = horizontalInsets,
+                    outer = outerPadding,
+                    direction = layoutDirection,
+                    gutter = contentGutter,
+                )
+                Box(modifier = chrome.contentBackdropModifier.fillMaxSize()) {
+                    PullToRefresh(
+                        isRefreshing = state.isRefreshing,
+                        onRefresh = viewModel::refreshThread,
+                        pullToRefreshState = pullToRefreshState,
+                        contentPadding = contentPadding,
+                    ) {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .scrollEndHaptic()
+                                .overScrollVertical()
+                                .nestedScroll(chrome.scrollBehavior.nestedScrollConnection),
+                            contentPadding = contentPadding,
+                        ) {
+                            if (state.isLoading) {
+                                item { ForumLoadingCard() }
+                            } else if (state.error != null && state.posts.isEmpty()) {
+                                item {
+                                    ForumErrorCard(
+                                        message = state.error.orEmpty(),
+                                        onRetry = viewModel::refreshThread,
+                                    )
                                 }
-                                context.startActivity(Intent.createChooser(intent, shareLabel))
-                            },
-                        ),
-                    )
-                },
-            )
-        },
-    ) { innerPadding ->
-        // Reply lives on a floating button at the bottom-right so it is reachable while
-        // reading, instead of competing with the title for the top bar.
-        Box(modifier = Modifier.fillMaxSize()) {
-        val contentPadding = forumInsets(
-            inner = innerPadding,
-            horizontal = horizontalInsets,
-            outer = outerPadding,
-            direction = layoutDirection,
-            gutter = contentGutter,
-        )
-            Box(modifier = chrome.contentBackdropModifier.fillMaxSize()) {
-            PullToRefresh(
-                isRefreshing = state.isRefreshing,
-                onRefresh = viewModel::refreshThread,
-                pullToRefreshState = pullToRefreshState,
-                contentPadding = contentPadding,
-            ) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .scrollEndHaptic()
-                        .overScrollVertical()
-                        .nestedScroll(chrome.scrollBehavior.nestedScrollConnection),
-                    contentPadding = contentPadding,
-                ) {
-                    if (state.isLoading) {
-                        item { ForumLoadingCard() }
-                    } else if (state.error != null && state.posts.isEmpty()) {
-                        item {
-                            ForumErrorCard(
-                                message = state.error.orEmpty(),
-                                onRetry = viewModel::refreshThread,
-                            )
-                        }
-                    } else {
-                        if (state.posts.isEmpty()) {
-                            item { ForumEmptyCard(stringResource(R.string.forum_empty_posts)) }
-                        } else {
-                            items(items = state.posts, key = { "post_${it.pid}" }) { post ->
-                                ForumPostCard(
-                                    post = post,
-                                    onReply = { viewModel.requestReply(it) },
-                                    onImageClick = { viewerUrl = it },
-                                )
+                            } else {
+                                if (state.posts.isEmpty()) {
+                                    item { ForumEmptyCard(stringResource(R.string.forum_empty_posts)) }
+                                } else {
+                                    items(items = state.posts, key = { "post_${it.pid}" }) { post ->
+                                        ForumPostCard(
+                                            post = post,
+                                            onReply = { viewModel.requestReply(it) },
+                                            onImageClick = { viewerUrl = it },
+                                        )
+                                    }
+                                }
+
+                                item {
+                                    ForumPagingFooter(
+                                        page = state.page,
+                                        totalPages = state.totalPages,
+                                        isAppending = state.isAppending,
+                                        onLoadMore = viewModel::loadMorePosts,
+                                    )
+                                }
                             }
                         }
+                    }
+                }
 
-                        item {
-                            ForumPagingFooter(
-                                page = state.page,
-                                totalPages = state.totalPages,
-                                isAppending = state.isAppending,
-                                onLoadMore = viewModel::loadMorePosts,
-                            )
-                        }
+                FloatingActionButton(
+                    onClick = { viewModel.requestReply() },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = contentGutter, bottom = contentGutter),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Reply,
+                        contentDescription = stringResource(R.string.thread_action_reply),
+                    )
                 }
             }
         }
-            }
 
-            FloatingActionButton(
-                onClick = { viewModel.requestReply() },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = contentGutter, bottom = contentGutter),
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Reply,
-                    contentDescription = stringResource(R.string.thread_action_reply),
-                )
-            }
-        }
+        // Root-level overlay: this fillMaxSize page box is the popup host, which is what the
+        // glass panel is measured and clamped against.
+        ThreadActionsGlassMenu(items = threadActions, state = actionsState)
     }
 
     // The composer lives outside the Scaffold so it overlays the thread instead of scrolling
