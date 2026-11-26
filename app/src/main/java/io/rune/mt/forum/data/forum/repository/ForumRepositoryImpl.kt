@@ -58,12 +58,13 @@ class ForumRepositoryImpl(
         ForumHtmlParser.parseThreadPage(html, fid, page)
     }
 
-    override suspend fun getGuideThreads(view: ForumGuideView, page: Int): List<ForumThread> =
+    override suspend fun getGuidePage(view: ForumGuideView, page: Int): ForumThreadPage =
         withContext(Dispatchers.IO) {
             // Every 导读 view renders the same thread-list DOM as a board listing, including
-            // `view=hot`; the board parser reads them unchanged.
+            // `view=hot`; the board parser reads them unchanged and the pager gives the real
+            // page count (`div.pg` -> `/ 12 页`), which 抢沙发 omits (single page).
             val html = http.getHtml(ForumUrls.guidePath(view, page))
-            ForumHtmlParser.parseThreadPage(html, fid = 0, page = page).threads
+            ForumHtmlParser.parseThreadPage(html, fid = 0, page = page)
         }
 
     override suspend fun getThreadDetail(tid: Int, page: Int): ForumThreadDetail = withContext(Dispatchers.IO) {

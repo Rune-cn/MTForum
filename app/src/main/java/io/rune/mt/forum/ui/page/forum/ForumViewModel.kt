@@ -490,9 +490,16 @@ class ForumViewModel(
                     error = null,
                 )
             }
-            runCatching { repository.getGuideThreads(view, page) }
-                .onSuccess { threads ->
-                    Timber.tag(TAG).i("loadGuidePage view=%s page=%d threads=%d", view.value, page, threads.size)
+            runCatching { repository.getGuidePage(view, page) }
+                .onSuccess { result ->
+                    val threads = result.threads
+                    Timber.tag(TAG).i(
+                        "loadGuidePage view=%s page=%d/%d threads=%d",
+                        view.value,
+                        page,
+                        result.totalPages,
+                        threads.size,
+                    )
                     updateGuideView(view) { prev ->
                         val merged = if (append) {
                             prev.threads + threads.filterNot { thread -> prev.threads.any { it.tid == thread.tid } }
@@ -502,10 +509,17 @@ class ForumViewModel(
                         prev.copy(
                             threads = merged,
                             page = page,
-                            // The guide list carries a real pager, but the repository returns rows
-                            // only; keep paging while the server still returns a full page. The
-                            // full list is 50 rows, while sofa has 12 rows and no pager at all.
-                            totalPages = if (threads.size >= GUIDE_FULL_PAGE) page + 1 else page,
+                            // The pager is the site's own count (`/ 12 页`); 抢沙发 prints none, so
+                            // it stays a single page. A truncated pager (no anchor carrying the
+                            // last number) still falls back to the "full page implies another"
+                            // heuristic, which cannot over-page past the real list.
+                            totalPages = if (result.totalPages > 1) {
+                                result.totalPages
+                            } else if (threads.size >= GUIDE_FULL_PAGE) {
+                                page + 1
+                            } else {
+                                page
+                            },
                             loaded = true,
                             isLoading = false,
                             isRefreshing = false,

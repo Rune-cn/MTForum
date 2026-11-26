@@ -24,8 +24,15 @@ interface ForumRepository {
     /** Board listing, [page] is 1-based. */
     suspend fun getThreads(fid: Int, page: Int = 1): ForumThreadPage
 
-    /** One page of a 导读 view ([view]); [page] is 1-based. */
-    suspend fun getGuideThreads(view: ForumGuideView, page: Int = 1): List<ForumThread>
+    /**
+     * One page of a 导读 view ([view]); [page] is 1-based.
+     *
+     * Returns the whole [ForumThreadPage] so the caller gets the server's own pager count: the
+     * guide lists print a real `div.pg` (e.g. `/ 12 页`), unlike the guide endpoint's old
+     * "keep asking until a short page arrives" assumption. 抢沙发 has no pager at all, so its
+     * page count stays 1.
+     */
+    suspend fun getGuidePage(view: ForumGuideView, page: Int = 1): ForumThreadPage
 
     /** Full thread with its replies. */
     suspend fun getThreadDetail(tid: Int, page: Int = 1): ForumThreadDetail
