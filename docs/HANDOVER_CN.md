@@ -518,8 +518,10 @@ host≠页面尺寸）与截图 [screenshots/os4-thread-actions-menu.png](screen
 `ForumImageScreenshotTest` 覆盖；失败→通过样例：相对头像 `""` → 绝对 URL；缩略图
 `data/attachment/...` → `https://cdn...`；`javascript:;` 不再拼成站点 URL。
 
-**仍未验证**：`mod=image` 在**真实登录会话**下是否返回图片字节，本环境无凭据，只能在装配层
-（jar 按 host 过滤 / client 含 acw / fallback 映射）证明；需要真机登录后看带附件帖。
+**真机确认（2026-11-26）**：26.11.2 发布后由机主反馈「已经能用了」——论坛自带图床/附件图
+恢复显示。回看根因，最后一块拼图是**正文懒加载属性**（`comiis_loadimages → file → zoomfile →
+data-src`），此前只读 `src` 占位，所以 26.11/26.11.1 修了会话与 ACW 也不见好；`mod=image`
+的登录态链路仍建议随手回归一次。
 
 ### 12.3 已发布 Release
 
@@ -527,6 +529,8 @@ host≠页面尺寸）与截图 [screenshots/os4-thread-actions-menu.png](screen
 - `26.11.1`（versionCode 13）：在 26.11 上再加固——`AcwInterceptor` 按 Content-Type 门控
   （`image/*` 不探测不重放）、图片 loader 在 `startKoin` 后 eager 注入、Coil ServiceLoader 关闭
   （组件表 debug/release 一致），并新增 `AcwImageFetchTest` 与失败占位截图测试。
+- `26.11.2`（versionCode 14）✅ **真机确认可用**：正文懒加载属性优先（图床/附件图空白的主因）
+  + 失败占位显示 `⚠ 域名` 便于定位；新增 `ForumBodyImageUrlTest`（84 个测试）。
 - 签名密钥**不**入库：本机 `C:\Users\Administrator\Documents\1\secrets\mtforum-release.jks`
   （密码在同目录 `mtforum-release.properties`）；GitHub 侧用 `KEYSTORE_BASE64` 等 4 个 Secrets。
   该文件丢失后无法再签发可升级包，务必备份。
