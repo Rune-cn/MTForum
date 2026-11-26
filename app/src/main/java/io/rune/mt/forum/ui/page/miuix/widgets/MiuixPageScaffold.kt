@@ -59,6 +59,10 @@ class MiuixPageChrome internal constructor(
  *
  * Both the backdrop and the scroll behavior are derived from the ambient style, so no caller
  * has to decide when glass applies.
+ *
+ * The backdrop is a **content** layer: [MiuixPageScaffold] applies [MiuixPageChrome.contentBackdropModifier]
+ * to the scroll container only, and pages that own their `Scaffold` (thread, board, notices) do
+ * the same around their list. It therefore never contains the top bar that samples it.
  */
 @Composable
 fun rememberMiuixPageChrome(enableBlur: Boolean = true): MiuixPageChrome {
@@ -76,6 +80,17 @@ fun rememberMiuixPageChrome(enableBlur: Boolean = true): MiuixPageChrome {
 
 /**
  * Standard Miuix page: the shared top bar plus a scroll container already wired to the backdrop.
+ *
+ * Layer model (the shape `example/.../MainPage.kt` uses):
+ *
+ *  - `chrome.backdrop` is recorded by `Modifier.layerBackdrop` on the scroll container, i.e. a
+ *    layer that holds **only the page body**;
+ *  - the same instance is handed to [MiuixTopAppBar], which is composed in the `Scaffold`'s
+ *    `topBar` slot — outside that recorded subtree, so the bar samples the body and can never
+ *    source itself;
+ *  - `MiuixComponentScope.pageBackdrop` (the app-wide layer recorded around the whole navigation
+ *    tree) is deliberately **not** used here. It contains the bar, and `MiuixTopAppBar` filters
+ *    it out through `barBackdrop` even if a caller passes it by mistake.
  *
  * @param title Bar title, already resolved from resources.
  * @param navigationIcon Leading control; typically [MiuixBackButton] on secondary screens.
