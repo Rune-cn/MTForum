@@ -62,6 +62,7 @@ import io.rune.mt.forum.domain.forum.model.ForumPost
 import io.rune.mt.forum.ui.navigation.LocalNavigator
 import io.rune.mt.forum.ui.navigation.Route
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBackButton
+import io.rune.mt.forum.ui.page.miuix.widgets.MiuixPageScrollBar
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopAppBar
 import io.rune.mt.forum.ui.page.miuix.widgets.rememberMiuixPageChrome
 import io.rune.mt.forum.ui.theme.AppTheme
@@ -211,56 +212,66 @@ fun ForumThreadPage(
                         pullToRefreshState = pullToRefreshState,
                         contentPadding = contentPadding,
                     ) {
-                        LazyColumn(
-                            state = listState,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .scrollEndHaptic()
-                                .overScrollVertical()
-                                .nestedScroll(chrome.scrollBehavior.nestedScrollConnection),
-                            contentPadding = contentPadding,
-                        ) {
-                            if (state.isLoading) {
-                                item { ForumLoadingCard() }
-                            } else if (state.error != null && state.posts.isEmpty()) {
-                                item {
-                                    ForumErrorCard(
-                                        message = state.error.orEmpty(),
-                                        onRetry = viewModel::refreshThread,
-                                    )
-                                }
-                            } else {
-                                if (state.posts.isEmpty()) {
-                                    item { ForumEmptyCard(stringResource(R.string.forum_empty_posts)) }
+                        // The scroll bar is a sibling of the list inside PullToRefresh (exactly the
+                        // shape PullToRefreshPage.kt uses in the Miuix example), so the pull
+                        // gesture keeps a single owner and the thumb still tracks the drag.
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            LazyColumn(
+                                state = listState,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .scrollEndHaptic()
+                                    .overScrollVertical()
+                                    .nestedScroll(chrome.scrollBehavior.nestedScrollConnection),
+                                contentPadding = contentPadding,
+                            ) {
+                                if (state.isLoading) {
+                                    item { ForumLoadingCard() }
+                                } else if (state.error != null && state.posts.isEmpty()) {
+                                    item {
+                                        ForumErrorCard(
+                                            message = state.error.orEmpty(),
+                                            onRetry = viewModel::refreshThread,
+                                        )
+                                    }
                                 } else {
-                                    items(items = state.posts, key = { "post_${it.pid}" }) { post ->
-                                        ForumPostCard(
-                                            post = post,
-                                            forumName = state.forumName,
-                                            onAuthorClick = { author ->
-                                                // `authorUid == 0` means the row carried no profile
-                                                // link (guest/deleted account); pushing a profile
-                                                // for uid 0 would 404, so the card skips it.
-                                                if (author.authorUid != 0) {
-                                                    navigator.push(
-                                                        Route.UserProfile(author.authorUid, author.authorName),
-                                                    )
-                                                }
-                                            },
-                                            onImageClick = { viewerUrl = it },
+                                    if (state.posts.isEmpty()) {
+                                        item { ForumEmptyCard(stringResource(R.string.forum_empty_posts)) }
+                                    } else {
+                                        items(items = state.posts, key = { "post_${it.pid}" }) { post ->
+                                            ForumPostCard(
+                                                post = post,
+                                                forumName = state.forumName,
+                                                onAuthorClick = { author ->
+                                                    // `authorUid == 0` means the row carried no profile
+                                                    // link (guest/deleted account); pushing a profile
+                                                    // for uid 0 would 404, so the card skips it.
+                                                    if (author.authorUid != 0) {
+                                                        navigator.push(
+                                                            Route.UserProfile(author.authorUid, author.authorName),
+                                                        )
+                                                    }
+                                                },
+                                                onImageClick = { viewerUrl = it },
+                                            )
+                                        }
+                                    }
+
+                                    item {
+                                        ForumPagingFooter(
+                                            page = state.page,
+                                            totalPages = state.totalPages,
+                                            isAppending = state.isAppending,
+                                            onLoadMore = viewModel::loadMorePosts,
                                         )
                                     }
                                 }
-
-                                item {
-                                    ForumPagingFooter(
-                                        page = state.page,
-                                        totalPages = state.totalPages,
-                                        isAppending = state.isAppending,
-                                        onLoadMore = viewModel::loadMorePosts,
-                                    )
-                                }
                             }
+                            MiuixPageScrollBar(
+                                listState = listState,
+                                contentPadding = contentPadding,
+                                scrollBehavior = chrome.scrollBehavior,
+                            )
                         }
                     }
                 }

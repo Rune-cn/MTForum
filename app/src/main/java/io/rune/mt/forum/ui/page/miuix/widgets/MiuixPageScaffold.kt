@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package io.rune.mt.forum.ui.page.miuix.widgets
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -116,18 +117,37 @@ fun MiuixPageScaffold(
             )
         },
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(chrome.contentBackdropModifier)
-                .scrollEndHaptic()
-                .overScrollVertical()
-                .nestedScroll(chrome.scrollBehavior.nestedScrollConnection),
-            state = listState,
-            contentPadding = insetsOf(innerPadding, horizontalSafeInsets, outerPadding, horizontalPadding, verticalPadding, layoutDirection),
-            overscrollEffect = null,
-            content = content,
+        val contentPadding = insetsOf(
+            innerPadding,
+            horizontalSafeInsets,
+            outerPadding,
+            horizontalPadding,
+            verticalPadding,
+            layoutDirection,
         )
+        // The scroll bar is a sibling overlay of the list, matching the Miuix example pages
+        // (`VerticalScrollBar(rememberScrollBarAdapter(listState))` inside the content `Box`).
+        // It reads the same content padding the list uses, so the thumb never covers the first
+        // or last row and the track stops at the scaffold's own bar inset.
+        Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(chrome.contentBackdropModifier)
+                    .scrollEndHaptic()
+                    .overScrollVertical()
+                    .nestedScroll(chrome.scrollBehavior.nestedScrollConnection),
+                state = listState,
+                contentPadding = contentPadding,
+                overscrollEffect = null,
+                content = content,
+            )
+            MiuixPageScrollBar(
+                listState = listState,
+                contentPadding = contentPadding,
+                scrollBehavior = chrome.scrollBehavior,
+            )
+        }
     }
 }
 
