@@ -7,7 +7,6 @@
     <string name="personalization">个性化</string>
     <string name="about">关于</string>
     <string name="other">其它</string>
-    <string name="debug">调试</string>
     <string name="about_detail">关于 MT论坛</string>
     <string name="app_version_info_format">%1$s %2$s (%3$s)</string>
     <string name="get_update">获取更新</string>
@@ -107,8 +106,6 @@
     <string name="update_sheet_download">下载更新</string>
     <string name="checking_update">正在检查更新…</string>
     <string name="run_logs_cleared">日志已清空</string>
-    <string name="crash_logs">崩溃日志</string>
-    <string name="crash_logs_empty">暂无崩溃记录</string>
     <string name="login_title">登录</string>
     <string name="login_account_desc">客户端会先获取 formhash，再通过 HTTPS 提交账号信息。</string>
     <string name="login_username_label">用户名</string>

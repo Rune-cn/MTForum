@@ -10,6 +10,4 @@ data class AboutState(
     val autoCheckUpdateOnStart: Boolean = false,
     val appIcon: ImageBitmap? = null,
     val updateInfo: UpdateInfo? = null,
-    /** First line (timestamp) of the latest crash dump, null when none. */
-    val latestCrashSummary: String? = null,
 )

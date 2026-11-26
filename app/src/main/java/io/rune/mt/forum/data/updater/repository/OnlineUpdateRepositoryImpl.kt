@@ -61,9 +61,7 @@ class OnlineUpdateRepositoryImpl(
                         allowInternetAccess = prefs.allowInternetAccess,
                         isDebug = AppConfig.isDebug,
                         level = AppConfig.LEVEL,
-                        packageName = context.packageName,
-                        officialPackageName = context.packageName,
-                                            )
+                    )
                 ) {
                     Timber.d(
                         "checkUpdate: Skipped. allowInternetAccess=${prefs.allowInternetAccess}, " +

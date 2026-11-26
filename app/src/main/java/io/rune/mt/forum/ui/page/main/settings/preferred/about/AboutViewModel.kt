@@ -13,7 +13,6 @@ import io.rune.mt.forum.domain.settings.repository.AppSettingsRepository
 import io.rune.mt.forum.domain.settings.repository.BooleanSetting
 import io.rune.mt.forum.domain.settings.usecase.settings.UpdateSettingUseCase
 import io.rune.mt.forum.domain.updater.repository.UpdateRepository
-import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -41,21 +40,18 @@ class AboutViewModel(
     val uiEvents = _uiEvents.asSharedFlow()
 
     private val _appIcon = MutableStateFlow<ImageBitmap?>(null)
-    private val _latestCrashSummary = MutableStateFlow<String?>(null)
 
     val state: StateFlow<AboutState> = combine(
         appSettingsRepo.preferencesFlow,
         updateRepo.updateInfoFlow,
         _appIcon,
-        _latestCrashSummary,
-    ) { prefs, updateInfo, appIcon, crashSummary ->
+    ) { prefs, updateInfo, appIcon ->
         AboutState(
             hasUpdate = prefs.allowInternetAccess && (updateInfo?.hasUpdate ?: false),
             remoteVersion = if (prefs.allowInternetAccess) updateInfo?.remoteVersion.orEmpty() else "",
             autoCheckUpdateOnStart = prefs.autoCheckUpdateOnStart,
             appIcon = appIcon,
             updateInfo = updateInfo,
-            latestCrashSummary = crashSummary,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -65,7 +61,6 @@ class AboutViewModel(
 
     init {
         loadAppIcon()
-        loadLatestCrash()
     }
 
     fun dispatch(action: AboutAction) {
@@ -99,13 +94,5 @@ class AboutViewModel(
             val bitmap: Bitmap = drawable.toBitmap(512, 512)
             bitmap.asImageBitmap()
         }.getOrNull()
-    }
-
-    private fun loadLatestCrash() = viewModelScope.launch(Dispatchers.IO) {
-        val dir = File(context.cacheDir, "crashes")
-        val latest = dir.listFiles { f -> f.isFile && f.name.endsWith(".txt") }
-            ?.maxByOrNull { it.lastModified() }
-        _latestCrashSummary.value = latest?.takeIf { it.exists() }
-            ?.useLines { it.firstOrNull() }
     }
 }

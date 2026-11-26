@@ -5,7 +5,6 @@ package io.rune.mt.forum.ui.page.miuix.settings.preferred.about
 import io.rune.mt.forum.ui.page.miuix.settings.preferred.MiuixUpdateSheet
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBlockingLoadingDialog
 
-import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -96,7 +95,6 @@ import io.rune.mt.forum.ui.theme.miuixBlurEffect
 import io.rune.mt.forum.ui.theme.rememberMiuixBlurBackdrop
 import org.koin.androidx.compose.koinViewModel
 import timber.log.Timber
-import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.DropdownArrowEndAction
@@ -222,7 +220,6 @@ private fun MiuixAboutPageInternal(
     viewModel: AboutViewModel,
 ) {
     val navigator = LocalNavigator.current
-    val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
 
     val level = when (AppConfig.LEVEL) {
@@ -307,7 +304,6 @@ private fun MiuixAboutPageInternal(
                     if (url.isNotBlank()) uriHandler.openUri(url)
                 },
                 uriHandler = uriHandler,
-                context = context,
             )
         }
     }
@@ -384,7 +380,6 @@ private fun AboutContentBody(
     onSetAutoCheckUpdateOnStart: (Boolean) -> Unit,
     onDirectUpdate: () -> Unit,
     uriHandler: UriHandler,
-    context: Context,
 ) {
     val layoutDirection = LocalLayoutDirection.current
     val isDark = AppTheme.isDark
@@ -706,43 +701,6 @@ private fun AboutContentBody(
                         }
                     }
 
-                    if (true) { // Shell: debug section always visible
-                        SmallTitle(stringResource(R.string.debug))
-                        Card(
-                            modifier = Modifier
-                                .padding(horizontal = 12.dp)
-                                .padding(bottom = 12.dp)
-                                .then(
-                                    if (backdrop != null) {
-                                        Modifier.textureBlur(
-                                            backdrop = backdrop,
-                                            shape = RoundedCornerShape(16.dp),
-                                            blurRadius = blurRadius,
-                                            noiseCoefficient = noiseCoefficient,
-                                            colors = BlurColors(
-                                                blendColors = currentConfigValue,
-                                                brightness = brightness,
-                                                contrast = contrast,
-                                                saturation = saturation,
-                                            ),
-                                            enabled = blurEnable,
-                                        )
-                                    } else {
-                                        Modifier
-                                    },
-                                ),
-                            colors = CardDefaults.defaultColors(
-                                if (backdrop != null && blurEnable) MiuixTheme.colorScheme.surfaceContainer.copy(alpha = BLUR_CARD_ALPHA) else MiuixTheme.colorScheme.surfaceContainer,
-                                Color.Transparent,
-                            ),
-                        ) {
-                            BasicComponent(
-                                title = stringResource(R.string.crash_logs),
-                                summary = uiState.latestCrashSummary
-                                    ?: stringResource(R.string.crash_logs_empty),
-                            )
-                        }
-                    }
                     Spacer(modifier = Modifier.height(12.dp))
                 }
             }

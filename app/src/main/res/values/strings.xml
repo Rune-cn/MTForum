@@ -7,7 +7,6 @@
     <string name="personalization">Personalization</string>
     <string name="about">About</string>
     <string name="other">Other</string>
-    <string name="debug">Debug</string>
     <string name="about_detail">关于 MT论坛</string>
     <string name="app_version_info_format">%1$s %2$s (%3$s)</string>
     <string name="get_update">Get update</string>
@@ -107,8 +106,6 @@
     <string name="update_sheet_download">Download update</string>
     <string name="checking_update">Checking for updates…</string>
     <string name="run_logs_cleared">Logs cleared</string>
-    <string name="crash_logs">Crash logs</string>
-    <string name="crash_logs_empty">No crashes recorded.</string>
     <string name="login_title">Log in</string>
     <string name="login_account_desc">The client requests a form hash first, then submits your credentials over HTTPS.</string>
     <string name="login_username_label">Username</string>
