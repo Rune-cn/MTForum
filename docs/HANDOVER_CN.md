@@ -222,6 +222,14 @@ jsoup；只有纯 BBCode（客户端外发回复 / 预览响应）才走 `bbcode
 表头语义；嵌套表格降级为文本行（可读即可）；服务端已丢弃的 `font size` 无法还原；超长引用
 不做额外截断（站点已在 HTML 里截好并带 `…`）。
 
+用 `ForumRichBodyScreenshotTest` 在 JVM 上渲出的合成样例（标题 / 代码块 / 表格 / 附件卡 /
+精华 chip / 带作者引用 / 列表 / 分隔线 / 编辑说明），以及真实回复 `rich_bbcode_reply.html`
+（粗体·斜体·下划线·删除线·颜色·居中·代码·链接·列表·表格·hr·表情）的成品：
+
+![富文本正文块](screenshots/rich-body-constructs.png)
+
+![真实 BBCode 回复渲染](screenshots/rich-bbcode-reply.png)
+
 ### 3.6 表情
 
 目录来自 CDN 文件 `https://cdn.binmt.cc/data/cache/common_smilies_var.js`：
@@ -918,6 +926,11 @@ size/align/table 去标记）。
 
 ### 15.7 验证
 
+- 合入 main 后全量复跑（含本轮 §15.8–§15.10 与正文渲染、本地草稿）：
+  **41 suites / 222 tests / 0 failures / 0 errors / 0 skipped**；
+  `:app:lintVitalStableRelease` → BUILD SUCCESSFUL（`Lint found no new issues`）。
+- 分支内验证见各小节。
+
 - `:app:testStableDebugUnitTest` → **36 suites / 192 tests / 0 failures / 0 errors**
 - `:app:lintVitalStableRelease` → BUILD SUCCESSFUL（`Lint found no new issues`）
 - 新增/更新测试：`ForumSearchParserTest`(2)、`ForumNoticesParserTest`(6)、
@@ -1028,6 +1041,7 @@ render effect、或 SafeMode 命中）→ 面板走库的 opaque 兜底，这是
 - `:app:testStableDebugUnitTest` → BUILD SUCCESSFUL，**36 suites / 193 tests / 0 failures / 0 errors**
   （`menu samples the page chrome backdrop never the page backdrop`；label 用例 6 行 + 顺序断言）
 - `:app:lintVitalStableRelease` → BUILD SUCCESSFUL（`Lint found no new issues`）
+- 合入 main 后复跑：**41 suites / 222 tests / 0 failures / 0 errors**（与正文渲染、本地草稿一起）。
 - ⚠️ 本机无设备/模拟器：真机上「菜单不再崩溃」与玻璃观感**均未复测**。
 
 ---
@@ -1101,10 +1115,11 @@ GET home.php?mod=spacecp&ac=draft                         → 只是「资料设
 
 ### 16.4 验证
 
-- `:app:testStableDebugUnitTest` → **38 suites / 207 tests / 0 failures / 0 errors**（本次新增 2 个
-  suite / 15 个用例）；`:app:compileStableDebugKotlin` → BUILD SUCCESSFUL；
-  `:app:lintVitalStableRelease` → BUILD SUCCESSFUL（`Lint found no new issues`，1 个既有错误由
-  baseline 过滤）。
+- 合入 main 后（与 §15.9/§15.10、§3.5 正文渲染一起）复跑：
+  **41 suites / 222 tests / 0 failures / 0 errors / 0 skipped**；`:app:lintVitalStableRelease`
+  → BUILD SUCCESSFUL（`Lint found no new issues`，1 个既有错误由 baseline 过滤）。
+- 分支内单独验证（本次新增 2 个 suite / 15 个用例）：`:app:compileStableDebugKotlin` →
+  BUILD SUCCESSFUL；`:app:testStableDebugUnitTest` → **38 suites / 207 tests / 0 failures**。
 - 新增测试：`ForumDraftStoreTest`（5：字段/图片 URI 往返、同上下文覆盖、删除、20 条上限淘汰、
   损坏 JSON 降级、回复引用字段往返；用内存版 `DataStore<Preferences>` 驱动，因为 DataStore 的
   文件重命名在 Windows JVM 上无法覆盖已存在的 `.preferences_pb`）；`ForumDraftViewModelTest`
