@@ -6,6 +6,8 @@ import io.rune.mt.forum.domain.forum.model.ForumFavorite
 import io.rune.mt.forum.domain.forum.model.ForumFavoritesPage
 import io.rune.mt.forum.domain.forum.model.ForumGuideView
 import io.rune.mt.forum.domain.forum.model.ForumHomeData
+import io.rune.mt.forum.domain.forum.model.ForumNoticePage
+import io.rune.mt.forum.domain.forum.model.ForumNoticeTab
 import io.rune.mt.forum.domain.forum.model.ForumNewThreadForm
 import io.rune.mt.forum.domain.forum.model.ForumPrivateConversation
 import io.rune.mt.forum.domain.forum.model.ForumSession
@@ -209,7 +211,11 @@ private class FakeForumRepository : ForumRepository {
 
     override suspend fun getHome(): ForumHomeData = notWired()
 
-    override suspend fun getThreads(fid: Int, page: Int): ForumThreadPage = notWired()
+    override suspend fun getThreads(fid: Int, page: Int, typeId: Int?): ForumThreadPage = notWired()
+
+    override suspend fun searchThreads(keyword: String, page: Int): ForumThreadPage = notWired()
+
+    override suspend fun getNotices(tab: ForumNoticeTab, page: Int): ForumNoticePage = notWired()
 
     override suspend fun getGuidePage(view: ForumGuideView, page: Int): ForumThreadPage = notWired()
 

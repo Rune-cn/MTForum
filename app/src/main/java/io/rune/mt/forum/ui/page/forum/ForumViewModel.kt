@@ -13,6 +13,9 @@ import io.rune.mt.forum.domain.forum.model.ForumThread
 import io.rune.mt.forum.domain.forum.repository.ForumRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -285,6 +288,7 @@ class ForumViewModel(
                     pageData.notice.size,
                     pageData.totalPages,
                 )
+                enrichNoticeAuthors()
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Exception) {
@@ -300,6 +304,63 @@ class ForumViewModel(
             }
         }
     }
+    /** OP floor of a 置顶 announcement, resolved once per tid from its thread page. */
+    private val noticeAuthors = mutableMapOf<Int, ForumPost>()
+
+    private var noticeAuthorJob: Job? = null
+
+    /**
+     * Fills the byline of 置顶 rows.
+     *
+     * The announcement strip prints only `<a><em>置顶</em>title</a>` — no author, avatar or time —
+     * on every board (verified across 30+ boards on 2026-11-26), so the listing alone can never
+     * show who posted it. Each missing row is resolved once from its thread page (the OP floor
+     * carries the byline) and patched into the current list. Failures leave the row title-only and
+     * the card falls back to a pin glyph instead of a blank "?" avatar.
+     */
+    private fun enrichNoticeAuthors() {
+        val state = _listState.value
+        val pending = state.notices.filter {
+            it.tid > 0 && it.authorName.isBlank() && noticeAuthors[it.tid] == null
+        }
+        if (pending.isEmpty()) return
+        noticeAuthorJob?.cancel()
+        noticeAuthorJob = viewModelScope.launch {
+            val resolved = coroutineScope {
+                pending.map { thread ->
+                    async {
+                        val post = runCatching { repository.getThreadDetail(thread.tid, 1).posts.firstOrNull() }
+                            .getOrNull()
+                        if (post != null && post.authorName.isNotBlank()) {
+                            noticeAuthors[thread.tid] = post
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                }.awaitAll()
+            }
+            Timber.tag(TAG).i("notice authors resolved %d/%d", resolved.count { it }, pending.size)
+            _listState.update { current ->
+                current.copy(
+                    notices = current.notices.map { thread ->
+                        val post = noticeAuthors[thread.tid]
+                        if (thread.authorName.isBlank() && post != null) {
+                            thread.copy(
+                                authorName = post.authorName,
+                                authorUid = post.authorUid,
+                                authorAvatarUrl = post.authorAvatarUrl,
+                                authorLevel = post.authorLevel,
+                            )
+                        } else {
+                            thread
+                        }
+                    },
+                )
+            }
+        }
+    }
+
     /** Opens a thread; the floors reset only when the thread actually changes. */
     fun openThread(tid: Int, title: String) {
         val current = _threadState.value

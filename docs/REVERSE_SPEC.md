@@ -139,3 +139,75 @@ Discuz 纯 Cookie，`cQWy_2132_auth` 失效后访问写接口会被 302 到登�
 自动重登必须持有账号密码：仅在用户显式开启「记住密码并自动重登」时，才把凭据加密保存到
 设备（Keystore 派生的 AES-GCM，见 `ForumCredentialStore`）；未开启则不做任何保存。
 写操作（回帖/发帖/收藏/关注）收到「未登录」信号时，若凭据可用则重登一次并重试。
+
+
+---
+
+## 18. 搜索 — POST 铸造 searchid（登录必需，2026-11-26 实测）
+
+```
+GET  search.php?mod=forum&mobile=2
+       -> <input type="hidden" name="formhash" value="16385279">
+POST search.php?mod=forum&mobile=2        (application/x-www-form-urlencoded)
+       formhash=16385279&srchtxt=<关键词>&searchsubmit=yes&mod=forum&mobile=2&srchfid=all
+       -> 302 search.php?mod=forum&searchid=1591&orderby=lastpost&ascdesc=desc
+                &searchsubmit=yes&kw=<urlencoded 关键词>&mobile=2
+GET  上一步 URL（body 已是第 1 页，10 行）
+       + &page=2  翻页；searchid 与 kw 必须保留，不能只换 searchid
+```
+
+- **游客不可搜索**：`search.php` 302 到 `member.php?mod=logging`，或返回
+  「抱歉，您所在的用户组(游客)无法进行此操作」。客户端先判登录再发请求。
+- 结果行与版块列表同 DOM：`li.forumlist_li`；标题在 `div.mmlist_li_box h2 a`（关键词被
+  `<strong><font>` 包裹），板块链接 `a[href*=forum-<fid>-1.html]` 是每行自己的 fid 来源；
+  作者 `a.top_user`、头像 `img.top_tximg`、时间 `div.forumlist_li_time span.f_d`、
+  摘要 `div.list_body a`、统计 `span.comiis_tm`、分页 `div.pg`。
+- 短时间重复搜索会被站点限流（返回提示文本），客户端原样展示，不自行重试。
+- 样本：`app/src/test/resources/forum/search_results.html` / `search_results_p2.html`。
+
+---
+
+## 19. 提醒（home.php?mod=space&do=notice，登录必需）
+
+```
+GET home.php?mod=space&do=notice&mobile=2                # 聚合入口页
+GET home.php?mod=space&do=notice&view=system&mobile=2      # 系统提醒
+GET home.php?mod=space&do=notice&view=interactive&mobile=2 # 坛友互动（回复我的）
+GET home.php?mod=space&do=notice&view=mypost&mobile=2      # 我的帖子
+GET home.php?mod=space&do=notice&view=app&mobile=2         # 应用提醒
+```
+
+- 聚合入口页：`div.comiis_userlist ul li a.kmdbt`（我的消息 / 我的粉丝 / 我的帖子 /
+  坛友互动 / 系统提醒 / 应用提醒）。**不是**列表页。
+- 列表页行：`div.comiis_notices_box > div.comiis_notice_list > ul > li.b_b.bg_f.cl`；
+  头像 `a.notice_img img`；正文 `div.ntc_body`（首个 `a[href*=space-uid-]` = 作者，
+  目标 `a[target=_blank]` 的 href 含 `ptid=<tid>` 与 `pid=`）；时间 `h2.f_d`
+  （内含屏蔽图标 `&#xe67f;`，取文本时剔除私有区字符）。
+- 空态：`div.comiis_notip` + 「暂时没有提醒内容」（system/interactive/app 常为空）。
+- `view=mypost` / `view=interactive` 还有 `type=` 二级 tab（帖子/点评/活动/悬赏/商品/提到我的；
+  打招呼/好友/留言/评论/挺你/分享），在 `#comiis_sub` 里，不在列表容器内。
+- **未读标记**：真实 13 行（2026-11-26）全部 `li.b_b.bg_f.cl`，没有任何未读 class，
+  未读态无法从 HTML 判断（客户端恒 false）。
+- 样本：`notices_mypost.html` / `notices_system.html` / `notices_interactive.html`。
+
+---
+
+## 20. 个人资料（do=profile）
+
+```
+GET home.php?mod=space&uid={uid}&mobile=2                 # 只是广播壳，资料走 AJAX，解析不到
+GET home.php?mod=space&uid={uid}&do=profile&mobile=2       # 真实资料页
+GET home.php?mod=space&uid={uid}&do=thread&view=me&from=space&mobile=2  # 最近发表
+```
+
+- 头部：昵称 `div.comiis_space_info h2`、头像 `div.user_img img`、等级 `span.kmlevs.kmlv`、
+  头衔 `span.kmlev`；头部一行 `N 人气 | N 关注 | N 粉丝`。
+- 统计：`div.comiis_space_profileico li a span`（帖子/回复/好友/粉丝/人气）。
+- 积分：`div.comiis_space_profilejf li`（`span.f_0` 数值 + 尾部标签）。
+- 资料行：`div.comiis_space_profile li div.profile_rs` + `span` 标签
+  （用户ID/生日/性别/在线时间/注册时间/最后访问）；签名 `div.profile_face`
+  （站点默认「这家伙很懒…」应过滤）；关注态 `a#followmod`（`op=add` / `op=del`，本人页没有）。
+- 最近发表与版块列表同 DOM（`li.forumlist_li`），复用 `parseThreadPage(html, fid = 0, 1)`。
+- 匿名访问 302 登录页；样本 `space_profile.html` / `space_profile_own.html` / `space_threads.html`。
+- 收藏页的 `formhash` 只出现在退出链接 `member.php?mod=logging&action=logout&formhash=...`
+  （HTML 转义成 `&amp;formhash=`），所以 `parseFormhash` 需要 `formhash=` 兜底（见 §13）。

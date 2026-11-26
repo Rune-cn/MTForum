@@ -7,6 +7,12 @@
 | 模块 | 说明 |
 |---|---|
 | 论坛首页 | 版块宫格、站点原生「热帖排行」Top-10（与论坛主页同序） |
+| 搜索 | 论坛内关键词搜索（登录后使用），结果分页，收藏/评论等入口保持一致 |
+| 提醒 | 系统提醒 / 坛友互动 / 我的帖子，点行进对应帖子 |
+| 个人主页 | 头像、等级、积分、统计与最近发表（`do=profile`） |
+| 我的收藏 | 收藏列表 + 取消收藏（登录后） |
+| 版块与分类 | 首页宫格全量版块（12 个）+ 版块主题分类筛选 |
+| 帖子页 | 楼层卡片重做、正文可选取文字、显示所属版块、回复框重做 |
 | 导读 | 最新 / 热门 / 精华 / 回复 / 抢沙发 五个视图，各自分页 |
 | 版块列表 | 置顶/推荐/有图/热门标签、缩略图、作者头像、分页 |
 | 帖子详情 | 楼层（楼主/回复区分）、正文富文本渲染、楼层内引用回复 |
@@ -44,7 +50,7 @@
 
 ```bash
 bash tools/build.sh                              # debug APK
-bash tools/build.sh :app:testStableDebugUnitTest  # 84 tests
+bash tools/build.sh :app:testStableDebugUnitTest  # 192 tests
 bash tools/build.sh :app:assembleStableRelease
 bash tools/build.sh :app:lintVitalStableRelease
 ```
@@ -54,7 +60,7 @@ bash tools/build.sh :app:lintVitalStableRelease
 ## 验证
 
 ```
-:app:testStableDebugUnitTest    84 tests (17 classes), 0 failures
+:app:testStableDebugUnitTest    192 tests (17 classes), 0 failures
 :app:assembleStableRelease      BUILD SUCCESSFUL  (2.3 MB)
 :app:lintVitalStableRelease     BUILD SUCCESSFUL
 ```

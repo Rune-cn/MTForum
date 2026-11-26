@@ -5,7 +5,11 @@ import io.rune.mt.forum.domain.forum.model.ForumCategory
 import io.rune.mt.forum.domain.forum.model.ForumConversationDetail
 import io.rune.mt.forum.domain.forum.model.ForumFavorite
 import io.rune.mt.forum.domain.forum.model.ForumGuideView
+import io.rune.mt.forum.domain.forum.model.ForumFavoritesPage
 import io.rune.mt.forum.domain.forum.model.ForumHomeData
+import io.rune.mt.forum.domain.forum.model.ForumNoticePage
+import io.rune.mt.forum.domain.forum.model.ForumNoticeTab
+import io.rune.mt.forum.domain.forum.model.ForumUserProfile
 import io.rune.mt.forum.domain.forum.model.ForumNewThreadForm
 import io.rune.mt.forum.domain.forum.model.ForumPrivateConversation
 import io.rune.mt.forum.domain.forum.model.ForumSession
@@ -147,6 +151,14 @@ class ForumListCategoryStateTest {
             error("unused")
 
         override suspend fun getThreadDetail(tid: Int, page: Int): ForumThreadDetail = error("unused")
+
+        override suspend fun searchThreads(keyword: String, page: Int): ForumThreadPage = error("unused")
+
+        override suspend fun getUserProfileDetail(uid: Int): ForumUserProfile = error("unused")
+
+        override suspend fun getFavoritesPage(page: Int): ForumFavoritesPage = error("unused")
+
+        override suspend fun getNotices(tab: ForumNoticeTab, page: Int): ForumNoticePage = error("unused")
 
         override suspend fun reply(
             tid: Int,

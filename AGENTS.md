@@ -86,6 +86,24 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
 17. **深链只有一个入口**：外部 URL 一律经 `ui/navigation/ForumDeepLink.kt` 的
     `forumDeepLinkFrom(Uri)` 解析；Manifest 的 intent-filter 与 Activity 的 `onNewIntent`
     都只调用它，不要再写第二套 intent 解析。
+18. **会员页先判登录**：搜索 / 提醒 / 个人资料 / 收藏只对登录态可见（匿名 302 登录页）。
+    仓库抛 `ForumLoginRequiredException` 或先用 `ForumHtmlParser.isLoginRequired()` 判，
+    UI 显示登录卡片 + 跳 `Route.Login`，**不要**把登录页解析成“空结果”。
+19. **搜索是 POST 流程**：`search.php?mod=forum&mobile=2` 先取 `formhash`，POST
+    `srchtxt+searchsubmit=yes` 得 `searchid`，翻页必须保留 `searchid` 与 `kw`；
+    结果行 fid 取自每行 `forum-<fid>-1.html`（`parseThreadRow(li, fid = null)`）。
+20. **版块宫格必须全量**：`getHome()` 同时取 `forum.php` 与 `forum.php?forumlist=1`，
+    `parseForums` 合并宫格/全量/快捷发帖三处并按 fid 去重、保持站点顺序；
+    `em` 数字是「今日 N」（`Forum.todayCount`），不是主题数。
+21. **主题分类走 `filter=typeid`**：`#forumlist_time_li` 解析成 `ForumCategory`，
+    `getThreads(fid, page, typeId)` 拼接筛选，UI 用 `TabRow`，无分类版块不显示。
+22. **置顶公告的 byline 要补**：公告条只有标题，`ForumViewModel.enrichNoticeAuthors()`
+    按 tid 补抓线程页 OP；未解析到时卡片显示置顶图钉，**不要**渲染空作者问号头像。
+23. **OS4 菜单玻璃与主题下拉一致**：`ThreadActionsGlassMenu` 用
+    `currentMiuixComponentScope().pageBackdrop` + `GlassPopupDefaults.visuals(...)`；
+    改这里要一起验证预测返回（组合顺序不变）与 Android 16 的 hwui 采样风险。
+24. **IME inset 不要叠加**：用 `navigationBars.union(ime)` 一次性取较大底边距；
+    输入框高度要计入列表底部 padding。
 
 ## Miuix 双风格（OS3 / OS4）
 

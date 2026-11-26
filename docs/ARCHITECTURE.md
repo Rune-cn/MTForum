@@ -107,3 +107,23 @@ Compose 页面（Miuix 组件，OS3/OS4 自适应）
    （站点顺序，不重排）；导读走 `ForumUrls.guidePath(view, page)`，五个 view 共用列表解析器。
 11. **深链只有一个入口**：`ForumDeepLink.forumDeepLinkFrom(Uri)` + `ForumDeepLinkState`
    一次性 hand-off；Manifest filter 与 `onNewIntent` 不另写解析。
+12. **会员页必须先判登录**：搜索（`search.php`）、提醒（`do=notice`）、个人资料（`do=profile`）、
+   收藏（`do=favorite`）都只对登录态可见，匿名会 302 到登录页。仓库层用
+   `ForumLoginRequiredException`（或 `isLoginRequired()`）抛/判，UI 显示登录卡片，不发“空结果”。
+13. **搜索结果行的 fid 来自行内链接**：`parseThreadRow(li, fid = null)` 从每行自己的
+   `forum-<fid>-1.html` 取 fid；版块列表则沿用请求的 fid。搜索 POST 必须先取 `formhash`，
+   再按 `searchid` + `kw` 翻页。
+14. **版块宫格必须是全量**：`getHome()` 一次调用内并发取 `forum.php`（宫格 + 热帖榜）与
+   `forum.php?forumlist=1`（全量、含分组），`parseForums` 合并三处并按 fid 去重、
+   **保持站点顺序**；`em` 数字是「今日 N」，记 `Forum.todayCount`。
+15. **主题分类走 `filter=typeid`**：`ForumThreadPage.categories` 由
+   `#forumlist_time_li` 解析（首项「全部」= `forum-<fid>-1.html`），
+   `getThreads(fid, page, typeId)` 拼接筛选；UI 用 `TabRow`，无分类的版块不显示。
+16. **置顶公告没有 byline**：站点公告条只输出标题。不要用空作者渲染问号头像：
+   `ForumViewModel.enrichNoticeAuthors()` 按 tid 补抓线程页 OP，失败时卡片显示置顶图钉。
+17. **OS4 菜单玻璃用页面 backdrop**：`ThreadActionsGlassMenu` 取
+   `currentMiuixComponentScope().pageBackdrop` 传给 `GlassPopup`，与主题设置下拉一致；
+   真机需确认 Android 16 不触发 hwui 采样崩溃（HANDOVER §11 / §15.6）。
+18. **私信/输入框的 IME inset 不要叠加**：用
+   `WindowInsets.navigationBars.union(WindowInsets.ime)` 一次性取较大底边距，
+   并把 composer 实测高度加进列表底部 padding。

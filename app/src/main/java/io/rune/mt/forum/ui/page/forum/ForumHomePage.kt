@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.runtime.Composable
@@ -324,9 +325,29 @@ internal fun ForumThreadCard(
         },
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // Byline first: the poster's avatar anchors every card, pinned or not.
+            // Byline first: the poster's avatar anchors every card, pinned or not. The site's
+            // 置顶 strip prints title-only announcements without any byline; the view model patches
+            // the real author in afterwards, and until (or if) that fails the slot shows a pin
+            // glyph instead of a meaningless "?" letter.
             Row(verticalAlignment = Alignment.CenterVertically) {
-                ForumAvatar(url = thread.authorAvatarUrl, name = thread.authorName, size = 28.dp)
+                if (thread.authorName.isBlank() && thread.authorAvatarUrl.isNullOrBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(MiuixTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.PushPin,
+                            contentDescription = stringResource(R.string.forum_pinned_badge),
+                            tint = MiuixTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                } else {
+                    ForumAvatar(url = thread.authorAvatarUrl, name = thread.authorName, size = 28.dp)
+                }
                 Spacer(Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

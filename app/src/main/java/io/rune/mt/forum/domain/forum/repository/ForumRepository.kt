@@ -150,13 +150,3 @@ interface ForumRepository {
         images: List<NewThreadImage> = emptyList(),
     ): NewThreadResult
 }
-
-/**
- * Thrown when a read that the site only serves to members lands on the login form.
- *
- * This is distinct from a network error: the session is stale or absent, and the screen should
- * offer the login page instead of a retry that would fail the same way. Read-only pages used by
- * signed-out visitors (board listings, threads) keep returning their content, so this is only
- * thrown by the member-only surfaces.
- */
-class ForumLoginRequiredException : IllegalStateException("登录状态已失效，请重新登录")

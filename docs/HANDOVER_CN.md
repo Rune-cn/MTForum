@@ -388,7 +388,7 @@ bash tools/build.sh :app:testStableDebugUnitTest \
    表情选择器手感、OS4 玻璃效果、图片加载，以及本轮新增的私信/发帖页。
 2. **发帖真实提交 + 图片上传**（接口已就绪，缺真机验证）
 3. **会话过期自动重登**（需先决定是否落盘凭据，见 REVERSE_SPEC §17）
-4. **收藏列表页**（仓库已有 `getFavorites`，UI 入口未挂到设置页）
+4. **提醒页未读态**（站点当前不输出未读标记，拿到真实未读样本后再定）
 5. 编辑/删除自己的帖子
 6. 深色模式下部分页面微调
 
@@ -755,3 +755,123 @@ size/align/table 去标记）。
 - `:app:testStableDebugUnitTest` → **27 suites / 154 tests / 0 failures**
 - `:app:lintVitalStableRelease` → BUILD SUCCESSFUL
 - 发布 `26.11.4`（versionCode 16，release 签名）。
+
+## 15. 第五轮真机反馈：搜索 / 主页·收藏 / 提醒 / 板块分类 / 帖子页细节（2026-11-26）
+
+机主一次给了 13 条：论坛内搜索、帖子/回复可选取文字、回复样式、删掉帖子内重复的「回复」、
+私信输入框随键盘上移、部分板块缺失（版本发布/插件交流/建议反馈/官方公告/申诉举报，补分类）、
+查看他人/自己主页、主页「消息提醒」入口（进站点提醒页）、置顶帖子不显示头像、主题默认色贴近
+应用图标、查看/删除自己的收藏、显示帖子所属版块、帖子右上角三点菜单要主题设置那种效果。
+仍然按 6 个并行 worktree 实现（search / thread / me / theme / boards / notice），合并后统一验证。
+
+### 15.1 论坛内搜索（站点强制登录）
+
+- 入口：论坛首页版块宫格上方的搜索卡片（`forum_search` / `forum_search_hint`）+ 版块列表顶栏
+  搜索图标；新路由 `Route.ForumSearch(keyword)`，页面 `ForumSearchPage` + `ForumSearchViewModel`。
+- 站点流程（实测）：`GET search.php?mod=forum&mobile=2` 取 `input[name=formhash]` →
+  `POST` 同 URL `formhash&srchtxt&searchsubmit=yes&mod=forum&mobile=2&srchfid=all` →
+  302 到 `search.php?mod=forum&searchid=<id>&orderby=lastpost&ascdesc=desc&searchsubmit=yes&kw=<kw>&mobile=2`，
+  翻页追加 `&page=N`（searchid 与 kw 必须保留）。
+- **游客搜索被站点拒绝**（302 登录页 / 「所在的用户组(游客)无法进行此操作」），所以未登录时
+  搜索页显示登录卡片、不发请求；请求中途掉登录抛 `ForumLoginRequiredException`，回到登录卡片。
+  服务端「搜索间隔」等提示原样展示。
+- 结果页复用列表行 DOM（`li.forumlist_li`），fid 从每行自己的 `forum-<fid>-1.html` 取；
+  `parseSearch()` 与 `parseThreadRow(li, fid = null)` 共用解析。样本
+  `search_results.html` / `search_results_p2.html`（真实「MT管理器」结果，10 行/页、50 页）。
+
+### 15.2 帖子页：可选文字、单一回复入口、楼层与回复框重做
+
+- 正文用 `SelectionContainer` 包裹（仅正文，图片点击仍生效）。
+- 删除楼层卡片底部重复的「回复」`TextButton` 与其 `onReply`，回复统一由右下 FAB 打开。
+- `ReplyComposer` 重做为 Miuix 组合面板：标题（回复 / 回复 @作者）+ 关闭、引用 chip、
+  自动聚焦的多行输入（内部滚动）、表情开关、错误行、发送进度；`imePadding()` +
+  `navigationBarsPadding()`；三语化（原先硬编码「回复/取消/发送/表情」）。
+  ViewModel 里的中文错误改为资源，服务端原文错误仍原样显示。
+- 楼层卡片重设计：36dp 头像、SemiBold 昵称、OP/回复徽章、等级·时间·位置、右侧楼层号、
+  细分隔线、OP 用 `surfaceContainerHigh` 高亮并显示版块标签；作者头像/昵称可点进个人主页。
+  截图见 [screenshots/os4-thread-post-cards.png](screenshots/os4-thread-post-cards.png)
+  与 [screenshots/os3-thread-post-cards.png](screenshots/os3-thread-post-cards.png)。
+- 帖子所属版块：`ForumThreadDetail.forumName` 从 `a.kmtit[href*=forum-]`（移动模板）
+  / `#pt` / `div.comiis_nav` 面包屑解析，渲染在 OP 卡片顶部。
+- 置顶行头像：站点公告条**只输出标题**（`div.comiis_forumlist_top > ul > li` 内
+  `<a><em>置顶</em>标题</a>`，实测 30+ 版块全无作者节点），所以列表本身永远没有作者数据。
+  处理：
+  1) `parseThreadRow(li, fid, pinned = true)` 与该行共用解析，若模板带 byline 就填；
+  2) `ForumViewModel.enrichNoticeAuthors()` 对缺作者的行按 tid 并发抓一次线程页，把 OP 的
+     昵称/头像/uid/等级补进列表（`noticeAuthors` 缓存，失败不重试到刷新）；
+  3) 仍未解析到时卡片显示「置顶」图钉而不是空头像问号。
+  样本 `board_pinned_row.html`（带 byline 的变体）+ `ForumParserTest` 断言。
+
+### 15.3 个人主页、我的收藏、消息提醒入口、私信输入框
+
+- 个人主页：`Route.UserProfile(uid, name)` + `ForumProfilePage`/`ViewModel`。
+  **注意**：`home.php?mod=space&uid=X` 只是广播壳（feed 走 AJAX），真实资料在
+  `do=profile&mobile=2`：头部 `div.comiis_space_info h2` / `div.user_img img` / `span.kmlevs`，
+  计数 `div.comiis_space_profileico li a span`（帖子/回复/好友/粉丝/人气），
+  积分区 `div.comiis_space_profilejf li`，资料行 `div.comiis_space_profile li div.profile_rs`，
+  签名 `div.profile_face`（站点默认「这家伙很懒…」被过滤）；最近发表用
+  `do=thread&view=me&from=space`，与版块列表同一套 `li.forumlist_li` 解析。
+- 我的收藏：`Route.Favorites` + `ForumFavoritesPage`/`ViewModel`，`getFavoritesPage()`
+  返回行 + 页面 formhash（模板只把它印在退出链接里，`parseFormhash` 增加 `formhash=` 兜底），
+  行内垃圾桶 → 确认对话框 → `removeFavorite(favid, formhash)`（先 GET 表单再 POST），
+  乐观删除、失败回滚 + toast；`type=all` 里的版块收藏被跳过。
+- 我的页（设置页第 4 tab）新增「论坛」分组：消息提醒 / 我的收藏 / 我的主页（未登录隐藏）。
+- 主页顶栏新增铃铛 `MiuixTopBarIconButton`（`Icons.Rounded.Notifications`）→ `Route.Notices`。
+- 私信输入框：Activity 是 edge-to-edge + `adjustResize`，IME 以 inset 到达。Composer 用
+  `windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))`（取较大值，避免
+  imePadding+navigationBarsPadding 叠加），并把它测得的高度加到列表底部 padding，
+  使最后一条气泡不被输入框/键盘遮住。
+
+### 15.4 站点「提醒」页
+
+- `Route.Notices` + `ForumNoticesPage`/`ViewModel`：三个 tab
+  `view=system`（系统提醒）/ `view=interactive`（坛友互动，即「回复我的」）/
+  `view=mypost`（我的帖子）；另有 `view=app`。
+- 行结构：`div.comiis_notice_list > ul > li`，`a.notice_img img` 头像，`div.ntc_body`
+  内首个 `a[href*=space-uid-]` 作者 + 文案 + 目标 `a[target=_blank]`（href 含 `ptid=<tid>`），
+  时间在 `h2.f_d`（需剔除「屏蔽」图标私有区字符）；空态 `div.comiis_notip`。
+- **未读标记在真实 13 行里不存在**（全是 `li.b_b.bg_f.cl`），`ForumNotice.unread` 恒 false，
+  代码里写明依据缺失，不猜 class。
+- 匿名访问一律 302 登录页 → 登录卡片；样本 `notices_{mypost,system,interactive}.html`。
+
+### 15.5 版块宫格补全 + 主题分类
+
+- 首页宫格原先只读快捷宫格（8 个），漏掉只出现在「社区」全量页/快捷发帖选择器里的版块。
+  现在 `getHome()` 一次调用内并发取 `forum.php` + `forum.php?forumlist=1`，`parseForums`
+  合并三处（快捷宫格 → 全量页 → 快捷发帖选择器，按 fid 去重、**保留站点顺序**），
+  得到 12 个版块：42 编程开发 / 41 逆向交流 / 44 综合交流 / 39 玩机交流 / 50 休闲灌水 /
+  40 求助问答 / 2 版本发布 / 37 插件交流 / 38 建议反馈 / 46 官方公告 / 53 申诉举报 / 92 站务专区。
+  全量页的 `em` 数字是「今日 N」而非主题数，记为 `Forum.todayCount`，不当 threadCount 用。
+- 主题分类：`#forumlist_time_li` 的 swiper tab（`forum-<fid>-1.html` = 全部，
+  `forum.php?mod=forumdisplay&fid=<fid>&filter=typeid&typeid=<id>`）→
+  `ForumCategory(typeId, name)`、`ForumThreadPage.categories`，
+  仓库 `getThreads(fid, page, typeId)`；版块页顶栏下 Miuix `TabRow`（可横滑），选中后重载第 1 页、
+  分页/下拉刷新保持筛选。抽样中只有 fid 38（建议反馈）当前有分类；无分类版块不显示条。
+- ⚠️ 全量页的「MT专区 / 交流与讨论 / 论坛事务」分组名被解析器丢弃，首页宫格未分组；
+  需要时再加（先解决 UI 分组的问题）。
+
+### 15.6 主题默认色与三点菜单玻璃效果
+
+- 默认主题色：`PresetColors` 首项 `default` 由橄榄绿 `0xFF4A672D` 改为品牌绿
+  `0xFF2E9E5B`（启动图标高亮 `#4ADE80` 压暗后的颜色，与 `ThemeState` 默认 seed 一致），
+  「自定义颜色开 + 动态颜色关」时首个色块即应用图标色并被选中；旧橄榄绿 seed 在读取时
+  回落到新默认。`ThemePresetColorsTest` 4 个用例守住映射。
+  备注：数据层 `AppSettingsRepositoryImpl.DEFAULT_SEED_COLOR` 仍是旧橄榄绿，读取时会被归一化，
+  下次清理可统一。
+- 三点菜单：`ThreadActionsGlassMenu` 现在取 `currentMiuixComponentScope().pageBackdrop`
+  传给 `GlassPopup`（此前 `backdrop = null` 只能opaque 兜底），与主题设置下拉的
+  `GlassDropdownPreference(backdrop = scope.pageBackdrop, visuals = GlassPopupDefaults.visuals(style = GlassDefaults.style(AppTheme.isDark)))`
+  一致；面板尺寸/圆角/内边距用库默认，预测返回的 `graphicsLayer` 变换与组合顺序不变。
+  ⚠️ 真机未验证：`backdrop` 采样自身图层在 Android 16 上有 hwui 风险（§11），
+  装机后需开菜单/旋转/复测 logcat；若崩溃则退回 `null` 或把菜单挪到录制层之外。
+
+### 15.7 验证
+
+- `:app:testStableDebugUnitTest` → **36 suites / 192 tests / 0 failures / 0 errors**
+- `:app:lintVitalStableRelease` → BUILD SUCCESSFUL（`Lint found no new issues`）
+- 新增/更新测试：`ForumSearchParserTest`(2)、`ForumNoticesParserTest`(6)、
+  `ForumProfileParserTest`(6)、`ForumFavoritesViewModelTest`(5)、`ForumBoardIndexTest`(5)、
+  `ForumBoardCategoriesTest`(4)、`ForumListCategoryStateTest`(2)、`ForumPostCardScreenshotTest`、
+  `ThemePresetColorsTest`(4)，以及扩充的 `ForumParserTest`。
+- 真机未验证项：搜索键盘/自动聚焦、提醒页未读样式、个人主页与收藏在真实会话下的排版、
+  私信 IME inset、三点菜单玻璃（见 15.6）。
