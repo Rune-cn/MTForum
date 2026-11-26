@@ -864,6 +864,7 @@ size/align/table 去标记）。
   一致；面板尺寸/圆角/内边距用库默认，预测返回的 `graphicsLayer` 变换与组合顺序不变。
   ⚠️ 真机未验证：`backdrop` 采样自身图层在 Android 16 上有 hwui 风险（§11），
   装机后需开菜单/旋转/复测 logcat；若崩溃则退回 `null` 或把菜单挪到录制层之外。
+  **该风险已在真机复现并修正，见 §15.8（改为采样内容层，不再用 `pageBackdrop`）。**
 
 ### 15.7 验证
 
@@ -875,3 +876,53 @@ size/align/table 去标记）。
   `ThemePresetColorsTest`(4)，以及扩充的 `ForumParserTest`。
 - 真机未验证项：搜索键盘/自动聚焦、提醒页未读样式、个人主页与收藏在真实会话下的排版、
   私信 IME inset、三点菜单玻璃（见 15.6）。
+
+### 15.8 真机崩溃：三点菜单玻璃采样自环（2026-11-27）
+
+**崩溃签名**（Android 16 / vivo，VERSION 26.11.5；渲染线程，fatal）：
+
+```
+signal 11 (SIGSEGV), code 2 (SEGV_ACCERR), fault addr ...
+Cause: stack pointer is close to top of stack; likely stack overflow.
+name: RenderThread
+#00..#512  libhwui.so (android::uirenderer::computeTransformImpl(DirtyStack const*, Matrix4*)+0/+36)
+```
+
+**触发**：打开帖子页右上角三点菜单（OS4 玻璃菜单）。这是独立于 §11 blur 录制之外的
+**第二个 RenderNode 环**，与「模糊」偏好是否打开无关：OS4 host 本身就会建 backdrop。
+
+**根因**：`ThreadActionsGlassMenu` 把 `MiuixComponentScope.pageBackdrop` 传给 `GlassPopup`。
+`pageBackdrop` 是 app 级 host 在**整棵导航树外面**录制的图层（`SettingsActivity`：
+`Box(...).then(scope.pageBackdropModifier) { AppNavContainer(...) }`）。而 `GlassPopup` 是
+**内联 overlay**（`Box(fillMaxSize)` 遮罩 + 窗口坐标 place 面板，见 §12.1），它本身组合在
+同一棵导航树里 → 面板采样了一个**包含面板自己**的图层 → RenderNode 环 → hwui 沿
+`DirtyStack` 递归 512 帧 → 渲染线程栈溢出 SIGSEGV。顶栏玻璃不崩，是因为顶栏采样内容层且
+它在该录制层**之外**。
+
+**修复**：
+- 新增纯函数 `threadMenuBackdrop(scope)`：`SafeMode.blurDisabled=false` 时返回
+  `scope.contentBackdrop`（页面内容层，弹出层不在其内），否则返回 `null`（opaque 兜底）。
+  `pageBackdrop` 不再是候选。
+- `ThreadActionsGlassMenu` 用该结果作为 `GlassPopup(backdrop = ...)`；选择来源（`Content` /
+  `None`）一并返回，便于单测断言。
+- `SafeMode.blurDisabled` 在 `Application.onCreate` 里同步读取，**不是**组合状态；因此菜单
+  显式判断它。注意：`MiuixComponentHost` 自己的 backdrop 工厂（私有
+  `rememberMiuixLayerBackdrop`）目前**不读** `SafeMode`（只有
+  `rememberMiuixBlurBackdrop` 读），所以 `useOs4` 不会因 SafeMode 变为 false——不能依赖
+  `currentMiuixComponentScope().useOs4` 做这层保护。
+- 未改 `MiuixPreferences.kt` 的主题下拉：`GlassDropdownPreference(renderInRootScaffold = …)`
+  是真实 popup window，不在录制层内，不构成自环。
+
+**验证**：`ThreadActionsPopupLayoutTest` 新增
+`menu samples the content backdrop never the page backdrop`：用两个真实的
+`rememberLayerBackdrop` 构造 `MiuixComponentScope`，断言选中的是 content 层、不等于 page 层、
+`SafeMode` 命中时 `layer == null`；另加「只有 page 层时返回 None」。
+
+⚠️ **本机无模拟器/无设备，真机复测仍未完成**。若装机仍崩，回退顺序：
+1) 菜单传 `null`（纯 opaque 兜底，§11 处理 3）；
+2) 把菜单改成真实 popup window（或移出录制层）。
+
+**遗留风险**：本页真正录了内容的是 `rememberMiuixPageChrome().backdrop`
+（`chrome.contentBackdropModifier`），而 `MiuixComponentScope.contentBackdrop` 在本仓库目前
+没有被任何页面用于录制内容。按本轮要求菜单采样后者；若真机上面板只有底色、没有真实模糊，
+下一步应把 `chrome.backdrop` 传进菜单（同样不在录制层内，但确实录了内容）。
