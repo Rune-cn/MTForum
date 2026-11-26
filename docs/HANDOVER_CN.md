@@ -1,7 +1,7 @@
 # 交接文档
 
 > MT论坛 客户端 · 包名 `io.rune.mt.forum` · 仓库 https://github.com/Rune-cn/MTForum
-> 最后更新 2026-11-26 · 约 209 个 Kotlin 文件 / 18k 行 · 84 个测试（17 个测试类）
+> 最后更新 2026-11-27 · 约 209 个 Kotlin 文件 / 18k 行 · 43 个测试 suite / 235 个用例
 
 本文件是接手这个项目的第一入口。读完这一份就能动工；
 需要站点细节时再看 [REVERSE_SPEC.md](REVERSE_SPEC.md)，需要找文件时看 [ARCHITECTURE.md](ARCHITECTURE.md)。
@@ -36,6 +36,7 @@
 | **关注楼主 / 顶（推荐）** | |
 | **发新帖（含图片附件上传）** | |
 | **帖子内图片点击放大（可缩放）** | |
+| **每日签到（连续/累计/今日排名 + 签到按钮）** | |
 
 > 本轮（2026-11-26）新增的 5 个功能对应 REVERSE_SPEC §12–§16，全部按线上实测接口实现。
 
@@ -342,7 +343,7 @@ Coil 走 `BitmapFactoryDecoder` 只出首帧，首帧透明的 GIF 看起来就�
 
 ```bash
 bash tools/build.sh                                # debug 冒烟
-bash tools/build.sh :app:testStableDebugUnitTest    # 154 个测试（27 个 suite），必跑
+bash tools/build.sh :app:testStableDebugUnitTest    # 235 个用例（43 个 suite），必跑
 bash tools/build.sh :app:assembleStableRelease
 bash tools/build.sh :app:lintVitalStableRelease     # 改字符串/资源后必跑
 ```
@@ -378,6 +379,8 @@ bash tools/build.sh :app:lintVitalStableRelease     # 改字符串/资源后必�
 | `ForumImageScreenshotTest` | **JVM 截图**：真实卡片 + 正文渲染、失败占位块落盘 PNG |
 | `ForumBodyRichParserTest` | 代码块（DOM 计数/多行/实体还原）、字号标题、`hr` 分隔、表格、附件卡、引用作者、`[code]` 转义 |
 | `ForumRichBodyScreenshotTest` | **JVM 截图**：代码块+标题+表格+附件+引用+列表合成图、真实 `rich_bbcode_reply` 回复 |
+| `ForumSignInParserTest` | 签到页两份真实样本（签到前/后）的昵称/等级/排名/连续/累计、已签到判定、`formhash` 兜底、CDATA 抽取与 `已签到`/成功/失败映射 |
+| `ForumSignInViewModelTest` | 签到卡片状态机：首次加载、签到后刷新数字并保留服务器文案、`已签到`、登录要求、失败不进已签到 |
 
 ### 无模拟器时怎么「跑」UI（2026-11-26 新增）
 
@@ -1133,3 +1136,57 @@ GET home.php?mod=spacecp&ac=draft                         → 只是「资料设
 - 图片 URI 依赖系统授权；`OpenMultipleDocuments` 的持久授权在部分第三方文件提供者上不可靠，
   这类图片恢复时会被计为「无法恢复」。
 - 草稿上限 20 条是硬编码常量，没有设置项；被淘汰的草稿不可恢复。
+
+---
+
+## 17. 每日签到（2026-11-27）
+
+### 17.1 站点事实（详见 REVERSE_SPEC §22）
+
+- 入口：首页「每日签到」卡片 → `k_misign-sign.html`（插件 `k_misign`）。
+- 页面一屏给全：头像 `div.user_img img`、昵称 `h2.fyy`、`p.fyy.comiis_tm`（`签到等级 Lv.8`）、
+  三行统计 `div.comiis_qdinfo ul li`（今日排名 / 连续签到 / 累计签到）、
+  `a#signresult`（签到按钮）、补签链接、`div#ranklist`（排行榜，AJAX 填充）。
+- 签到接口只有一个 GET：
+  `plugin.php?id=k_misign:sign&operation=qiandao&format=text&formhash={formhash}`，
+  返回 XML 包 CDATA（`<![CDATA[已签到]]>`），CDATA 文本就是给用户的结果。
+- 游客被 302 到登录页；`formhash` 只在退出链接里（`parseFormhash` 兜底）。
+- 签到后按钮变成 `已签到`（无 id），计数只在**重新取页**后才更新——接口不返回数字。
+
+### 17.2 实现
+
+| 层 | 位置 | 内容 |
+|---|---|---|
+| 模型 | `domain/forum/model/ForumSignIn.kt` | `ForumSignInState`（含 `formhash`、`resultMessage`）+ `sealed interface ForumSignInOutcome`（Success / AlreadySigned / Failure） |
+| 解析 | `ForumHtmlParser.parseSignInState` / `parseSignInOutcome` / `parseCdataMessage` | DOM 选择器仍只在 parser；CDATA 抽取一处实现 |
+| 仓库 | `ForumRepository.getSignInState()` / `signIn(formhash)` | 均 `withContext(Dispatchers.IO)`；游客抛 `ForumLoginRequiredException`；签到结果按文案分类 |
+| VM | `ui/page/forum/ForumSignInViewModel.kt` | 一次取页 + 签到后**再取一次页**刷新数字；`message` 是服务器原文（一次性 snackbar） |
+| UI | `ui/page/forum/ForumSignInCard.kt`，挂在 `MiuixPreferredPage` 账号区块下方 | 已签到/未签到标题、三格统计、`签到` 按钮（已签到则禁用并显示「今日已签到」）、刷新、错误行；游客显示登录卡片 → `Route.Login` |
+
+**形状选择（为什么是卡片而非独立页）**：整个功能就是三个数字加一个按钮，设置页本来就有账号
+区块；做成独立页会为一次点击多一次导航，而且要多注册一条 route。卡片挂在账号区块下，
+「我的」页一进来就能看到状态。VM 仍注册在 `di/ViewModelModule`。
+
+**已经签到不是错误**：`已签到` 映射成 `AlreadySigned`（卡片标记完成 + 原样 snackbar），
+只有权限/登录/限流等文案才是 `Failure`（红字 + snackbar）。
+
+**成功文案是宽容映射**：实测账号当天已签到，只观测到 `已签到`。因此「非错误、非已签到」一律
+按 `Success` 处理，并把服务器原文原样给用户——不臆造「签到成功」这种客户端文案。
+
+### 17.3 验证
+
+- `:app:compileStableDebugKotlin` → BUILD SUCCESSFUL。
+- `:app:testStableDebugUnitTest` → **43 suites / 235 tests / 0 failures**（基线 41 / 222；
+  新增 `ForumSignInParserTest` 8 例、`ForumSignInViewModelTest` 5 例）。
+- `:app:lintVitalStableRelease` → BUILD SUCCESSFUL。
+- 新增 12 个字符串键三语同步（`sign_in_*`），三处均 248 键。
+- 样本：`signin_misign.html`（签到前）、`signin_misign_after.html`（签到后，1033 / 3 天 / 272 天）。
+
+### 17.4 限制（如实）
+
+- **成功文案未实测**：账号当天已签到，只观测到 `已签到`；`Success` 是按「非错误」推断的宽容映射，
+  真机首次签到请核对 snackbar 文案与卡片数字刷新。
+- **排行榜（`div#ranklist`）未实现**：它由 `ajaxlist('today')` 另一条 AJAX 填充，本轮不做。
+- **补签未实现**：只记录入口地址（`home.php?mod=magic&mid=k_misign:k_misign_bq`），
+  它走道具（魔法）流程，会消耗站点道具，未做。
+- 签到状态不落盘（每次进设置页取一次页），符合「签到状态是抓取的，不缓存」。

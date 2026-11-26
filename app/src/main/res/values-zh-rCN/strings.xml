@@ -241,4 +241,17 @@
     <string name="draft_restore_confirm">恢复草稿</string>
     <string name="draft_restore_discard">丢弃</string>
     <string name="draft_images_skipped_format">有 %1$d 张图片已无法恢复，已跳过。</string>
+    <!-- 每日签到（k_misign 插件），见 docs/REVERSE_SPEC.md §22 -->
+    <string name="sign_in_section_title">每日签到</string>
+    <string name="sign_in_status_done">今日已签到</string>
+    <string name="sign_in_status_pending">今日未签到</string>
+    <string name="sign_in_action">签到</string>
+    <string name="sign_in_level_format">签到等级 %1$s</string>
+    <string name="sign_in_stat_rank">今日排名</string>
+    <string name="sign_in_stat_streak">连续签到</string>
+    <string name="sign_in_stat_total">累计签到</string>
+    <string name="sign_in_days_format">%1$d 天</string>
+    <string name="sign_in_login_required">登录后可每日签到。</string>
+    <string name="sign_in_failed">签到失败</string>
+    <string name="sign_in_refresh">刷新</string>
 </resources>

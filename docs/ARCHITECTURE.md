@@ -56,6 +56,8 @@ app/src/main/java/io/rune/mt/forum/
 │   │   │   ├── ForumHtmlText.kt      正文渲染组件 + 块模型（段落/标题/代码/引用/列表/表格/附件）
 │   │   │   ├── ForumBodyParser.kt    正文 HTML → 块列表（dom 选择器只在此处；代码块不拍平）
 │   │   │   ├── ForumAvatar.kt        统一头像组件
+│   │   │   ├── ForumSignInCard.kt    设置页「每日签到」卡片（排名/连续/累计 + 签到按钮）
+│   │   │   ├── ForumSignInViewModel.kt 签到页状态 + 签到结果（CDATA 文案）
 │   │   │   ├── ForumViewModel.kt     VM + 各页面 State
 │   │   │   ├── ReplyComposer.kt      回复框（引用 + 表情）
 │   │   │   ├── SmileyPicker.kt       表情选择器

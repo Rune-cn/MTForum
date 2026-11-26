@@ -11,6 +11,8 @@ import io.rune.mt.forum.domain.forum.model.ForumNoticeTab
 import io.rune.mt.forum.domain.forum.model.ForumPost
 import io.rune.mt.forum.domain.forum.model.ForumPrivateConversation
 import io.rune.mt.forum.domain.forum.model.ForumSession
+import io.rune.mt.forum.domain.forum.model.ForumSignInOutcome
+import io.rune.mt.forum.domain.forum.model.ForumSignInState
 import io.rune.mt.forum.domain.forum.model.ForumThread
 import io.rune.mt.forum.domain.forum.model.ForumThreadDetail
 import io.rune.mt.forum.domain.forum.model.ForumThreadPage
@@ -136,6 +138,27 @@ interface ForumRepository {
     // ---- Recommend / like (顶·赞) ------------------------------------------
 
     suspend fun recommendThread(tid: Int, formhash: String): Boolean
+
+    // ---- Daily sign-in (每日签到) ------------------------------------------
+
+    /**
+     * Today's 签到 state from the plugin page (`k_misign-sign.html`): 签到等级, 今日排名,
+     * 连续签到, 累计签到, the visitor's avatar/nickname and whether today is already done.
+     *
+     * The page is member-only (a guest is bounced to the login form), so this throws
+     * [ForumLoginRequiredException] instead of returning an empty state.
+     */
+    suspend fun getSignInState(): ForumSignInState
+
+    /**
+     * Submits today's 签到 with the page's [formhash] and maps the endpoint's CDATA answer.
+     *
+     * The endpoint is a GET on `plugin.php?id=k_misign:sign&operation=qiandao`; it answers with
+     * one CDATA string (`已签到` when the day is already done). A rejection is reported as
+     * [ForumSignInOutcome.Failure], never as a success. The counters are not refreshed here —
+     * callers re-read [getSignInState] after a [ForumSignInOutcome.Success].
+     */
+    suspend fun signIn(formhash: String): ForumSignInOutcome
 
     // ---- New thread (发新帖) ------------------------------------------------
 

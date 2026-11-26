@@ -15,6 +15,8 @@ import io.rune.mt.forum.domain.forum.model.ForumNewThreadForm
 import io.rune.mt.forum.domain.forum.model.ForumPrivateConversation
 import io.rune.mt.forum.domain.forum.model.ForumReplyDraft
 import io.rune.mt.forum.domain.forum.model.ForumSession
+import io.rune.mt.forum.domain.forum.model.ForumSignInOutcome
+import io.rune.mt.forum.domain.forum.model.ForumSignInState
 import io.rune.mt.forum.domain.forum.model.ForumThread
 import io.rune.mt.forum.domain.forum.model.ForumThreadDetail
 import io.rune.mt.forum.domain.forum.model.ForumThreadPage
@@ -201,6 +203,10 @@ class ForumListCategoryStateTest {
         override suspend fun unfollowUser(uid: Int, formhash: String): Boolean = error("unused")
 
         override suspend fun recommendThread(tid: Int, formhash: String): Boolean = error("unused")
+
+        override suspend fun getSignInState(): ForumSignInState = error("unused")
+
+        override suspend fun signIn(formhash: String): ForumSignInOutcome = error("unused")
 
         override suspend fun getNewThreadForm(fid: Int): ForumNewThreadForm = error("unused")
 

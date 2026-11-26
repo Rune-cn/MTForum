@@ -241,4 +241,17 @@
     <string name="draft_restore_confirm">Restore</string>
     <string name="draft_restore_discard">Discard</string>
     <string name="draft_images_skipped_format">%1$d image(s) could not be restored and were skipped.</string>
+    <!-- Daily sign-in (每日签到) — k_misign plugin, see docs/REVERSE_SPEC.md §22 -->
+    <string name="sign_in_section_title">Daily check-in</string>
+    <string name="sign_in_status_done">Signed in today</string>
+    <string name="sign_in_status_pending">Not signed in yet</string>
+    <string name="sign_in_action">Check in</string>
+    <string name="sign_in_level_format">Check-in level %1$s</string>
+    <string name="sign_in_stat_rank">Today\'s rank</string>
+    <string name="sign_in_stat_streak">Streak</string>
+    <string name="sign_in_stat_total">Total</string>
+    <string name="sign_in_days_format">%1$d days</string>
+    <string name="sign_in_login_required">Sign in to check in every day.</string>
+    <string name="sign_in_failed">Check-in failed</string>
+    <string name="sign_in_refresh">Refresh</string>
 </resources>

@@ -16,6 +16,8 @@ import io.rune.mt.forum.domain.forum.model.ForumNoticePage
 import io.rune.mt.forum.domain.forum.model.ForumNoticeTab
 import io.rune.mt.forum.domain.forum.model.ForumPrivateConversation
 import io.rune.mt.forum.domain.forum.model.ForumSession
+import io.rune.mt.forum.domain.forum.model.ForumSignInOutcome
+import io.rune.mt.forum.domain.forum.model.ForumSignInState
 import io.rune.mt.forum.domain.forum.model.ForumThread
 import io.rune.mt.forum.domain.forum.model.ForumThreadDetail
 import io.rune.mt.forum.domain.forum.model.ForumThreadPage
@@ -382,6 +384,28 @@ class ForumRepositoryImpl(
         )
     }
 
+    // ---- Daily sign-in (每日签到) ------------------------------------------
+
+    override suspend fun getSignInState(): ForumSignInState = withContext(Dispatchers.IO) {
+        val html = http.getHtml(SIGN_IN_PATH)
+        // The plugin page is member-only: a guest gets the login form, which must not parse into
+        // an empty-but-successful state (that would render "not signed in yet" for a visitor).
+        if (ForumHtmlParser.isLoginRequired(html)) throw ForumLoginRequiredException()
+        ForumHtmlParser.parseSignInState(html)
+    }
+
+    override suspend fun signIn(formhash: String): ForumSignInOutcome = withContext(Dispatchers.IO) {
+        val raw = http.getHtml(signInPath(formhash))
+        // A stale session has no CDATA answer at all; it lands on the login form instead.
+        if (ForumHtmlParser.parseCdataMessage(raw) == null && ForumHtmlParser.isLoginRequired(raw)) {
+            throw ForumLoginRequiredException()
+        }
+        ForumHtmlParser.parseSignInOutcome(raw)
+    }
+
+    private fun signInPath(formhash: String): String =
+        "plugin.php?id=k_misign:sign&operation=qiandao&format=text&formhash=$formhash"
+
     // ---- New thread (发新帖) ------------------------------------------------
 
     override suspend fun getNewThreadForm(fid: Int): ForumNewThreadForm = withContext(Dispatchers.IO) {
@@ -474,6 +498,9 @@ class ForumRepositoryImpl(
 
         /** Mobile search form; the same URL takes the POST that mints a `searchid`. */
         const val SEARCH_FORM_PATH = "search.php?mod=forum&mobile=2"
+
+        /** The `k_misign` plugin page; the only page that prints 签到等级/排名/连续/累计. */
+        const val SIGN_IN_PATH = "k_misign-sign.html"
 
         /** `searchid` is echoed by the result pager and by the intermediate redirect page. */
         val SEARCH_ID = Regex("""searchid=(\d+)""")

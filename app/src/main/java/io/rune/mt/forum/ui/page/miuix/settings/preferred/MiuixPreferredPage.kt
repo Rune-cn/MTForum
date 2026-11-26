@@ -27,6 +27,7 @@ import io.rune.mt.forum.ui.icons.AppIcons
 import io.rune.mt.forum.ui.navigation.LocalNavigator
 import io.rune.mt.forum.ui.page.main.settings.AccountSection
 import io.rune.mt.forum.ui.page.main.settings.AccountViewModel
+import io.rune.mt.forum.ui.page.forum.ForumSignInCard
 import io.rune.mt.forum.ui.navigation.Route
 import io.rune.mt.forum.ui.page.main.settings.preferred.PreferredViewEvent
 import io.rune.mt.forum.ui.page.main.settings.preferred.PreferredViewModel
@@ -113,6 +114,8 @@ fun MiuixPreferredPage(
                 },
             )
         }
+        item { SmallTitle(stringResource(R.string.sign_in_section_title)) }
+        item { ForumSignInCard(snackbarHostState = snackbarHostState) }
         item { SmallTitle(stringResource(R.string.forum_section_title)) }
         item {
             // Forum shortcuts. Notifications and the profile page are reached from the home page

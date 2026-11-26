@@ -283,3 +283,79 @@ GET home.php?mod=space&uid={uid}&do=thread&view=me&from=space&mobile=2  # 最近
   `strong/i/u/strike`、`font color`、`align=center`、`comiis_blockcode`、`a`、`ul`、`table`、
   `hr`、表情。
 
+---
+
+## 22. 每日签到（k_misign 插件）— 2026-11-27 实测
+
+首页「每日签到」卡片 → `k_misign-sign.html`（插件 `k_misign`）。签到页是**整页卡片**，
+不是 JSON 接口，也不走已下线的 `api/mobile`。
+
+### 22.1 页面
+
+```
+GET k_misign-sign.html        # 即 https://bbs.binmt.cc/k_misign-sign.html（+?mobile=2 输出相同）
+```
+
+DOM（Comiis 移动模板，用户块与个人资料头部同构）：
+
+| 字段 | 选择器 | 样例 |
+|---|---|---|
+| 头像 | `div.comiis_space_info div.user_img img[src]` | `.../avatar/000/15/34/66_avatar_middle.jpg` |
+| 昵称 | `div.comiis_space_info h2.fyy` | `Rune` |
+| 签到等级 | `div.comiis_space_info p.fyy.comiis_tm` | `签到等级 Lv.8` |
+| 三项统计 | `div.comiis_qdinfo ul li` | 见下 |
+| 签到按钮 | `div.comiis_btnbox a#signresult` | `<a id="signresult" onClick="ajaxsign();…">签到</a>` |
+| 补签入口 | `div.comiis_btnbox a[href*="mid=k_misign:k_misign_bq"]` | `home.php?mod=magic&mid=k_misign:k_misign_bq&bid=…` |
+| 排行榜容器 | `div#ranklist` | 由 `ajaxlist('today')` AJAX 填充（**客户端未实现**） |
+
+统计行的形状是「标签在 `span.comiis_tm`，值是该 `li` 去掉标签后的自身文本」：
+
+```html
+<li class="f_f"><span class="comiis_tm">今日排名</span>1033</li>
+<li class="f_f"><span class="comiis_tm">连续签到</span>3天</li>
+<li class="f_f"><span class="comiis_tm">累计签到</span>272天</li>
+```
+
+- 未签到时 `今日排名` 的值是 `0`（模板占位），签到后才变成真实名次。
+- `连续签到` / `累计签到` 带「天」单位，客户端只取数字。
+
+**已签到的判定**：签到后模板把按钮换成没有 id 的
+`<a href="javascript:;" class="comiis_btn bg_b f_c">已签到</a>`。两种信号都认：
+`a#signresult` 不存在，或 `div.comiis_btnbox` 里出现 `已签到`。
+
+### 22.2 签到接口（整个 API 就这一个 GET）
+
+```
+GET plugin.php?id=k_misign:sign&operation=qiandao&format=text&formhash={formhash}
+```
+
+`formhash` 就是签到页自己的会话哈希——该页**没有** `<input name=formhash>`，只有退出链接
+`member.php?mod=logging&action=logout&formhash=16385279`（HTML 里是 `&amp;formhash=`），
+所以复用 `parseFormhash` 的 `formhash=` 兜底（同 §13 / §20）。
+
+响应既不是 HTML 也不是 JSON，而是全站 ajax 端点通用的 **XML 包 CDATA**（含 `\r\n`）：
+
+```
+<?xml version="1.0" encoding="utf-8"?>\r\n<root><![CDATA[已签到]]></root>
+```
+
+CDATA 里的文本就是给用户看的结果。**实测到的两种文案**：
+
+| 文案 | 含义 | 客户端映射 |
+|---|---|---|
+| `已签到` | 今天已经签过，本次没有新增签到 | `ForumSignInOutcome.AlreadySigned` |
+| （成功文案未观测到：测试账号当天已签到） | 签到成功 | `ForumSignInOutcome.Success`（非错误、非「已签到」一律按成功，文案原样展示） |
+
+失败文案（权限 / 登录 / 限流，例如「抱歉，您所在的用户组(游客)无法进行此操作」
+「…间隔少于…」）必须判成 `Failure`，**不能**当成功。
+
+- 游客访问签到页会被 302 到登录页（`ForumHtmlParser.isLoginRequired`），客户端抛
+  `ForumLoginRequiredException`，UI 显示登录卡片（同 §18 的会员页规则）。
+- 签到成功后站点 JS 直接 `window.location.reload()`，所以「新名次 / 连续 / 累计」只能靠
+  **重新取页**获得，接口本身不返回数字。
+- 样本：`app/src/test/resources/forum/signin_misign.html`（签到前：排名 0 / 连续 2 天 /
+  累计 271 天）与 `signin_misign_after.html`（签到后：1033 / 3 天 / 272 天，按钮已是「已签到」）。
+- 代码落点：`ForumHtmlParser.parseSignInState/parseSignInOutcome/parseCdataMessage`、
+  `ForumRepository.getSignInState/signIn`、`ForumSignInViewModel` + `ForumSignInCard`
+  （设置页账号区块下方的签到卡片）。
+
