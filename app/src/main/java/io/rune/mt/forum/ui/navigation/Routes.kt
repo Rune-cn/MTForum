@@ -64,4 +64,11 @@ sealed interface Route : NavKey {
     /** The signed-in user's favourited threads (`home.php?mod=space&do=favorite`). */
     @Serializable
     data object Favorites : Route
+
+    /**
+     * The site's 提醒 inbox (`home.php?mod=space&do=notice`): 系统提醒 / 回复我的 / 我的帖子 are
+     * tabs inside the page, so the route carries no arguments.
+     */
+    @Serializable
+    data object Notices : Route
 }
