@@ -89,6 +89,9 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
 18. **会员页先判登录**：搜索 / 提醒 / 个人资料 / 收藏只对登录态可见（匿名 302 登录页）。
     仓库抛 `ForumLoginRequiredException` 或先用 `ForumHtmlParser.isLoginRequired()` 判，
     UI 显示登录卡片 + 跳 `Route.Login`，**不要**把登录页解析成“空结果”。
+    **设置页入口只留「我的收藏」**（`Route.Favorites`）；消息提醒从首页顶栏铃铛进，
+    我的主页从账号卡片点头像/昵称进（`AccountSection` 的 `onOpenProfile`），不要再往设置页
+    的「论坛」分组加回 Notices / UserProfile 行。
 19. **搜索是 POST 流程**：`search.php?mod=forum&mobile=2` 先取 `formhash`，POST
     `srchtxt+searchsubmit=yes` 得 `searchid`，翻页必须保留 `searchid` 与 `kw`；
     结果行 fid 取自每行 `forum-<fid>-1.html`（`parseThreadRow(li, fid = null)`）。
