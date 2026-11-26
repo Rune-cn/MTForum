@@ -66,6 +66,37 @@ bash tools/build.sh :app:testStableDebugUnitTest --tests "io.rune.mt.forum.Forum
    HiddenApiBypass / MonetCompat（JVM 环境不支持）
 3. **断言写英文**：Robolectric 的 `stringResource` 用默认资源（`values/`），不是中文包
 
+## JVM 截图验证（无模拟器时「看」UI，2026-11-26 新增）
+
+除了语义树断言，还可以把真实组件渲染成 PNG 直接看：
+
+```bash
+bash tools/build.sh :app:testStableDebugUnitTest --tests "io.rune.mt.forum.ThreadActionsPopupLayoutTest"
+bash tools/build.sh :app:testStableDebugUnitTest --tests "io.rune.mt.forum.ForumImageScreenshotTest"
+```
+
+- `ThreadActionsPopupLayoutTest`：822×1782（`w411dp-h891dp-xhdpi`）下打开 OS4 玻璃菜单，
+  断言 host=整页、面板右缘对齐 anchor 右缘，并截图到 `artifacts/os4-thread-actions-menu.png`。
+- `ForumImageScreenshotTest`：起一个本地 `com.sun.net.httpserver` 提供 GIF 字节，
+  渲染真实 `ForumThreadCard` + `ForumHtmlText`，落盘 `app/build/ui-screenshots/`。
+  用内存缓存条目数断言「图确实解码成功」。
+- 两张样例图已入库：[screenshots/os4-thread-actions-menu.png](screenshots/os4-thread-actions-menu.png)、
+  [screenshots/jvm-image-render.png](screenshots/jvm-image-render.png)。
+
+### 坑：miuix squircle 在 Robolectric 下编译失败
+
+miuix 的 squircle 用 AGSL `RuntimeShader`，Robolectric 自带 Skia 报
+`IllegalArgumentException: error: 8: 'color' is not a valid layout qualifier`，
+栈在 `SquircleShaderBrush`/`RuntimeShader`。绕法：截图测试的 `setContent` 里包一层
+
+```kotlin
+CompositionLocalProvider(LocalSquircleEnabled provides false) { AppTheme(...) { ... } }
+```
+
+关掉后 squircle 退化为 `RoundedCornerShape`，**布局测量不受影响**，只是截图圆角观感略有差异。
+截取用 `activity.window.decorView.draw(Canvas(bitmap))` 或 `onRoot().captureToImage()` 均可，
+必须 `@GraphicsMode(GraphicsMode.Mode.NATIVE)`。
+
 ## 模拟器：本机不可用（重要）
 
 结论：**这台机器无法运行 Android 模拟器**，相关资产已删除。

@@ -11,7 +11,8 @@ app/src/main/java/io/rune/mt/forum/
 │   │   ├── network/
 │   │   │   ├── AcwSignature.kt       acw_sc__v2 签名算法
 │   │   │   ├── AcwInterceptor.kt     OkHttp 拦截器：检测挑战页 → 签名 → 重放
-│   │   │   ├── ForumCookieJar.kt     内存 Cookie（= 会话）
+│   │   │   ├── ForumCookieJar.kt     内存 Cookie（= 会话，按 host 下发）
+│   │   │   ├── ForumUrls.kt          URL 绝对化 + 占位/非导航 scheme 过滤 + CDN→站点兜底
 │   │   │   ├── ForumHttpClient.kt    GET/POST，强制移动 UA，切 IO 调度器
 │   │   │   └── ForumHtmlParser.kt    jsoup 解析：版块/列表/帖子/楼层/分页/缩略图
 │   │   └── repository/
@@ -31,7 +32,7 @@ app/src/main/java/io/rune/mt/forum/
 │   ├── ViewModelModule.kt            所有 VM 注册
 │   └── init/app_modules.kt           模块汇总
 ├── core/
-│   ├── image/ForumImageLoader.kt     Coil 配置（UA + Referer）
+│   ├── image/ForumImageLoader.kt     Coil 配置（CDN：UA+Referer；站点附件：会话 Cookie+acw；coil-gif）
 │   ├── crash/ · i18n/ · device/ · env/ · reflection/
 ├── ui/
 │   ├── navigation/
@@ -56,7 +57,7 @@ app/src/main/java/io/rune/mt/forum/
 │   │   │   ├── ForumViewModel.kt     VM + 各页面 State
 │   │   │   ├── ReplyComposer.kt      回复框（引用 + 表情）
 │   │   │   ├── SmileyPicker.kt       表情选择器
-│   │   │   └── ThreadActions.kt      顶栏溢出菜单（收藏/顶/关注/复制/分享，OS3/OS4 双风格）
+│   │   │   └── ThreadActions.kt      顶栏溢出按钮 + 页面根部 OS4 玻璃菜单（收藏/顶/关注/复制/分享）
 │   │   ├── login/                    登录页 / VM / 状态
 │   │   ├── main/forum/               论坛 VM 与 State（旧位置，保留兼容）
 │   │   ├── miuix/
@@ -88,3 +89,9 @@ Compose 页面（Miuix 组件，OS3/OS4 自适应）
 4. **线程**：阻塞调用必须在 `Dispatchers.IO`（`MainThreadSafetyTest` 守卫）。
 5. **Miuix 双风格**：页面用 `MiuixPageScaffold` + `rememberMiuixPageChrome()`；
    顶栏图标用 `MiuixTopBarIconButton`；弹窗按 `AppTheme.useMiuixOs4` 分支。
+6. **OS4 `GlassPopup` 是内联 overlay**：必须组合在页面根 `BoxScope(fillMaxSize)`，
+   放在顶栏/单元格里会被 host 钳制而错位（见 HANDOVER §12.1）。
+7. **图片两条路**：CDN 静态图裸请求即可；站点 `mod=image`/`mod=attachment` 必须走带
+   `ForumCookieJar` + `AcwInterceptor` 的图片客户端；URL 统一经 `ForumUrls` 规范化。
+8. **无模拟器的 UI 验证**：Robolectric + Compose 截图（`ThreadActionsPopupLayoutTest`、
+   `ForumImageScreenshotTest`）；截图前需 `LocalSquircleEnabled provides false` 绕开 AGSL。

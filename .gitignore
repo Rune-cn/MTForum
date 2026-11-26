@@ -6,6 +6,7 @@ build/
 .externalNativeBuild/
 /captures/
 /docs/superpowers/
+/artifacts/
 
 # Local configuration & Keystore files
 local.properties

@@ -37,6 +37,10 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
 
 - 改 Kotlin/XML 后**必须**跑 `:app:compileStableDebugKotlin`
 - 改解析器后**必须**跑单元测试（改解析器须同步 `app/src/test/resources/forum/` 样本）
+- **看 UI 不用真机/模拟器**（本机跑不了模拟器）：用 Robolectric 截图测试
+  `ThreadActionsPopupLayoutTest`（OS4 菜单锚定）与 `ForumImageScreenshotTest`（卡片/正文图片渲染），
+  产物落 `app/build/ui-screenshots/`；截图前要 `LocalSquircleEnabled provides false`，
+  否则 miuix squircle 的 AGSL 在 Robolectric 下编译失败
 - **Kotlin 文件头用 `//` 而非 `#`**：`# SPDX-License-Identifier:` 会被当成非法令牌，整个文件编译失败
 - **不要用 PowerShell 的 `Set-Content -Encoding UTF8` 改写含中文的 Kotlin/XML**：
    本机 PowerShell 5 会写成 GBK/加 BOM 并破坏全角标点，请用编辑器工具改
@@ -58,6 +62,15 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
 9. **不要条件化 `MiuixComponentHost`**：`SubcomposeLayout` 同帧销毁会崩溃。
 10. **禁止日志打印 Cookie 明文**，只可打 uid / isLoggedIn。
 11. **提交**：Conventional Commits；主体 ≤72 字符；不加 AI 署名或 Co-authored-by。
+12. **OS4 `GlassPopup` 必须放页面根 `BoxScope`**：它是内联 overlay（`fillMaxSize` 遮罩 +
+    按窗口坐标 place 面板），放进顶栏 actions/小容器会被 host 钳制 → 真机表现为「菜单错位」，
+    且全屏遮罩失效。状态用 `ThreadActionsState` 提升，菜单组件放根 Box。
+13. **图片必须走 `buildForumImageLoader` + `ForumUrls`**：站点图床/附件
+    （`forum.php?mod=image`、`mod=attachment`）匿名请求只会拿到 200 + acw 挑战页（text/html），
+    必须复用 `ForumCookieJar` + `AcwInterceptor`；URL 统一 `ForumUrls.absolute()` 绝对化，
+    `javascript:`/`file:`/`data:` 一律当无图处理，不要直接把原始 `src` 属性丢给 Coil。
+14. **Cookie 只按 host 下发**：`ForumCookieJar.loadForRequest` 用 `Cookie.matches(url)` 过滤，
+    禁止把 `cQWy_2132_auth` 发给 `cdn/icdn/oos` 等 CDN。
 
 ## Miuix 双风格（OS3 / OS4）
 

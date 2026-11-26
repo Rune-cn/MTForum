@@ -1,7 +1,7 @@
 # 交接文档
 
 > MT论坛 客户端 · 包名 `io.rune.mt.forum` · 仓库 https://github.com/Rune-cn/MTForum
-> 最后更新 2026-11-22 · 约 183 个 Kotlin 文件 / 17.8k 行 · 42 个测试
+> 最后更新 2026-11-26 · 约 207 个 Kotlin 文件 / 17.8k 行 · 75 个测试（15 个测试类）
 
 本文件是接手这个项目的第一入口。读完这一份就能动工；
 需要站点细节时再看 [REVERSE_SPEC.md](REVERSE_SPEC.md)，需要找文件时看 [ARCHITECTURE.md](ARCHITECTURE.md)。
@@ -188,12 +188,29 @@ smilies_array[12][1] = [['1240','[呵呵]','qq001.gif','20','20','50']] // [id, 
 
 **注意**：code 不全局唯一（`[#呵呵]` 在滑稽组和 QQ 组都有），`byCode` 保留首个。
 
-### 3.7 图片
+### 3.7 图片（会话感知，2026-11-26 重写）
 
-`core/image/ForumImageLoader.kt` 配置 Coil，带移动 UA + 站点 Referer——
-CDN（`cdn.binmt.cc` / `icdn.binmt.cc` / `oos.binmt.cc`）会拒绝裸请求。
+图片分两类，不能一概而论「公开资源」：
 
-**不复用** `ForumHttpClient`：那个带 acw 拦截器和会话 Cookie，图片是公开资源。
+| 类别 | 例子 | 需要什么 |
+|---|---|---|
+| CDN 静态图 | `cdn.binmt.cc/uc_server/data/avatar/…jpg`、`icdn.binmt.cc/…gif`、`oos.binmt.cc/image/…jpg` | 只要 UA + Referer；**不需要** Cookie |
+| 站点代发/附件 | `bbs.binmt.cc/forum.php?mod=image&aid=…`、`mod=attachment` | **必须**带登录会话 Cookie，且要过 acw 挑战 |
+
+`core/image/ForumImageLoader.kt` 里 `buildForumImageHttpClient(cookieJar)` 用**独立的**
+OkHttpClient：共用 `ForumCookieJar` + `AcwInterceptor`（由 `App.onCreate` 在 `startKoin`
+之后懒解析注入），但**不复用** `ForumHttpClient`（避免带上写路径拦截器和 `forum.php` Referer）。
+站点 host 之外的 CDN 不会命中 acw 拦截器（`AcwInterceptor` 对非 `bbs.binmt.cc` 直接放行，
+否则每张图都要 `peekBody(64KB)`），Cookie 也只按 host 下发。
+
+URL 规范化统一走 `data/forum/network/ForumUrls.kt`：`//cdn…`、`/data/attachment/…`、
+`data/attachment/…` 都转绝对地址；`javascript:`/`file:`/`data:` 返回 null（模板里的图片按钮）。
+正文图片加载失败会做一次「CDN → `bbs.binmt.cc` 同路径」重试（Discuz 资源树两边都有），
+仍失败则 `Timber.w("picture failed: %s", url)`（只记 URL，不记 Cookie）。
+
+GIF 由 `coil-gif`（API 28+ 用 `AnimatedImageDecoder`，以下用 `GifDecoder`）处理：没有它时
+Coil 走 `BitmapFactoryDecoder` 只出首帧，首帧透明的 GIF 看起来就是空白——这是「部分图/头像
+像没加载」的次要原因之一，不是主因。
 
 ### 3.8 线程模型
 
@@ -254,7 +271,7 @@ CDN（`cdn.binmt.cc` / `icdn.binmt.cc` / `oos.binmt.cc`）会拒绝裸请求。
 
 ```bash
 bash tools/build.sh                                # debug 冒烟
-bash tools/build.sh :app:testStableDebugUnitTest    # 42 个测试，必跑
+bash tools/build.sh :app:testStableDebugUnitTest    # 75 个测试，必跑
 bash tools/build.sh :app:assembleStableRelease
 bash tools/build.sh :app:lintVitalStableRelease     # 改字符串/资源后必跑
 ```
@@ -271,6 +288,32 @@ bash tools/build.sh :app:lintVitalStableRelease     # 改字符串/资源后必�
 | `ForumRichTextTest` | 粗体/斜体/链接/颜色/引用/表情/图片/BBcode |
 | `MainThreadSafetyTest` | 静态守卫：阻塞调用必须切 IO |
 | `ForumCardRenderTest` | 帖子卡片 **Compose 真实渲染**（Robolectric） |
+| `ForumMessagingParserTest` | 私信会话列表/会话详情、收藏、发新帖表单 |
+| `ThreadActionsPopupLayoutTest` | OS4 玻璃菜单**像素级锚定**（右缘对齐/不出窗/宿主=整页）+ 截图 |
+| `ForumImageUrlTest` | 头像/缩略图 URL 绝对化、占位图过滤、`javascript:` 不拼接 |
+| `ForumImageDecoderTest` | GIF→gif 解码器、JPEG→BitmapFactory 的路由断言 |
+| `ForumImageSessionTest` | 图片客户端带会话 jar + acw、Cookie 不跨 host |
+| `ForumImageScreenshotTest` | **JVM 截图**：真实卡片 + 正文渲染并落盘 PNG |
+
+### 无模拟器时怎么「跑」UI（2026-11-26 新增）
+
+本机跑不了模拟器，用 Robolectric 把真实组件组合出来、**截成 PNG 直接看**：
+
+```bash
+bash tools/build.sh :app:testStableDebugUnitTest \
+  --tests "io.rune.mt.forum.ThreadActionsPopupLayoutTest"   # OS4 菜单截图
+bash tools/build.sh :app:testStableDebugUnitTest \
+  --tests "io.rune.mt.forum.ForumImageScreenshotTest"       # 卡片+正文图片截图
+```
+
+产物在 `app/build/ui-screenshots/`（`ForumImageScreenshotTest`）与
+`artifacts/`（菜单测试）；仓库里存了两张样例：[docs/screenshots/os4-thread-actions-menu.png](screenshots/os4-thread-actions-menu.png)、
+[docs/screenshots/jvm-image-render.png](screenshots/jvm-image-render.png)。
+
+⚠️ miuix 的 squircle 用了 AGSL RuntimeShader，Robolectric 自带 Skia 编译不了
+（`'color' is not a valid layout qualifier`）。截图测试里用
+`CompositionLocalProvider(LocalSquircleEnabled provides false)` 绕开——只影响截图圆角观感，
+不影响布局测量。
 
 ### 加新页面的检查清单
 
@@ -326,6 +369,9 @@ bash tools/build.sh :app:lintVitalStableRelease     # 改字符串/资源后必�
 | 登录成功却提示密码错 | `cookieUid()` 是否读 `lastcheckfeed`（不是 `lip`） |
 | 未登录被当成已登录 | `getUserProfile` 是否校验了 `span.user_tit` |
 | 头像/图片不显示 | `ForumImageLoader` 是否带 UA + Referer；图片容器是否给了高度 |
+| 站点图床/附件图空白（`mod=image`、`mod=attachment`） | 图片客户端是否拿到 `ForumCookieJar` + `AcwInterceptor`；匿名请求会拿到 4321B 的 acw 挑战页 |
+| 个别头像显示成字母 | URL 是否为 `pic/none.png` 占位或 `javascript:;`；`ForumUrls.absolute` 是否返回 null |
+| OS4 菜单错位 / 遮罩只盖住按钮 | `GlassPopup` 必须组合在页面根 `BoxScope(fillMaxSize)`，不能放在顶栏 actions 单元格里 |
 | 弹窗开在左上角 | `anchorBounds` 是不是 `Rect.Zero`（没测量） |
 | 右上角菜单溢出屏幕 | OS3 是否用 `ContextMenuPositionProvider` + `Align.TopEnd` |
 | `NetworkOnMainThreadException` | 阻塞调用是否漏了 `withContext(IO)` |
@@ -407,3 +453,59 @@ RenderNode，刚好就是 `DirtyStack` 链过深的表现。
 
 再次遇到时请提供：**崩溃前停在哪个页面、做了什么操作**（启动即崩 / 进帖子崩 / 开关 blur 时崩）。
 这三者指向完全不同的 RenderNode 路径。
+
+---
+
+## 12. 真机反馈修复：OS4 菜单错位 + 图床/附件图空白（2026-11-26）
+
+两个 bug 都来自真机反馈，本机无模拟器/无设备，因此用 **JVM + Robolectric 截图/像素断言**定位并
+验证（见 §6「无模拟器时怎么跑 UI」）。两项修复都有可复现的失败→通过证据，但**都没有真机复核**。
+
+### 12.1 OS4 帖子页右上角三点菜单展开错位
+
+**根因**：`GlassPopup` 不是 `Popup` 窗口，而是**内联 overlay**（`Box(fillMaxSize)` 遮罩 +
+`Layout` 用窗口坐标 place 面板，`placeGlassPopup` 把面板钳进 `intersect(window, host)`）。
+它被组合在顶栏 `actions` 槽的 `Box` 里 → host 只有按钮单元格大小：
+面板被钳到错误一端、遮罩只盖住按钮，而 `Box(fillMaxSize)` 作为 Row 兄弟又把 actions 行撑高，
+`onGloballyPositioned` 把跳变后的按钮坐标回写给 `anchorBounds`，形成反馈，最终就是所见「错位」。
+
+**修复**：状态与 anchorBounds 提升成 `ThreadActionsState`（`rememberThreadActionsState()`）；
+`ThreadActions` 只画按钮并上报 `boundsInWindow()`；新增 `BoxScope.ThreadActionsGlassMenu()`
+在 `ForumThreadPage` 的页面根 `Box(fillMaxSize)` 里组合（OS3 的 `WindowListPopup` 仍留在按钮旁，
+保持原锚点）。miuix KDoc 的原话就是 "Place it in the page's root BoxScope"。
+
+**证据**（822×1782 px，真实顶栏 + 真实 ThreadActions）：
+
+| 指标 | 修复前 | 修复后 |
+|---|---|---|
+| popup host 尺寸 | 798×1782（= actions 行宽） | 822×1782（= 整页） |
+| anchor 坐标 | 展开瞬间跳到 (0, −839) | 稳定 (710, 8, 798, 96) |
+| 面板矩形 | right=424（跑到左边） | (398, 8, 798, 480)：right=anchor.right，top=anchor.top |
+
+回归测试 `ThreadActionsPopupLayoutTest`（4 个，含一条**反证测试**：把同一批组件放回旧嵌套断言
+host≠页面尺寸）与截图 [screenshots/os4-thread-actions-menu.png](screenshots/os4-thread-actions-menu.png)。
+
+### 12.2 站点图床/附件图片加载不出（真机反馈「MT 自带图床的图片不显示」）
+
+**根因**：图片客户端此前刻意「不复用会话」——只带 UA + Referer。CDN 静态图确实不需要登录，
+但 Discuz 的附件/图床代理是 **`bbs.binmt.cc/forum.php?mod=image&aid=…` / `mod=attachment`**，
+匿名请求返回的是 **200 + 4321B 的 acw 挑战页（text/html）**，Coil 把它当图片解码必然失败。
+（对照实测：`cdn/icdn/oos` 三类 CDN 直连 200 `image/jpeg|gif`，带不带 Referer 都一样，所以不是防盗链。）
+
+**修复**：
+1. `buildForumImageHttpClient(cookieJar)`：独立 OkHttpClient，共用 `ForumCookieJar` +
+   `AcwInterceptor`；`App.onCreate` 在 Koin 起来后懒注入 jar。
+2. `ForumCookieJar.loadForRequest` 改为按 `Cookie.matches(url)` 过滤——会话 Cookie 不再泄漏给
+   CDN；`AcwInterceptor` 对非 `bbs.binmt.cc` 直接放行（不再对每张图 `peekBody(64KB)`）。
+3. 新增 `ForumUrls.absolute()/imageFallback()`：URL 绝对化（`//`、`/`、裸相对路径）与
+   `javascript:/file:/data:` 过滤；正文图片失败时 CDN → `bbs.binmt.cc` 同路径重试一次，
+   最终失败记 `Timber.w("picture failed: %s")`（只记 URL）。
+4. `coil-gif` + 显式注册解码器：GIF 动图；没有它时首帧透明的 GIF 看着就是空白（次要原因）。
+5. 占位属性（`comiis_loadimages`/`src=none.png`）不会被当成图片下发（测试锁定）。
+
+**测试**：`ForumImageUrlTest` / `ForumImageDecoderTest` / `ForumImageSessionTest` /
+`ForumImageScreenshotTest` 覆盖；失败→通过样例：相对头像 `""` → 绝对 URL；缩略图
+`data/attachment/...` → `https://cdn...`；`javascript:;` 不再拼成站点 URL。
+
+**仍未验证**：`mod=image` 在**真实登录会话**下是否返回图片字节，本环境无凭据，只能在装配层
+（jar 按 host 过滤 / client 含 acw / fallback 映射）证明；需要真机登录后看带附件帖。

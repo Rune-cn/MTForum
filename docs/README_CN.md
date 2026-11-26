@@ -43,7 +43,7 @@
 
 ```bash
 bash tools/build.sh                              # debug APK
-bash tools/build.sh :app:testStableDebugUnitTest  # 47 tests
+bash tools/build.sh :app:testStableDebugUnitTest  # 75 tests
 bash tools/build.sh :app:assembleStableRelease
 bash tools/build.sh :app:lintVitalStableRelease
 ```
@@ -53,14 +53,18 @@ bash tools/build.sh :app:lintVitalStableRelease
 ## 验证
 
 ```
-:app:testStableDebugUnitTest    47 tests, 0 failures
+:app:testStableDebugUnitTest    75 tests (15 classes), 0 failures
 :app:assembleStableRelease      BUILD SUCCESSFUL  (2.3 MB)
 :app:lintVitalStableRelease     BUILD SUCCESSFUL
 ```
 
 测试覆盖：acw 签名（与 JS 参考实现交叉验证）、版块/列表/帖子/楼层解析、导读解析、
 登录表单与失败响应、正文富文本、帖子卡片 Compose 真实渲染、主线程安全、
-私信会话/收藏/发帖表单解析。
+私信会话/收藏/发帖表单解析、图片 URL 规范化/解码器路由/会话 Cookie 隔离、
+OS4 玻璃菜单像素级锚定。
+
+无模拟器时可直接「看」UI（Robolectric 截图，产物在 `app/build/ui-screenshots/`）：
+`ThreadActionsPopupLayoutTest`、`ForumImageScreenshotTest`，样例见 [screenshots/](screenshots/)。
 
 ## 文档
 
@@ -68,6 +72,7 @@ bash tools/build.sh :app:lintVitalStableRelease
 - [docs/REVERSE_SPEC.md](docs/REVERSE_SPEC.md) — 站点逆向规格
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 代码地图
 - [docs/BUILD_ENV.md](docs/BUILD_ENV.md) — 构建与测试环境
+- [docs/screenshots/](screenshots/) — JVM 截图样例（OS4 菜单 / 图片渲染）
 - [AGENTS.md](AGENTS.md) — 面向 AI 代理的开发约定
 
 ## 许可
