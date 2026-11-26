@@ -8,6 +8,7 @@ import coil3.gif.AnimatedImageDecoder
 import coil3.gif.GifDecoder
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
+import coil3.serviceLoaderEnabled
 import io.rune.mt.forum.data.forum.network.AcwInterceptor
 import io.rune.mt.forum.data.forum.network.ForumCookieJar
 import io.rune.mt.forum.data.forum.network.ForumHttpClient
@@ -29,8 +30,8 @@ import okhttp3.OkHttpClient
  *   (`noavatar_middle.gif`) are GIFs. Without a GIF decoder Coil falls back to
  *   `BitmapFactoryDecoder`, which renders a single still frame — such a GIF never animates, and
  *   one whose first frame is blank looks empty. `coil-gif` fixes that; the factory is registered
- *   explicitly (rather than only via coil-gif's `ServiceLoader` entry) so R8-minified release
- *   builds behave identically.
+ *   explicitly, and Coil's `ServiceLoader` discovery is disabled, so debug and R8-minified release
+ *   builds get exactly one identical component list.
  *
  * [cookieJar] is nullable so the loader still works before DI is ready (and in unit tests).
  */
@@ -41,6 +42,11 @@ fun buildForumImageLoader(
     val okHttp = buildForumImageHttpClient(cookieJar)
 
     return ImageLoader.Builder(context)
+        // Every component used here is registered explicitly below, so Coil's `ServiceLoader`
+        // discovery is switched off. That keeps the component list deterministic across debug and
+        // R8-minified release builds (and avoids registering the same GIF decoder twice: once from
+        // coil-gif's `META-INF/services` entry, once explicitly).
+        .serviceLoaderEnabled(false)
         .components {
             add(OkHttpNetworkFetcherFactory(callFactory = { okHttp }))
             // AnimatedImageDecoder handles animated GIF/WebP/HEIF through `ImageDecoder` on

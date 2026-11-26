@@ -46,15 +46,6 @@ class App : Application(), KoinComponent {
         SafeMode.evaluate(this)
         super.onCreate()
 
-        // Forum CDNs filter on UA and Referer, so images need our own loader rather than the
-        // Coil default (which left some avatars blank). The session cookie jar is resolved
-        // lazily: `setSafe` only stores the factory, and it runs on the first image request —
-        // by then `startKoin` below has finished. The jar lets Coil load cookie-gated
-        // attachments (`forum.php?mod=image`) and solve the acw challenge on that host.
-        SingletonImageLoader.setSafe { ctx ->
-            buildForumImageLoader(ctx, runCatching { forumCookieJar }.getOrNull())
-        }
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             HiddenApiBypass.addHiddenApiExemptions("")
         }
@@ -80,6 +71,14 @@ class App : Application(), KoinComponent {
             // use modules
             modules(appModules)
         }
+
+        // Install the image loader after Koin so the session jar is resolved eagerly and
+        // deterministically (no "DI might not be ready yet" fallback). The same jar plus acw
+        // solver lets Coil load cookie-gated attachments (`forum.php?mod=image`) that the bare
+        // CDN loader could only get as an HTML challenge page. Placing this before any UI means
+        // no image request can race the setup.
+        val sessionJar = forumCookieJar
+        SingletonImageLoader.setSafe { ctx -> buildForumImageLoader(ctx, sessionJar) }
 
         restoreForumSession()
 

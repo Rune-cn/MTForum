@@ -36,6 +36,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import timber.log.Timber
 
 /**
  * Renders the real image surfaces on the JVM and writes a PNG of the result.
@@ -151,6 +152,65 @@ class ForumImageScreenshotTest {
         val cached = loader.memoryCache?.size ?: 0
         capture("02_gif_avatar_and_post.png")
         assertTrue(cached >= 2, "expected both GIFs to decode into the image cache, cached=$cached")
+    }
+
+    @Test
+    fun `failed picture keeps a visible placeholder and logs the url`() {
+        val messages = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val tree = object : Timber.Tree() {
+            override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
+                messages += message
+            }
+        }
+        Timber.plant(tree)
+        try {
+            // Port 1 has no listener, so the request fails immediately. The picture block must
+            // stay as an 80dp placeholder instead of collapsing to nothing, and the failure must
+            // be logged with the URL (never the cookies) so a blank post is diagnosable.
+            val dead = "http://127.0.0.1:1/data/attachment/forum/missing.gif"
+            val html = """
+                <div>加载失败的图片：</div>
+                <div><img src="$dead" /></div>
+                <div>结束。</div>
+            """.trimIndent()
+
+            compose.setContent {
+                androidx.compose.runtime.CompositionLocalProvider(
+                    top.yukonga.miuix.kmp.squircle.LocalSquircleEnabled provides false,
+                ) {
+                    AppTheme(
+                        useMiuix = true,
+                        themeMode = ThemeMode.LIGHT,
+                        paletteStyle = PaletteStyle.TonalSpot,
+                        colorSpec = ThemeColorSpec.SPEC_2021,
+                        useDynamicColor = false,
+                        useMiuixMonet = false,
+                        seedColor = Color(0xFF2E9E5B),
+                        useMiuixOs4 = true,
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color(0xFFF2F3F5))
+                                .padding(16.dp),
+                        ) {
+                            ForumHtmlText(html = html)
+                        }
+                    }
+                }
+            }
+
+            var attempts = 0
+            while (attempts < 100 && messages.none { it.contains(dead) }) {
+                compose.waitForIdle()
+                Thread.sleep(50)
+                attempts++
+            }
+            capture("03_failed_image_placeholder.png")
+            assertTrue(messages.any { it.contains(dead) }, "the failed URL must be logged, got $messages")
+        } finally {
+            Timber.uproot(tree)
+        }
     }
 
     private fun capture(name: String) {
