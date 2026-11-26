@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -58,17 +59,36 @@ import top.yukonga.miuix.kmp.window.WindowDialog
  * and a close button, the quoted floor as a chip, a 4–8 line field that auto-focuses and scrolls
  * internally, the smiley picker, the error line, and a prominent send button that shows progress.
  * `imePadding()` keeps the field and buttons above the keyboard.
+ *
+ * Drafts are **client-local** (the site cannot store them; see docs/REVERSE_SPEC.md §16). The
+ * footer's 保存草稿 writes [io.rune.mt.forum.domain.forum.repository.ForumDraftRepository] only,
+ * dismissing a non-blank sheet auto-saves it, and an existing draft for the thread is offered as a
+ * 恢复草稿/丢弃 prompt instead of silently filling the field.
  */
 @Composable
 internal fun ReplyComposer(
     state: ReplyState,
     onTextChange: (String) -> Unit,
+    onSaveDraft: () -> Unit,
     onSubmit: () -> Unit,
+    onRestoreDraft: () -> Unit,
+    onDiscardDraft: () -> Unit,
+    onDismissRestorePrompt: () -> Unit,
+    onDraftSavedShown: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     var pickerOpen by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
+    val context = LocalContext.current
+    val draftSavedText = stringResource(R.string.draft_saved_toast)
+
+    LaunchedEffect(state.draftSaved) {
+        if (state.draftSaved) {
+            android.widget.Toast.makeText(context, draftSavedText, android.widget.Toast.LENGTH_SHORT).show()
+            onDraftSavedShown()
+        }
+    }
 
     // Focus after the dialog window is attached; requesting it in the same frame as `show` is
     // dropped by the dialog's own focus reset. Closing resets the smiley panel so the next open
@@ -192,7 +212,13 @@ internal fun ReplyComposer(
                     onClick = onDismiss,
                     enabled = !state.isSubmitting,
                 )
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(8.dp))
+                TextButton(
+                    text = stringResource(R.string.draft_save),
+                    onClick = onSaveDraft,
+                    enabled = state.text.isNotBlank() && !state.isSubmitting,
+                )
+                Spacer(Modifier.width(8.dp))
                 Button(
                     onClick = onSubmit,
                     modifier = Modifier.weight(1f),
@@ -213,4 +239,17 @@ internal fun ReplyComposer(
             }
         }
     }
+
+    // Second window on top of the sheet: a saved local draft for this thread is offered, never
+    // silently applied. A back/outside dismissal keeps the draft for the next open.
+    DraftRestoreDialog(
+        visible = state.visible && state.pendingDraft != null,
+        title = stringResource(R.string.draft_restore_title),
+        message = stringResource(R.string.draft_restore_message),
+        confirmText = stringResource(R.string.draft_restore_confirm),
+        discardText = stringResource(R.string.draft_restore_discard),
+        onConfirm = onRestoreDraft,
+        onDiscard = onDiscardDraft,
+        onDismiss = onDismissRestorePrompt,
+    )
 }
