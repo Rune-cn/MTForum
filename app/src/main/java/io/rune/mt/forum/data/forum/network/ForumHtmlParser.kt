@@ -2,6 +2,7 @@
 package io.rune.mt.forum.data.forum.network
 
 import io.rune.mt.forum.domain.forum.model.Forum
+import io.rune.mt.forum.domain.forum.model.ForumCategory
 import io.rune.mt.forum.domain.forum.model.ForumConversationDetail
 import io.rune.mt.forum.domain.forum.model.ForumFavorite
 import io.rune.mt.forum.domain.forum.model.ForumHotEntry
@@ -30,6 +31,8 @@ object ForumHtmlParser {
     private val FORM_HASH = Regex("""formhash\s*=\s*'([0-9a-f]+)'""")
     private val TID_IN_HREF = Regex("""thread-(\d+)-""")
     private val FID_IN_HREF = Regex("""fid=(\d+)""")
+    /** Discuz `filter=typeid&typeid=N` link of one 主题分类 tab. */
+    private val TYPEID_IN_HREF = Regex("""[?&]typeid=(\d+)""")
     private val UID_IN_HREF = Regex("""uid=(\d+)""")
     private val FORUM_HREF = Regex("""forum-(\d+)-1\.html""")
     private val PID_ID = Regex("""pid(\d+)""")
@@ -40,25 +43,139 @@ object ForumHtmlParser {
 
     fun parseFormhash(html: String): String? = FORM_HASH.find(html)?.groupValues?.get(1)
 
-    /** Parses the board index (`forum.php`, or `forum.php?forumlist=1` for the full list). */
-    fun parseForums(html: String): List<Forum> {
-        val doc = Jsoup.parse(html)
-        return doc.select("div.comiis_mh_hotbk li, div.comiis_fl_g").mapNotNull { li ->
-            val link = li.selectFirst("a[href*=forum-]") ?: return@mapNotNull null
-            val fid = FORUM_HREF.find(link.attr("href"))?.groupValues?.get(1)?.toIntOrNull()
+    /**
+     * Parses every board the site lists on one or more index pages, in document order.
+     *
+     * Three blocks carry board tiles and each one exposes a different subset:
+     * - the shortcut grid of `forum.php` (`div.comiis_mh_hotbk li`, legacy `div.comiis_fl_g`)
+     *   holds the eight 热版推荐 tiles only;
+     * - the full index of `forum.php?forumlist=1` (the 社区 page, `div.comiis_forumlist` groups)
+     *   lists every board, including ones the home grid never shows (e.g. 站务专区);
+     * - the quick-post board picker (`ul[class^=comiis_fxpostlistbox_] li`) lists the boards a
+     *   signed-in user can post in, i.e. another partial subset.
+     *
+     * Pass both pages ([pages]) to get the complete set; a single page still yields the boards
+     * that page carries. Rows are kept in the order the site prints them (the grid's own order is
+     * meaningful and is never re-sorted) and de-duplicated by fid, filling a field the earlier
+     * block omitted from a later one (the full index carries the 今日 count, the grid the icon).
+     */
+    fun parseForums(html: String): List<Forum> = parseForums(listOf(html))
+
+    fun parseForums(pages: List<String>): List<Forum> =
+        mergeBoards(pages.flatMap { page -> parseBoardEntries(Jsoup.parse(page)) })
+
+    /** Collects one page's board tiles, block by block, in document order. */
+    private fun parseBoardEntries(doc: Document): List<Forum> = buildList {
+        addAll(doc.select("div.comiis_mh_hotbk li, div.comiis_fl_g").mapNotNull { shortcutBoard(it) })
+        addAll(
+            doc.select("div.comiis_forumlist div.comiis_forum_nbox ul li").mapNotNull { indexBoard(it) },
+        )
+        addAll(doc.select("ul[class^=comiis_fxpostlistbox_] li").mapNotNull { quickPostBoard(it) })
+    }
+
+    /** A tile of the home shortcut grid (`div.comiis_mh_hotbk li`). */
+    private fun shortcutBoard(li: Element): Forum? {
+        val link = li.selectFirst("a[href*=forum-]") ?: return null
+        val fid = FORUM_HREF.find(link.attr("href"))?.groupValues?.get(1)?.toIntOrNull()
+            ?: return null
+        return Forum(
+            fid = fid,
+            name = li.selectFirst("p")?.text()?.trim().orEmpty().ifBlank { link.text().cleanTitle() },
+            iconUrl = boardIcon(li),
+            description = li.selectFirst("dd")?.text()?.trim(),
+        )
+    }
+
+    /**
+     * A tile of the full index (`forum.php?forumlist=1`).
+     *
+     * Its `<em>` badge is the site's 今日 post count — the same number the board header prints as
+     * `今日 N`, not the board's total — so it fills [Forum.todayCount] and never `threadCount`.
+     */
+    private fun indexBoard(li: Element): Forum? {
+        val link = li.selectFirst("a[href*=forum-]") ?: return null
+        val fid = FORUM_HREF.find(link.attr("href"))?.groupValues?.get(1)?.toIntOrNull()
+            ?: return null
+        val img = li.selectFirst("img")
+        return Forum(
+            fid = fid,
+            name = li.selectFirst("p")?.text()?.trim().orEmpty()
+                .ifBlank { img?.attr("alt")?.trim().orEmpty() }
+                .ifBlank { link.text().cleanTitle() },
+            iconUrl = boardIcon(li),
+            todayCount = li.selectFirst("em span")?.text()?.filterDigits()?.toIntOrNull(),
+        )
+    }
+
+    /** A board of the quick-post picker (`ul[class^=comiis_fxpostlistbox_] li`). */
+    private fun quickPostBoard(li: Element): Forum? {
+        val link = li.selectFirst("a[href*=fid=]") ?: return null
+        val fid = FID_IN_HREF.find(link.attr("href"))?.groupValues?.get(1)?.toIntOrNull()
+            ?: return null
+        return Forum(
+            fid = fid,
+            name = li.selectFirst("em")?.text()?.cleanTitle().orEmpty()
+                .ifBlank { li.selectFirst("img")?.attr("alt")?.trim().orEmpty() }
+                .ifBlank { link.text().cleanTitle() },
+            iconUrl = boardIcon(li),
+        )
+    }
+
+    /**
+     * Icon URL of a board tile.
+     *
+     * The grid and the quick-post picker lazy-load it: `src` is the shared `none.png` placeholder
+     * and the real file sits in `comiis_loadimages`. The full index prints the real file in `src`.
+     */
+    private fun boardIcon(el: Element): String? {
+        val img = el.selectFirst("img") ?: return null
+        return ForumUrls.absolute(
+            img.attr(LAZY_IMAGE_ATTR).takeIf { it.isNotBlank() }
+                ?: img.attr("data-src").takeIf { it.isNotBlank() }
+                ?: img.attr("src"),
+        )
+    }
+
+    /** De-duplicates boards by fid while keeping the first occurrence's position. */
+    private fun mergeBoards(entries: List<Forum>): List<Forum> {
+        val merged = linkedMapOf<Int, Forum>()
+        entries.forEach { board ->
+            val previous = merged[board.fid]
+            merged[board.fid] = if (previous == null) {
+                board
+            } else {
+                previous.copy(
+                    description = previous.description ?: board.description,
+                    iconUrl = previous.iconUrl ?: board.iconUrl,
+                    todayCount = previous.todayCount ?: board.todayCount,
+                )
+            }
+        }
+        return merged.values.toList()
+    }
+
+    /**
+     * Parses the 主题分类 strip of a board listing (`#forumlist_time_li`).
+     *
+     * The template reuses one swiper for two unrelated things: a board that has categories prints
+     * 全部 followed by one tab per `typeid`, while a board without categories prints the
+     * 全部/最新/热门/精华 *sort* switch, which carries no `typeid` at all. Only anchors that really
+     * link to `filter=typeid&typeid=N` become categories, so a plain board yields an empty list and
+     * the caller keeps its unfiltered listing. The `typeId = null` 全部 entry is emitted only when
+     * categories exist, so it never shows up as a dead tab.
+     */
+    fun parseCategories(html: String): List<ForumCategory> = parseCategories(Jsoup.parse(html))
+
+    private fun parseCategories(doc: Document): List<ForumCategory> {
+        val strip = doc.selectFirst("#forumlist_time_li") ?: return emptyList()
+        val categories = strip.select("li a[href]").mapNotNull { anchor ->
+            val typeId = TYPEID_IN_HREF.find(anchor.attr("href"))?.groupValues?.get(1)?.toIntOrNull()
                 ?: return@mapNotNull null
-            val img = li.selectFirst("img")
-            Forum(
-                fid = fid,
-                name = (li.selectFirst("p")?.text() ?: link.text()).trim(),
-                iconUrl = ForumUrls.absolute(
-                    img?.attr("comiis_loadimages")?.takeIf { it.isNotBlank() }
-                        ?: img?.attr("data-src")?.takeIf { it.isNotBlank() }
-                        ?: img?.attr("src"),
-                ),
-                description = li.selectFirst("dd")?.text()?.trim(),
-            )
-        }.distinctBy { it.fid }
+            ForumCategory(typeId = typeId, name = anchor.text().cleanTitle())
+                .takeIf { it.name.isNotBlank() }
+        }.distinctBy { it.typeId }
+        if (categories.isEmpty()) return emptyList()
+        return listOf(ForumCategory(typeId = null, name = CATEGORY_ALL_LABEL)) + categories
     }
 
     /**
@@ -101,6 +218,7 @@ object ForumHtmlParser {
             page = page,
             totalPages = parseTotalPages(doc),
             notice = notice,
+            categories = parseCategories(doc),
         )
     }
 
@@ -457,4 +575,10 @@ object ForumHtmlParser {
     private val NOTICE_PTID = Regex("""ptid=(\d+)""")
     private val NOTICE_ID = Regex("""a_note_(\d+)""")
     private val NOTICE_WHITESPACE = Regex("""\s+""")
+
+    /** Lazy-load attribute the Comiis template puts the real image URL in. */
+    private const val LAZY_IMAGE_ATTR = "comiis_loadimages"
+
+    /** Label the site prints on the first 主题分类 tab, which is the unfiltered listing. */
+    private const val CATEGORY_ALL_LABEL = "全部"
 }

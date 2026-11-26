@@ -128,6 +128,8 @@
     <string name="login_required_action">Sign in</string>
     <string name="login_in_progress">Signing in…</string>
     <string name="forum_boards">Boards</string>
+    <string name="forum_boards_all">All boards</string>
+    <string name="forum_categories_all">All</string>
     <string name="forum_hot_threads">Hot threads</string>
     <string name="forum_board_threads_format">%1$d threads</string>
     <string name="forum_thread_replies_format">%1$d replies</string>

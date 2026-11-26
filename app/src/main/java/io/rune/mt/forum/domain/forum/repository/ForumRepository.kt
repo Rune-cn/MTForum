@@ -20,11 +20,16 @@ import kotlinx.coroutines.flow.StateFlow
 /** Data entry point for every MT 论坛 screen. */
 interface ForumRepository {
 
-    /** Forum home (`forum.php`): board tiles plus the site's own 热帖排行, from one request. */
+    /** Forum home (`forum.php`): board tiles plus the site's own 热帖排行. */
     suspend fun getHome(): ForumHomeData
 
-    /** Board listing, [page] is 1-based. */
-    suspend fun getThreads(fid: Int, page: Int = 1): ForumThreadPage
+    /**
+     * Board listing, [page] is 1-based.
+     *
+     * [typeId] narrows the listing to one 主题分类 (`filter=typeid&typeid=N`); `null` is the
+     * board's unfiltered 全部 listing.
+     */
+    suspend fun getThreads(fid: Int, page: Int = 1, typeId: Int? = null): ForumThreadPage
 
     /**
      * One page of a 导读 view ([view]); [page] is 1-based.

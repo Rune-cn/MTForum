@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.rune.mt.forum.R
+import io.rune.mt.forum.domain.forum.model.ForumCategory
 import io.rune.mt.forum.ui.navigation.LocalNavigator
 import io.rune.mt.forum.ui.navigation.Route
 import androidx.compose.material.icons.Icons
@@ -54,6 +55,7 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.interfaces.ExperimentalScrollBarApi
@@ -91,6 +93,10 @@ fun ForumListPage(
         Timber.tag("ForumListPage").i("board shown fid=%d", fid)
         viewModel.openForum(fid, forumName)
     }
+
+    // Switching 主题分类 reloads a shorter list: start it at the tabs again instead of keeping the
+    // old offset (which could leave the user in the middle of a page that just shrank).
+    LaunchedEffect(state.typeId) { listState.scrollToItem(0) }
 
     // Append the next page once the tail of the loaded rows becomes visible.
     val shouldAppend by remember(state.threads.size, state.page, state.totalPages) {
@@ -149,6 +155,18 @@ fun ForumListPage(
                         .nestedScroll(chrome.scrollBehavior.nestedScrollConnection),
                     contentPadding = contentPadding,
                 ) {
+                    // 主题分类 strip, directly under the top bar and part of the scroll content so
+                    // it behaves like the 导读 tabs. Boards without categories print none here.
+                    if (state.categories.isNotEmpty()) {
+                        item(key = "forum_categories") {
+                            ForumCategoryTabs(
+                                categories = state.categories,
+                                selectedTypeId = state.typeId,
+                                onSelect = viewModel::selectCategory,
+                                modifier = Modifier.padding(bottom = 10.dp),
+                            )
+                        }
+                    }
                     if (state.isLoading) {
                         item { ForumLoadingCard() }
                     } else if (state.error != null && state.threads.isEmpty()) {
@@ -171,6 +189,33 @@ fun ForumListPage(
             }
         }
     }
+}
+
+/**
+ * 主题分类 tabs of a board, mirroring the 导读 page's Miuix [TabRow].
+ *
+ * The site prints these as a horizontally scrollable strip (`#forumlist_time_li`), and Miuix
+ * [TabRow] is a lazy horizontal row with the same behaviour: a board with more categories than
+ * fit scrolls instead of squeezing every tab. The selected tab gets the theme's container in both
+ * OS3 and OS4, so no style branch is needed. The `typeId = null` entry is the site's 全部 tab; its
+ * label comes from resources so it follows the app locale instead of the site's Chinese one.
+ */
+@Composable
+private fun ForumCategoryTabs(
+    categories: List<ForumCategory>,
+    selectedTypeId: Int?,
+    onSelect: (Int?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val labels = categories.map { category ->
+        if (category.typeId == null) stringResource(R.string.forum_categories_all) else category.name
+    }
+    TabRow(
+        tabs = labels,
+        selectedTabIndex = categories.indexOfFirst { it.typeId == selectedTypeId }.coerceAtLeast(0),
+        onTabSelected = { index -> onSelect(categories.getOrNull(index)?.typeId) },
+        modifier = modifier.fillMaxWidth(),
+    )
 }
 
 /** The paged rows of one board, split out so the page body stays readable. */

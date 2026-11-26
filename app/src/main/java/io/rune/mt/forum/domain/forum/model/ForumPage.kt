@@ -8,4 +8,9 @@ data class ForumThreadPage(
     val page: Int = 1,
     val totalPages: Int = 1,
     val notice: List<ForumThread> = emptyList(),
+    /**
+     * 主题分类 of the board, in site order and starting with the `typeId = null` 全部 entry.
+     * Empty when the board has no categories, in which case the listing stays unfiltered.
+     */
+    val categories: List<ForumCategory> = emptyList(),
 )
