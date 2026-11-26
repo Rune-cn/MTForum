@@ -131,6 +131,26 @@ Content-Type: multipart/form-data
 - 附件也可先走 `forum.php?mod=misc&action=postattach` 上传拿 aid，但移动表单本身是 multipart，
   直接把 `Filedata` 一并提交即可（待真机/线上验证，本次未发真实帖以免污染版面）。
 
+### 16.1 `save` 字段 = 「保存草稿」按钮，但它会发布（2026-11-27 实测）
+
+移动表单里的保存草稿按钮：
+
+```html
+<input type="hidden" id="postsave" name="save" value="" />
+<button type="button" id="postsubmit" class="comiis_btn formdialog bg_a f_f" value="true"
+        onclick="document.getElementById('postsave').value=1;$('postsubmit').click();"><em>保存草稿</em></button>
+```
+
+- 它没有独立接口：只是把 `save=1` 加到同一个 newthread multipart POST 上。
+- **`save=1` + `topicsubmit=yes` → 主题被真实发布**，不是草稿。
+- `save=1` 不带 `topicsubmit=yes` → 服务端重渲染空白表单，不落任何草稿。
+- 逐地址核对 0 条草稿：`home.php?mod=space&do=thread&view=me&from=space`、
+  `home.php?mod=space&do=thread&view=me&type=draft`、`home.php?mod=spacecp&ac=draft`
+  （该页只是资料设置，无草稿管理）、以及桌面版同地址。
+- 站点草稿插件是关闭的（`forum_guard` 在删除该测试帖时抛过「编辑数据不存在」）。
+- **客户端结论**：草稿只存本机（`ForumDraftRepository`，DataStore `forum_drafts`，上限 20 条），
+  **永远不要为了「保存草稿」发送 `save=1`**。
+
 ---
 
 ## 17. 会话过期自动重登

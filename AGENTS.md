@@ -104,6 +104,11 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     改这里要一起验证预测返回（组合顺序不变）与 Android 16 的 hwui 采样风险。
 24. **IME inset 不要叠加**：用 `navigationBars.union(ime)` 一次性取较大底边距；
     输入框高度要计入列表底部 padding。
+25. **草稿只能是本地草稿**：站点发帖表单的 `save=1` **不是**保存草稿——2026-11-27 实测
+    `save=1` + `topicsubmit=yes` 会直接发布主题，去掉 `topicsubmit` 也不会落任何草稿
+    （`home.php?mod=space&do=thread&view=me&type=draft` 等地址均为 0 条）。发帖/回复草稿一律
+    存本机（`ForumDraftRepository`，DataStore `forum_drafts`，上限 20 条，按 `savedAt` 淘汰），
+    **禁止**再向站点发送 `save=1` 冒充草稿。
 
 ## Miuix 双风格（OS3 / OS4）
 
