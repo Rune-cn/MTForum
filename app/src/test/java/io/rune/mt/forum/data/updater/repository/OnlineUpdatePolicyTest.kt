@@ -16,13 +16,12 @@ import kotlinx.serialization.json.Json
 
 class OnlineUpdatePolicyTest {
     @Test
-    fun `update checks require network release build and official package`() {
+    fun `update checks require network and a release-capable channel`() {
         assertTrue(canCheck(level = Level.PREVIEW))
         assertTrue(canCheck(level = Level.STABLE))
         assertFalse(canCheck(level = Level.UNSTABLE))
         assertFalse(canCheck(level = Level.PREVIEW, allowInternetAccess = false))
         assertFalse(canCheck(level = Level.PREVIEW, isDebug = true))
-        assertFalse(canCheck(level = Level.PREVIEW, packageName = "com.example.fork"))
     }
 
     @Test
@@ -39,17 +38,17 @@ class OnlineUpdatePolicyTest {
     }
 
     @Test
-    fun `GitHub release payload exposes the CI APK`() {
+    fun `GitHub release payload exposes the stable APK`() {
         val payload = """
             [
               {
-                "tag_name": "26.08.abcdef0",
-                "prerelease": true,
-                "html_url": "https://github.com/example/releases/tag/26.08.abcdef0",
+                "tag_name": "26.11.3",
+                "prerelease": false,
+                "html_url": "https://github.com/Rune-cn/MTForum/releases/tag/26.11.3",
                 "assets": [
                   {
-                    "name": "mtforum-online-26.08.abcdef0.apk",
-                    "browser_download_url": "https://github.com/example/releases/download/26.08.abcdef0/app.apk"
+                    "name": "mtforum-stable-26.11.3.apk",
+                    "browser_download_url": "https://github.com/Rune-cn/MTForum/releases/download/26.11.3/mtforum-stable-26.11.3.apk"
                   }
                 ]
               }
@@ -57,30 +56,46 @@ class OnlineUpdatePolicyTest {
         """.trimIndent()
 
         val releases = Json.decodeFromString<List<GithubRelease>>(payload)
-        val release = OnlineUpdatePolicy.selectPreviewRelease(releases)
-        val apkAsset = release?.let(OnlineUpdatePolicy::selectOnlineApkAsset)
+        val release = releases.first()
+        val apkAsset = OnlineUpdatePolicy.selectOnlineApkAsset(release)
 
-        assertEquals("26.08.abcdef0", release?.tagName)
-        assertEquals("mtforum-online-26.08.abcdef0.apk", apkAsset?.name)
+        assertEquals("26.11.3", release.tagName)
+        assertEquals("mtforum-stable-26.11.3.apk", apkAsset?.name)
+        assertEquals(
+            "https://github.com/Rune-cn/MTForum/releases/download/26.11.3/mtforum-stable-26.11.3.apk",
+            OnlineUpdatePolicy.resolveDownloadUrl(apkAsset, GithubUpdateChannel.OFFICIAL, ""),
+        )
+        assertEquals("26.11.3", OnlineUpdatePolicy.resolveRemoteVersion(release, apkAsset))
     }
 
     @Test
-    fun `unified release keeps the online APK asset contract`() {
-        val offline = asset("mtforum-offline-26.08.abcdef0.apk")
-        val sourceArchive = asset("source.zip")
-        val online = asset("mtforum-online-26.08.abcdef0.APK")
-        val release = release(assets = listOf(offline, sourceArchive, online))
+    fun `stable APK wins over other apk assets and checksums are ignored`() {
+        val checksum = asset("mtforum-stable-26.11.3.apk.sha256")
+        val otherApk = asset("app-release.apk")
+        val stableApk = asset("mtforum-stable-26.11.3.apk")
+        val release = release(assets = listOf(checksum, otherApk, stableApk))
 
-        assertSame(online, OnlineUpdatePolicy.selectOnlineApkAsset(release))
+        assertSame(stableApk, OnlineUpdatePolicy.selectOnlineApkAsset(release))
+        assertEquals("26.11.3", OnlineUpdatePolicy.resolveRemoteVersion(release, stableApk))
     }
 
     @Test
-    fun `remote version is parsed from CI asset and falls back to tag`() {
-        val release = release(tag = "v26.08.1234567")
-        val asset = asset("mtforum-online-26.08.abcdef0.apk")
+    fun `any apk asset is a fallback when no stable name exists`() {
+        val plain = asset("app-release.apk")
+        val release = release(assets = listOf(asset("source.zip"), plain))
 
-        assertEquals("26.08.abcdef0", OnlineUpdatePolicy.resolveRemoteVersion(release, asset))
-        assertEquals("26.08.1234567", OnlineUpdatePolicy.resolveRemoteVersion(release, null))
+        assertSame(plain, OnlineUpdatePolicy.selectOnlineApkAsset(release))
+    }
+
+    @Test
+    fun `remote version is parsed from the asset and falls back to the tag`() {
+        val release = release(tag = "v26.11.3")
+        val stableAsset = asset("mtforum-stable-26.11.3.apk")
+        val legacyAsset = asset("mtforum-online-26.08.abcdef0.apk")
+
+        assertEquals("26.11.3", OnlineUpdatePolicy.resolveRemoteVersion(release, stableAsset))
+        assertEquals("26.11.3", OnlineUpdatePolicy.resolveRemoteVersion(release, null))
+        assertEquals("26.08.abcdef0", OnlineUpdatePolicy.resolveRemoteVersion(release, legacyAsset))
     }
 
     @Test
@@ -120,19 +135,21 @@ class OnlineUpdatePolicyTest {
         assertTrue(OnlineUpdatePolicy.compareVersions("26.08", "26.08.abcdef0") < 0)
         assertTrue(OnlineUpdatePolicy.compareVersions("26.08.abcdef0", "26.08.1234567") > 0)
         assertEquals(0, OnlineUpdatePolicy.compareVersions("26.08.abcdef0", "26.08.abcdef0"))
+        // Real stable tags: the About page compares the release tag with the installed version.
+        assertTrue(OnlineUpdatePolicy.compareVersions("26.11.3", "26.11.2") > 0)
+        assertEquals(0, OnlineUpdatePolicy.compareVersions("26.11.3", "26.11.3"))
+        assertEquals(0, OnlineUpdatePolicy.compareVersions("v26.11.3", "26.11.3"))
+        assertTrue(OnlineUpdatePolicy.compareVersions("26.11.2", "26.11.3") < 0)
     }
 
     private fun canCheck(
         level: Level,
         allowInternetAccess: Boolean = true,
         isDebug: Boolean = false,
-        packageName: String = OFFICIAL_PACKAGE,
     ): Boolean = OnlineUpdatePolicy.canCheckUpdates(
         allowInternetAccess = allowInternetAccess,
         isDebug = isDebug,
         level = level,
-        packageName = packageName,
-        officialPackageName = OFFICIAL_PACKAGE,
     )
 
     private fun release(tag: String = "26.08.abcdef0", prerelease: Boolean = true, assets: List<GithubAsset> = emptyList()) = GithubRelease(
@@ -142,8 +159,4 @@ class OnlineUpdatePolicyTest {
     )
 
     private fun asset(name: String, url: String = "https://github.com/example/$name") = GithubAsset(name = name, browserDownloadUrl = url)
-
-    private companion object {
-        const val OFFICIAL_PACKAGE = "io.rune.mt.forum.x.revived"
-    }
 }
