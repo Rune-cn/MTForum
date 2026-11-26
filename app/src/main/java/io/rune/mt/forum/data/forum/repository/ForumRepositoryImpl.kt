@@ -20,6 +20,7 @@ import io.rune.mt.forum.domain.forum.model.ForumUser
 import io.rune.mt.forum.domain.forum.model.NewThreadImage
 import io.rune.mt.forum.domain.forum.model.NewThreadResult
 import io.rune.mt.forum.domain.forum.repository.ForumRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -45,16 +46,34 @@ class ForumRepositoryImpl(
     override val session: StateFlow<ForumSession> = _session.asStateFlow()
 
     override suspend fun getHome(): ForumHomeData = withContext(Dispatchers.IO) {
-        // One request: the board grid and the server-ranked 热帖排行 block live on the same page.
-        val html = http.getHtml("forum.php")
+        // Two requests inside this single call. `forum.php` carries the home shortcut grid and the
+        // server-ranked 热帖排行 block, but it only shows eight boards; `forum.php?forumlist=1`
+        // (the 社区 page) is the site's authoritative full board list. The second request is an
+        // optional enrichment — if it fails the home page still renders the grid it already has.
+        val homeHtml = http.getHtml("forum.php")
+        val fullListHtml = try {
+            http.getHtml("forum.php?forumlist=1")
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            Timber.tag("ForumRepository").w(error, "forumlist unavailable, using the home grid only")
+            null
+        }
         ForumHomeData(
-            forums = ForumHtmlParser.parseForums(html),
-            hotRanking = ForumHtmlParser.parseHotRanking(html),
+            forums = ForumHtmlParser.parseForums(listOfNotNull(homeHtml, fullListHtml)),
+            hotRanking = ForumHtmlParser.parseHotRanking(homeHtml),
         )
     }
 
-    override suspend fun getThreads(fid: Int, page: Int): ForumThreadPage = withContext(Dispatchers.IO) {
-        val html = http.getHtml("forum.php?mod=forumdisplay&fid=$fid&page=$page")
+    override suspend fun getThreads(
+        fid: Int,
+        page: Int,
+        typeId: Int?,
+    ): ForumThreadPage = withContext(Dispatchers.IO) {
+        // A 主题分类 tab is a server-side filter link, not a client-side selection: the site only
+        // returns the filtered rows when `filter=typeid&typeid=N` is in the URL.
+        val typeFilter = if (typeId != null) "&filter=typeid&typeid=$typeId" else ""
+        val html = http.getHtml("forum.php?mod=forumdisplay&fid=$fid$typeFilter&page=$page")
         ForumHtmlParser.parseThreadPage(html, fid, page)
     }
 

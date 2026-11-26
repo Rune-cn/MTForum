@@ -128,6 +128,8 @@
     <string name="login_required_action">去登入</string>
     <string name="login_in_progress">正在登入…</string>
     <string name="forum_boards">版塊</string>
+    <string name="forum_boards_all">全部版塊</string>
+    <string name="forum_categories_all">全部</string>
     <string name="forum_hot_threads">熱門主題</string>
     <string name="forum_board_threads_format">%1$d 主題</string>
     <string name="forum_thread_replies_format">%1$d 回覆</string>

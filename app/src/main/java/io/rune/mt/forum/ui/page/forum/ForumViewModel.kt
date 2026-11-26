@@ -4,6 +4,7 @@ package io.rune.mt.forum.ui.page.forum
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.rune.mt.forum.domain.forum.model.Forum
+import io.rune.mt.forum.domain.forum.model.ForumCategory
 import io.rune.mt.forum.domain.forum.model.ForumGuideView
 import io.rune.mt.forum.domain.forum.model.ForumHotEntry
 import io.rune.mt.forum.domain.forum.model.ForumPost
@@ -38,6 +39,10 @@ data class ForumListState(
     val isAppending: Boolean = false,
     val threads: List<ForumThread> = emptyList(),
     val notices: List<ForumThread> = emptyList(),
+    /** 主题分类 tabs of the board; empty when the board has none. */
+    val categories: List<ForumCategory> = emptyList(),
+    /** Selected 主题分类 (`null` = 全部); every fetch of this board carries it. */
+    val typeId: Int? = null,
     val page: Int = 1,
     val totalPages: Int = 1,
     val error: String? = null,
@@ -157,18 +162,52 @@ class ForumViewModel(
             _listState.update { it.copy(forumName = forumName) }
         }
         if (current.fid == fid && current.threads.isNotEmpty()) {
-            // Same board already loaded: keep the rows on screen instead of flashing a spinner.
+            // Same board already loaded: keep the rows on screen — and the 主题分类 the user
+            // picked — instead of flashing a spinner.
             return
         }
         listJob?.cancel()
-        loadForumPage(fid = fid, forumName = forumName, page = 1, refresh = false)
+        loadForumPage(
+            fid = fid,
+            forumName = forumName,
+            // Re-entering the same board keeps its category; a different board starts at 全部.
+            typeId = current.typeId.takeIf { current.fid == fid },
+            page = 1,
+            refresh = false,
+        )
+    }
+
+    /**
+     * Switches the 主题分类 of the open board.
+     *
+     * The site filters server-side, so the rows cannot be narrowed client-side: the page-1
+     * request is repeated with `typeid`, and the previous board's rows are dropped first so a
+     * filtered result never shows unfiltered rows underneath while it loads. `null` is 全部.
+     */
+    fun selectCategory(typeId: Int?) {
+        val state = _listState.value
+        if (state.fid == 0 || state.typeId == typeId) return
+        listJob?.cancel()
+        _listState.update {
+            it.copy(
+                typeId = typeId,
+                threads = emptyList(),
+                notices = emptyList(),
+                page = 1,
+                totalPages = 1,
+                isLoading = true,
+                isAppending = false,
+                error = null,
+            )
+        }
+        loadForumPage(state.fid, state.forumName, typeId = typeId, page = 1, refresh = false)
     }
 
     fun refreshForum() {
         val state = _listState.value
         if (state.fid == 0) return
         listJob?.cancel()
-        loadForumPage(state.fid, state.forumName, page = 1, refresh = true)
+        loadForumPage(state.fid, state.forumName, typeId = state.typeId, page = 1, refresh = true)
     }
 
     /** Appends the next page of the current board listing. */
@@ -180,7 +219,7 @@ class ForumViewModel(
             try {
                 val next = state.page + 1
                 Timber.tag(TAG).i("loadForumPage fid=%d page=%d append", state.fid, next)
-                val pageData = repository.getThreads(state.fid, next)
+                val pageData = repository.getThreads(state.fid, next, state.typeId)
                 val known = _listState.value.threads.map { it.tid }.toSet()
                 _listState.update {
                     it.copy(
@@ -201,27 +240,37 @@ class ForumViewModel(
         }
     }
 
-    private fun loadForumPage(fid: Int, forumName: String, page: Int, refresh: Boolean) {
+    private fun loadForumPage(
+        fid: Int,
+        forumName: String,
+        typeId: Int?,
+        page: Int,
+        refresh: Boolean,
+    ) {
         listJob = viewModelScope.launch {
             _listState.update {
                 it.copy(
                     fid = fid,
                     forumName = forumName,
+                    typeId = typeId,
                     isLoading = !refresh && it.threads.isEmpty(),
                     isRefreshing = refresh,
                     error = null,
                 )
             }
             try {
-                Timber.tag(TAG).i("loadForumPage fid=%d page=%d refresh=%s", fid, page, refresh)
-                val pageData = repository.getThreads(fid, page)
-                _listState.update {
-                    it.copy(
+                Timber.tag(TAG).i("loadForumPage fid=%d typeId=%s page=%d refresh=%s", fid, typeId, page, refresh)
+                val pageData = repository.getThreads(fid, page, typeId)
+                _listState.update { current ->
+                    current.copy(
                         isLoading = false,
                         isRefreshing = false,
                         isAppending = false,
                         threads = pageData.threads,
                         notices = pageData.notice,
+                        // Page 2+ repeats the same strip; an empty answer (e.g. a view without
+                        // categories) must not wipe the tabs the first page already delivered.
+                        categories = pageData.categories.ifEmpty { current.categories },
                         page = pageData.page,
                         totalPages = pageData.totalPages,
                     )
