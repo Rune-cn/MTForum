@@ -58,7 +58,8 @@ app/src/main/java/io/rune/mt/forum/
 │   │   │   ├── ForumViewModel.kt     VM + 各页面 State
 │   │   │   ├── ReplyComposer.kt      回复框（引用 + 表情）
 │   │   │   ├── SmileyPicker.kt       表情选择器
-│   │   │   └── ThreadActions.kt      顶栏溢出按钮 + 页面根部 OS4 玻璃菜单（收藏/顶/关注/复制/分享）
+│   │   │   ├── ForumGuidePage.kt     导读五视图（最新/热门/精华/回复/抢沙发）
+│   │   │   └── ThreadActions.kt      顶栏溢出按钮 + 页面根部 OS4 玻璃菜单（收藏/顶/关注/复制/分享）＋返回关菜单
 │   │   ├── login/                    登录页 / VM / 状态
 │   │   ├── main/forum/               论坛 VM 与 State（旧位置，保留兼容）
 │   │   ├── miuix/
@@ -95,4 +96,10 @@ Compose 页面（Miuix 组件，OS3/OS4 自适应）
 7. **图片两条路**：CDN 静态图裸请求即可；站点 `mod=image`/`mod=attachment` 必须走带
    `ForumCookieJar` + `AcwInterceptor` 的图片客户端；URL 统一经 `ForumUrls` 规范化。
 8. **无模拟器的 UI 验证**：Robolectric + Compose 截图（`ThreadActionsPopupLayoutTest`、
-   `ForumImageScreenshotTest`）；截图前需 `LocalSquircleEnabled provides false` 绕开 AGSL。
+   `ForumImageScreenshotTest`、`Os4PredictiveBackScreenshotTest`）；截图前需
+   `LocalSquircleEnabled provides false` 绕开 AGSL。
+9. **预测式返回只有一条实现**：OS4 卡片动效在 `MiuixOs4NavTransition.kt`，由
+   `appNavTransition(useMiuixOs4=…)` 选择；`NavDisplayEffects`（圆角/压暗）由 `AppNavContainer` 统一给。
+   entry 内**不得**注册 `BackHandler`/`NavigationBackHandler`（会抢走 NavDisplay 的手势驱动）。
+10. **首页榜单与导读都是站点数据源**：热帖排行解析 `forum.php` 的 `comiis_mh_txtlist_phb`
+   （站点顺序，不重排）；导读走 `ForumUrls.guidePath(view, page)`，五个 view 共用列表解析器。

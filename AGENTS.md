@@ -73,6 +73,14 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     `src` 往往是 `none.png`/`imageloading.gif` 占位。
 14. **Cookie 只按 host 下发**：`ForumCookieJar.loadForRequest` 用 `Cookie.matches(url)` 过滤，
     禁止把 `cQWy_2132_auth` 发给 `cdn/icdn/oos` 等 CDN。
+15. **OS4 预测式返回只有一条实现路径**：动效在
+    `ui/animation/predictiveback/MiuixOs4NavTransition.kt`，`appNavTransition(…, useMiuixOs4=…)`
+    选择，圆角/压暗在 `AppNavContainer` 的 `NavDisplayEffects` 统一给。**entry 内禁止**注册
+    `BackHandler`/`NavigationBackHandler`（会抢走 NavDisplay 的手势驱动，表现为没有跟手预览）；
+    唯一例外是菜单展开时关菜单的 `ThreadActionsBackHandler`（`enabled = expanded`）。
+16. **首页榜单 / 导读必须用站点数据**：热帖排行解析 `forum.php` 的
+    `div.comiis_mh_txtlist_phb`（文档顺序 + `em` 名次 + `a[title]`），**禁止客户端重排**；
+    导读走 `ForumUrls.guidePath(view, page)`（`newthread|hot|digest|new|sofa`），不要手拼 URL。
 
 ## Miuix 双风格（OS3 / OS4）
 

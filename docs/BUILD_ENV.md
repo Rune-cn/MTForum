@@ -12,8 +12,21 @@ bash tools/build.sh :app:assembleStableRelease
 bash tools/build.sh :app:lintVitalStableRelease
 ```
 
-`tools/build.sh` 已注入全部环境变量（JAVA_HOME / ANDROID_HOME / GRADLE_USER_HOME /
-TEMP / 代理 / git PATH），无需手动设置。
+`tools/build.sh` 已注入全部环境变量（JAVA_HOME / ANDROID_HOME / ANDROID_USER_HOME /
+GRADLE_USER_HOME / TEMP / 代理 / git PATH / `java.io.tmpdir`），无需手动设置。
+
+> 并行开发多个 `git worktree` 时注意：`tools/build.sh` / `build.ps1` 把 `cd` 写死到
+> `Documents/1/MTForum`，worktree 里要用同一套变量手动跑 wrapper：
+>
+> ```powershell
+> $env:JAVA_HOME='C:\Users\Administrator\Documents\1\tools\jdk-25.0.5.1+2'
+> $env:ANDROID_HOME='C:\Users\Administrator\Documents\1\tools\android-sdk'
+> $env:ANDROID_USER_HOME='C:\Users\Administrator\Documents\1\tools\android-home'
+> $env:GRADLE_USER_HOME='C:\Users\Administrator\Documents\1\tools\gradle-home'
+> $env:TEMP='C:\Users\Administrator\Documents\1\tools\tmp'; $env:TMP=$env:TEMP
+> $env:JAVA_TOOL_OPTIONS='-Djava.io.tmpdir=C:/Users/Administrator/Documents/1/tools/tmp'
+> .\gradlew.bat :app:compileStableDebugKotlin --console=plain
+> ```
 
 ## 组件
 
@@ -73,15 +86,20 @@ bash tools/build.sh :app:testStableDebugUnitTest --tests "io.rune.mt.forum.Forum
 ```bash
 bash tools/build.sh :app:testStableDebugUnitTest --tests "io.rune.mt.forum.ThreadActionsPopupLayoutTest"
 bash tools/build.sh :app:testStableDebugUnitTest --tests "io.rune.mt.forum.ForumImageScreenshotTest"
+bash tools/build.sh :app:testStableDebugUnitTest --tests "io.rune.mt.forum.Os4PredictiveBackScreenshotTest"
 ```
 
 - `ThreadActionsPopupLayoutTest`：822×1782（`w411dp-h891dp-xhdpi`）下打开 OS4 玻璃菜单，
-  断言 host=整页、面板右缘对齐 anchor 右缘，并截图到 `artifacts/os4-thread-actions-menu.png`。
+  断言 host=整页、面板右缘对齐 anchor 右缘，截图落 `app/build/ui-screenshots/os4-thread-actions-menu.png`。
 - `ForumImageScreenshotTest`：起一个本地 `com.sun.net.httpserver` 提供 GIF 字节，
   渲染真实 `ForumThreadCard` + `ForumHtmlText`，落盘 `app/build/ui-screenshots/`。
   用内存缓存条目数断言「图确实解码成功」。
-- 两张样例图已入库：[screenshots/os4-thread-actions-menu.png](screenshots/os4-thread-actions-menu.png)、
-  [screenshots/jvm-image-render.png](screenshots/jvm-image-render.png)。
+- `Os4PredictiveBackScreenshotTest`：用真实 `miuixOs4NavTransition` + 假 `NavTransitionScope`
+  渲出手势 p=0.45 的一帧（含 scrim/卡片的绘制顺序），像素级校验后落
+  `app/build/ui-screenshots/os4-predictive-back.png`。
+- 三张样例图已入库：[screenshots/os4-thread-actions-menu.png](screenshots/os4-thread-actions-menu.png)、
+  [screenshots/jvm-image-render.png](screenshots/jvm-image-render.png)、
+  [screenshots/os4-predictive-back.png](screenshots/os4-predictive-back.png)。
 
 ### 坑：miuix squircle 在 Robolectric 下编译失败
 

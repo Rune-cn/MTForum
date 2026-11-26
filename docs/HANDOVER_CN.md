@@ -138,12 +138,13 @@ POST member.php?mod=logging&action=login&loginsubmit=yes&loginhash=…&inajax=1
 |---|---|---|
 | 版块列表 | `forum.php?mod=forumdisplay&fid={fid}&page={n}` | |
 | 帖子 | `thread-{tid}-{page}-1.html` | **页码在第二段** |
-| 导读 | `forum.php?mod=guide&view=newthread&page={n}` | |
+| 导读 | `forum.php?mod=guide&view={view}&index=1&page={n}` | 五个 view 共用一套列表 DOM |
 
 ⚠️ `thread-{tid}-1-{page}.html` **不报错，静默返回第 1 页**——曾是「加载下一页没反应」的真因。
 
-⚠️ `forum.php?mod=guide&view=hot` 会 302 到门户首页（没有帖子列表）。
-真正的导读是 `view=newthread` / `view=digest`，DOM 与版块列表一致，可复用同一个解析器。
+导读的五个 `view`（`ForumGuideView`）：`newthread` 最新 / `hot` 热门 / `digest` 精华 /
+`new` 回复 / `sofa` 抢沙发。它们都渲染与版块列表相同的 `li.forumlist_li`，可直接复用
+`parseThreadPage`；分页是真实存在的 `div.pg`（`/ 12 页`），抢沙发没有分页器（单页 12 条）。
 
 ### 3.5 正文渲染
 
@@ -264,6 +265,15 @@ Coil 走 `BitmapFactoryDecoder` 只出首帧，首帧透明的 GIF 看起来就�
    条件移除会在同帧销毁子组合并崩溃（`Could not resolve state for movable content`）。
 10. **禁止日志打印 Cookie 明文**，只可打 uid / isLoggedIn。
 11. **提交**：Conventional Commits，主体 ≤72 字符，不加 AI 署名。
+12. **OS4 预测式返回只有一条实现路径**：动效在
+    `ui/animation/predictiveback/MiuixOs4NavTransition.kt`（`miuixOs4NavTransition()`），由
+    `appNavTransition(…, useMiuixOs4=…)` 选择；`NavDisplayEffects` 的圆角/压暗也在
+    `AppNavContainer` 统一给。**不要**在 NavDisplay 的 entry 里注册 `BackHandler` /
+    `NavigationBackHandler`——那会抢走 `NavDisplay` 自己的手势驱动（= 没有跟手预览）。
+    唯一允许的是「菜单展开时关菜单」的 `BackHandler(enabled = expanded)`（`ThreadActionsBackHandler`）。
+13. **首页排行必须是站点顺序**：`parseHotRanking()` 读 `div.comiis_mh_txtlist_phb ul li`
+    的文档顺序 + `em` 名次 + `a[title]`，**禁止**客户端按回复/浏览重排（v14 及以前就是错的）。
+    导读视图一律走 `ForumUrls.guidePath(view, page)`，不要自己拼 `mod=guide` URL。
 
 ---
 
@@ -271,7 +281,7 @@ Coil 走 `BitmapFactoryDecoder` 只出首帧，首帧透明的 GIF 看起来就�
 
 ```bash
 bash tools/build.sh                                # debug 冒烟
-bash tools/build.sh :app:testStableDebugUnitTest    # 84 个测试，必跑
+bash tools/build.sh :app:testStableDebugUnitTest    # 112 个测试（21 个 suite），必跑
 bash tools/build.sh :app:assembleStableRelease
 bash tools/build.sh :app:lintVitalStableRelease     # 改字符串/资源后必跑
 ```
@@ -295,6 +305,10 @@ bash tools/build.sh :app:lintVitalStableRelease     # 改字符串/资源后必�
 | `ForumImageSessionTest` | 图片客户端带会话 jar + acw、Cookie 不跨 host |
 | `AcwImageFetchTest` | acw 只对 html/xhtml 探测；`image/*` 只取一次、不重放 |
 | `ForumBodyImageUrlTest` | 正文图懒加载属性优先于 `src` 占位；`javascript:` 不产生图片块 |
+| `ForumHomeRankingTest` | 首页热帖排行：站点顺序/名次/tid/`title` 属性优先，**不重排** |
+| `ForumGuideViewsTest` | 五个导读 view 的 URL/枚举顺序/三语标签；热帖/沙发样本解析与分页 |
+| `Os4PredictiveBackGeometryTest` | OS4 卡片返回几何：端点、单调、逐帧无跳变、像素对齐、scrim 起手为 0 |
+| `Os4PredictiveBackScreenshotTest` | 用真实 transition + 假 `NavTransitionScope` 渲出 p=0.45 的一帧并做像素断言 |
 | `ForumImageScreenshotTest` | **JVM 截图**：真实卡片 + 正文渲染、失败占位块落盘 PNG |
 
 ### 无模拟器时怎么「跑」UI（2026-11-26 新增）
@@ -308,9 +322,11 @@ bash tools/build.sh :app:testStableDebugUnitTest \
   --tests "io.rune.mt.forum.ForumImageScreenshotTest"       # 卡片+正文图片截图
 ```
 
-产物在 `app/build/ui-screenshots/`（`ForumImageScreenshotTest`）与
-`artifacts/`（菜单测试）；仓库里存了两张样例：[docs/screenshots/os4-thread-actions-menu.png](screenshots/os4-thread-actions-menu.png)、
-[docs/screenshots/jvm-image-render.png](screenshots/jvm-image-render.png)。
+产物统一在 `app/build/ui-screenshots/`（`ThreadActionsPopupLayoutTest` 的菜单图、`ForumImageScreenshotTest`、
+`Os4PredictiveBackScreenshotTest`）。仓库里存了样例：
+[docs/screenshots/os4-thread-actions-menu.png](screenshots/os4-thread-actions-menu.png)、
+[docs/screenshots/jvm-image-render.png](screenshots/jvm-image-render.png)、
+[docs/screenshots/os4-predictive-back.png](screenshots/os4-predictive-back.png)（p=0.45 的手势中间帧）。
 
 ⚠️ miuix 的 squircle 用了 AGSL RuntimeShader，Robolectric 自带 Skia 编译不了
 （`'color' is not a valid layout qualifier`）。截图测试里用
@@ -341,10 +357,14 @@ bash tools/build.sh :app:testStableDebugUnitTest \
 2. **发帖的图片附件未做线上实测**：接口按页面表单实现（multipart `Filedata`，1MB 限制），
    为避免往版面灌测试帖，只验证到「表单解析 + 字段正确」，真实提交需真机确认。
 3. **顶（推荐）未做线上实测**：接口不可撤销，实测会给帖子永久 +1，故只实现不实测。
-4. **点赞数是客户端算的**：`回复数×2 + 浏览数/10`，不是站点官方榜单。
-5. **会话过期无自动重登**：表现为只读（能看帖，不能回帖）。
+4. **首页「热帖排行」= 站点榜单**：直接解析 `forum.php` 里服务器渲染的
+   `div.comiis_mh_txtlist_phb`（10 条，名次在 `em`），客户端不重排、不补作者/回复数。
+   （v14 及以前是客户端 `回复×2 + 浏览/10` 算的，和站点对不上，已删除。）
+5. **导读分页依赖站点分页器**：`div.pg` 缺失（抢沙发）时按单页处理；若站点改模板去掉
+   `div.pg`，会退化为「满页就给下一页」的启发式。
+6. **会话过期无自动重登**：表现为只读（能看帖，不能回帖）。
    自动重登需要保存密码，方案见 REVERSE_SPEC §17，尚未实现（当前版本不落盘任何凭据）。
-6. **发帖遇验证码会直接拒绝**：站点当前对这几个版块未启用验证码，
+7. **发帖遇验证码会直接拒绝**：站点当前对这几个版块未启用验证码，
    一旦启用，解析器会检测到 `needsCaptcha` 并在 UI 上提示，而不是盲提交。
 
 ---
@@ -367,13 +387,15 @@ bash tools/build.sh :app:testStableDebugUnitTest \
 |---|---|
 | 页面空白 / 只有几行脚本 | `AcwInterceptor` 是否拿到签名；打印响应长度（4321 = 挑战页） |
 | 帖子「加载下一页」无反应 | URL 是否 `thread-{tid}-{page}-1.html`（页码在第二段） |
-| 导读空白 | 是否用了 `view=hot`（应 `view=newthread`） |
+| 导读空白 | 选中 view 的 URL 是否经 `ForumUrls.guidePath()`（`view=newthread|hot|digest|new|sofa`）；该 view 是否有帖子 |
 | 登录成功却提示密码错 | `cookieUid()` 是否读 `lastcheckfeed`（不是 `lip`） |
 | 未登录被当成已登录 | `getUserProfile` 是否校验了 `span.user_tit` |
 | 头像/图片不显示 | `ForumImageLoader` 是否带 UA + Referer；图片容器是否给了高度 |
 | 站点图床/附件图空白（`mod=image`、`mod=attachment`） | 图片客户端是否拿到 `ForumCookieJar` + `AcwInterceptor`；匿名请求会拿到 4321B 的 acw 挑战页 |
 | 个别头像显示成字母 | URL 是否为 `pic/none.png` 占位或 `javascript:;`；`ForumUrls.absolute` 是否返回 null |
 | OS4 菜单错位 / 遮罩只盖住按钮 | `GlassPopup` 必须组合在页面根 `BoxScope(fillMaxSize)`，不能放在顶栏 actions 单元格里 |
+| 菜单展开时按返回把帖子退掉 | 页面根是否调了 `ThreadActionsBackHandler`（`enabled = state.expanded`） |
+| OS4 返回手势「黑闪/硬推/直角」 | 是否走了 `miuixOs4NavTransition`；`dimAmount` 是否 0.2、`cornerClipMode` 是否 All、圆角是否 32dp 兜底 |
 | 弹窗开在左上角 | `anchorBounds` 是不是 `Rect.Zero`（没测量） |
 | 右上角菜单溢出屏幕 | OS3 是否用 `ContextMenuPositionProvider` + `Align.TopEnd` |
 | `NetworkOnMainThreadException` | 阻塞调用是否漏了 `withContext(IO)` |
@@ -388,7 +410,8 @@ bash tools/build.sh :app:testStableDebugUnitTest \
 | 论坛首页 | `https://bbs.binmt.cc/forum.php` |
 | 版块 | `forum.php?mod=forumdisplay&fid={fid}` |
 | 帖子 | `thread-{tid}-{page}-1.html` |
-| 导读 | `forum.php?mod=guide&view=newthread` |
+| 导读 | `forum.php?mod=guide&view={newthread|hot|digest|new|sofa}&index=1&page={n}` |
+| 热帖排行（首页） | 同在 `forum.php`：`div.comiis_mh_txtlist_phb ul li`（名次 `em`、链接 `a[href]`、标题 `a[title]`） |
 | 个人空间 | `home.php?mod=space&uid={uid}` |
 | 登录 | `member.php?mod=logging&action=login` |
 | 回帖 | `forum.php?mod=post&action=reply&fid=&tid=` |
@@ -531,6 +554,101 @@ data-src`），此前只读 `src` 占位，所以 26.11/26.11.1 修了会话与 
   （组件表 debug/release 一致），并新增 `AcwImageFetchTest` 与失败占位截图测试。
 - `26.11.2`（versionCode 14）✅ **真机确认可用**：正文懒加载属性优先（图床/附件图空白的主因）
   + 失败占位显示 `⚠ 域名` 便于定位；新增 `ForumBodyImageUrlTest`（84 个测试）。
+- `26.11.3`（versionCode 15）：OS4 预测式返回按 Miuix 重做 + 三点菜单规范化 + 导读补齐
+  热门/精华/回复/抢沙发 + 首页热帖排行改为站点顺序（详见 §13）。
+
 - 签名密钥**不**入库：本机 `C:\Users\Administrator\Documents\1\secrets\mtforum-release.jks`
   （密码在同目录 `mtforum-release.properties`）；GitHub 侧用 `KEYSTORE_BASE64` 等 4 个 Secrets。
   该文件丢失后无法再签发可升级包，务必备份。
+
+---
+
+## 13. 第三轮真机反馈：OS4 预测返回 / 三点菜单 / 导读五视图 / 首页排行（2026-11-26）
+
+四条反馈来自机主：帖子页三点菜单「不规范」、OS4 预测式返回「不太符合 UI 设计」、
+首页「热度排行和论坛主页不符」、导读「只有最新，没有热门/精华/回复/抢沙发」。
+本机仍无模拟器/设备，验证方式是几何单测 + Robolectric 截图/像素断言 + 真实站点抓样。
+
+### 13.1 OS4 预测式返回（旧实现为什么不像 Miuix）
+
+旧路径是 `PredictiveBackAnimation.MIUIX -> NavTransitions.MiuixDefault`，在 OS4 下表现为：
+
+* 出页整屏右移、**不缩放**；入页 25% 视差 + `alpha=0.9`（半透明会透出 backdrop 发黑）；
+* 圆角只裁 leading 侧（`NavCornerClipMode.Leading`），设备不上报圆角时半径直接是 0 → 直角卡片；
+* `dimAmount = 0.5` 的全屏纯黑 scrim，而且库默认 scrim 起手就满 → 手势一按就「黑闪」。
+
+新实现 `ui/animation/predictiveback/MiuixOs4NavTransition.kt`（OS4 + MIUIX 时启用，OS3 与其余
+四个选项逐字不变，设置页仍是五项）：
+
+| 量 | 旧 | 新 |
+|---|---|---|
+| 出页 scale | 1.0 | 1.0 → **0.92** |
+| 出页 translationX | 0 → 1 屏宽 | 0 → 1 屏宽（像素对齐，左边缘落整数像素） |
+| 出页圆角 | Leading，可能 0 | **四角**，设备圆角或 **32dp** 兜底 |
+| 出页阴影 | 无 | **6dp**，静止 0、离位即满值并恒定（阴影贴图不逐帧重算） |
+| 入页 | 纯视差 + α0.9 | scale **0.90 → 1.0** + **−6%** 视差，α 恒 1 |
+| scrim | 起手即 0.5 | 起手 **0** → 露出 42% 到 **0.2** → 62% 后淡出到 0（提交最后一帧不残黑） |
+| settle | 库默认 | commit `Spring(320)`、cancel `Spring(1500)`、返回键 `Tween(300)` |
+
+`push` 仍用库默认动画；`pop` 与 `predictivePop` 共用同一 transition，手势返回与返回键观感一致。
+
+**证据**：`Os4PredictiveBackGeometryTest`（14 个几何不变量：端点、单调性、逐帧无跳变、
+像素对齐、拖满完全离屏、RTL 镜像、scrim 起手为 0）；
+`Os4PredictiveBackScreenshotTest` 用**真实 transition** + 假 `NavTransitionScope`（`gesture` 非空 →
+库自动选 `predictivePop`）渲出手势 p=0.45 的一帧，并对像素做几何校验。
+截图见 [screenshots/os4-predictive-back.png](screenshots/os4-predictive-back.png)。
+
+⚠️ 未验证：真机阴影是否渲染、弹簧手感、曲面屏圆角观感（Robolectric 不画 elevation 阴影）。
+
+### 13.2 帖子页三点菜单「不规范」
+
+`GlassPopupItem` 在 miuix 0.9.5-beta03 有 `icon: ImageVector?` 槽（`javap` 确认），
+所以菜单用库原生行：图标 + 文字、24dp 图标、20dp 行内边距、全宽按压反馈，行高抬到 **48dp**
+（平台最小触摸目标）；**分享**前加一条分隔线（库 `GlassMenuDivider` 的间距/厚度配方）。
+OS3 仍是 `WindowListPopup + DropdownImpl`（经典样式只文本）。
+
+返回行为：新增 `ThreadActionsBackHandler(state)` → `BackHandler(enabled = state.expanded)`，
+放在页面根。菜单关着时回调 **disabled**，`NavDisplay` 的 `PredictiveBackHandlerWithSessions`
+仍是唯一驱动者（不抢手势）；菜单开着时它是最新注册的回调，返回只关菜单、不退帖子。
+
+**测试**：`ThreadActionsPopupLayoutTest` 扩到 8 个（5 个英文标签、48dp、返回关菜单且不退页、
+旧的锚定/反证断言保留），截图 [screenshots/os4-thread-actions-menu.png](screenshots/os4-thread-actions-menu.png)。
+
+### 13.3 首页热帖排行（旧算法与站点不符）
+
+旧实现：`getHotThreads()` 实际请求 `mod=guide&view=newthread`（导读最新），UI 再按
+`replyCount*2 + viewCount/10` 排序取前 10 —— 既不是站点的榜单，也不是站点顺序。
+
+站点首页 `forum.php` 自带服务器渲染的榜单：
+
+```html
+<div class="comiis_mh_txtlist_phb cl"><ul>
+  <li class="b_t"><a href="…/thread-177003-1-1.html" title="…"><em class="ibg01 f_f">1</em>…</a></li>
+  <!-- 10 条 -->
+</ul></div>
+```
+
+现在：`ForumHtmlParser.parseHotRanking()` 按文档顺序读 10 条（名次取 `em`、标题优先 `a[title]`、
+`em`/标题里的图标字体私用区字形会被清掉），`getHome()` 用**同一个** `forum.php` 请求返回
+宫格 + 榜单；UI 原样渲染名次和标题（站点块里只有这两样，不补作者/回复数），
+客户端排序与 `HOT_RANKING_SIZE` 全部删除。
+
+**测试**：`ForumHomeRankingTest`（3 个，锁定名次 1–10、真实 tid 顺序、title 属性优先）。
+
+### 13.4 导读补齐五个视图
+
+`ForumGuideView`（最新 `newthread` / 热门 `hot` / 精华 `digest` / 回复 `new` / 抢沙发 `sofa`）
++ `ForumUrls.guidePath(view, page)`；五个 view 共用 `li.forumlist_li` 解析器。
+`ForumGuideState(selected, views)` 为每个 view 保存独立的 `ForumListState` 与 job：
+切换 tab 不会闪出上一个 tab 的行，已加载的 view 再点即时显示；刷新/加载更多作用于当前 view。
+分页用站点 `div.pg`（真实 `/ 12 页`）；抢沙发没有分页器 → 单页 12 条。
+UI 是 Miuix `TabRow`（会横向滚动，OS3/OS4 都有选中态），列表沿用 `ForumThreadCard`。
+
+**测试**：`ForumGuideViewsTest`（6 个：URL、枚举顺序、三语标签、热门/沙发真实样本解析、分页）。
+
+### 13.5 验证与发布
+
+- `:app:compileStableDebugKotlin` BUILD SUCCESSFUL
+- `:app:testStableDebugUnitTest` BUILD SUCCESSFUL — **21 suites / 112 tests / 0 failures**
+- `:app:lintVitalStableRelease` BUILD SUCCESSFUL（三语键同步）
+- 发布 `26.11.3`（versionCode 15，release 签名），APK 由 `manual-stable-release` 工作流构建。
