@@ -1280,9 +1280,11 @@ htmlon / usesig / save`（另有 `hiddenreplies`、`ordertype` 等可选 checkbo
 ### 17.3 验证
 
 - `:app:compileStableDebugKotlin` → BUILD SUCCESSFUL。
-- `:app:testStableDebugUnitTest` → **43 suites / 235 tests / 0 failures**（基线 41 / 222；
+- 分支内：`:app:testStableDebugUnitTest` → **43 suites / 235 tests / 0 failures**（基线 41 / 222；
   新增 `ForumSignInParserTest` 8 例、`ForumSignInViewModelTest` 5 例）。
-- `:app:lintVitalStableRelease` → BUILD SUCCESSFUL。
+- **合入 main 后全量复跑（含站点草稿 §16、正文保真与附件下载 §3.5、示例应用对齐 §18）：
+  48 suites / 278 tests / 0 failures / 0 errors / 0 skipped**。
+- `:app:lintVitalStableRelease` → BUILD SUCCESSFUL（`Lint found no new issues`）。
 - 新增 12 个字符串键三语同步（`sign_in_*`），三处均 248 键。
 - 样本：`signin_misign.html`（签到前）、`signin_misign_after.html`（签到后，1033 / 3 天 / 272 天）。
 
@@ -1421,3 +1423,17 @@ internal fun barBackdrop(contentBackdrop: LayerBackdrop?, hostBackdrop: LayerBac
   （基线 41 / 222，新增 3 个 suite / 10 个用例）
 - `:app:lintVitalStableRelease` → BUILD SUCCESSFUL（无新增 lint 错误）
 - 未做设备验证（本机无模拟器），UI 结论全部来自 Robolectric 几何断言 + 截图。
+
+### 18.7 合入 main 后的总体验证（2026-11-27）
+
+本轮四条分支（站点草稿 §16、签到 §17、正文保真+附件下载 §3.5、示例应用对齐 §18）全部合入 main 后：
+
+- `:app:testStableDebugUnitTest` → **48 suites / 278 tests / 0 failures / 0 errors / 0 skipped**
+- `:app:lintVitalStableRelease` → BUILD SUCCESSFUL（`Lint found no new issues`，
+  1 个既有错误由 `lint-baseline.xml` 过滤）
+- 三语字符串各 **274** 键，键集合一致
+- 截图均由本轮通过的截图测试重新生成：`rich-body-constructs.png`、`rich-bbcode-reply.png`、
+  `attachment-card.png`、`os4-page-scrollbar.png`、`grouped-card-section.png`、
+  `os4-thread-post-cards.png`
+- ⚠️ 本机无设备/模拟器：所有 UI 证据是 Robolectric 版面断言 + NATIVE 截图；
+  「真机不崩」「玻璃观感」「下载面板实际观感」仍未实测。
