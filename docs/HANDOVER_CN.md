@@ -1202,9 +1202,9 @@ internal fun barBackdrop(contentBackdrop: LayerBackdrop?, hostBackdrop: LayerBac
 本应用此前没有任何滚动条，帖子页一屏好几楼、根本没法预判位置。新增统一覆盖层：
 
 - 文件：`app/src/main/java/io/rune/mt/forum/ui/page/miuix/widgets/MiuixScrollBar.kt`（新）
-- 接入：`MiuixPageScaffold`（设置页/主题页/首页/导读/收藏等全部经此）、
-  以及自带 `Scaffold` 的 `ForumThreadPage` / `ForumListPage` / `ForumNoticesPage`
-  （它们必须把列表包进 `PullToRefresh`，所以拿不到 helper，改动形状与示例相同）
+- 接入：`MiuixPageScaffold`（设置页/主题页/首页/导读等全部经此）、
+  以及自带 `Scaffold` 的 `ForumThreadPage` / `ForumListPage` / `ForumNoticesPage` /
+  `ForumFavoritesPage`（它们必须把列表包进 `PullToRefresh`，所以拿不到 helper，改动形状与示例相同）
 - 契约：`trackPadding` 用列表自己的 `contentPadding`，`topAppBarScrollBehavior = chrome.scrollBehavior`
   ——滚动条不会钻到顶栏或悬浮导航栏下面
 - 测试：`MiuixPageScrollBarTest`（3 例）＋截图
