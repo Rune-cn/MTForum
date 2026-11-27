@@ -170,12 +170,12 @@ HTML，任务是**忠实渲染这段 HTML**——不引 WebView、不引第三�
 | `CodeBlock` | `div.comiis_blockcode > .b_l > ol > li` | 独立面板、等宽、横向滚动、Copy 按钮，**逐行原样保留** |
 | `Quote(text, author, truncated, children)` | `div.comiis_quote > blockquote` / 裸 `<blockquote>` | 左侧竖线；作者行（`font color=#999999` 的「…发表于…」）作暗色页眉；**体内列表/表格/代码/分隔线/图片按原顺序成为 `children`** |
 | `Divider` | `<hr class="l">` | 1dp 分隔线 |
-| `BulletList(items)` | `ul/ol > li`（支持 2–3 层嵌套） | 圆点 / 序号 + 缩进 |
+| `BulletList(items)` | `ul/ol > li`（支持 2–3 层嵌套；**纯图片列表除外，见下**） | 圆点 / 序号 + 缩进 |
 | `Table(rows)` | `table/tr/th\|td`（含 `colspan`） | weight 网格 + 细边框；**表头加粗+底色，`colspan` 变 weight** |
 | `Attachment(name, caption, url, iconUrl, previewUrl, isImage)` | `div.comiis_attach`（`span.f_ok`、`p.attach_size`、`a[href*=mod=attachment]`、`img[src*=filetype]`） | 附件卡片，**尾随下载图标 + 文件类型角标；点击弹出"下载/浏览器/复制"选择**（见 §3.9） |
 | `ModeratorNote` | `div.comiis_modact` | 蓝色信息 chip |
 | `EditNote` | `i.pstatus`（「本帖最后由…编辑」） | 12sp 暗色说明，非斜体 |
-| `Picture` / `EmojiRow` | `<img>`（懒加载属性）/ `[#xxx]` token | 全宽图片 / 小表情行（引用内降为 96dp 缩略图） |
+| `Picture` / `EmojiRow` | `<img>`（懒加载属性）/ `[#xxx]` token / **`ul.comiis_img_list` 相册列表** | 全宽图片 / 小表情行（引用内降为 96dp 缩略图） |
 | `Aligned(align, blocks)` | `<div align>` / `<p align>` / BBCode `[align=…]` | **块级对齐容器**：内部段落按容器对齐，列表/表格/图片整体按容器对齐 |
 
 服务端实测事实（Comiis 模板对单个 BBCode 标签的输出）：
@@ -206,6 +206,32 @@ HTML，任务是**忠实渲染这段 HTML**——不引 WebView、不引第三�
 | `s`/`del` | `LineThrough` |
 | `a` | `primary` 色 + 下划线 + **`LinkAnnotation.Url`（可点击）** |
 | `font color` | 解析 hex / 少量颜色名 |
+
+**相册图片列表是相册，不是 bullet list（2026-11-27 修复「图片完全不显示」）**：Discuz 把整组
+相册附件渲染成消息末尾的 `ul.comiis_img_list`，每个 `<li>` 只有 `<span onclick><img></span>`；
+真实地址同样只在 `comiis_loadimages`（`src` 是 `none.png` 占位，落盘域名 `oos.binmt.cc`）。旧实现
+把所有 `ul/ol` 交给 `collectListItems()`，而它只收文字、`ul` 又是块标签，于是 `<img>` 一个都到不了
+`Picture` 分支——OP 只剩纯文字。现在的规则：
+
+- `ul.comiis_img_list`，或任何「有图片且自身没有文字」的 `ul/ol`（模板变体兜底）→ 按文档顺序
+  每个 `<img>` 一个 `Picture`，**不产生 `BulletList`**（`isImageGallery()`）。
+- 真正的文字列表照旧 `BulletList`；文字 + 图片混排则保留文字行，图片按文档顺序**跟在列表之后**
+  （`BulletList` 的行只能放文本，装不下块），只有图片的 `li` 不再留空 bullet。
+- 证据：`album_images_177269.html`（thread 177269 整页）正文 4 张 `oos.binmt.cc` 图 → 4 个
+  `Picture`、0 个 `BulletList`（`ForumBodyGalleryTest`）；Robolectric 截图
+  `app/build/ui-screenshots/09_album_gallery.png`。同一测试还把每个抓取样本正文里的 `<img>`
+  （排除表情、`static/image/filetype` 角标、附件预览）逐个计数并与渲染出的 `Picture` 数量对齐
+  ——「某个图片容器没人教过 walker」这一类 bug 不能再静默复发。
+
+**span/link 偏移必须按索引映射重映射（2026-11-27 修复「有些 bbcode 蓝色解析错位置了」）**：
+`normalize()` 折叠模板空白后会重建 `AnnotatedString`。旧实现只把每个 range 减去 `leadingTrim`，
+但模板是 pretty-print 的：`<br>` 后面的源码缩进（jsoup 会先归一成一个空格）会被 normalize 连同
+换行一起吞掉，内部连续空格也会并成一个——每一次内部折叠都让后面所有 offset 左移，于是链接的
+蓝色/下划线落到相邻字符（甚至整段注解被压成 0 长而丢弃）。现在
+`normalize()` 边折叠边记录 `indexMap[rawIndex] = collapsedOffset`，再用映射重算 `spanStyles`、
+`paragraphStyles`、`LinkAnnotation.Url/Clickable` 的 start/end；`stripTruncationEllipsis()` 的前缀
+截断同理重挂 paragraphStyles。`ForumRichTextTest` 分别钉住：内部双空格、换行 + 缩进、整段、
+leading-trim，以及真实样本里「每条 link 覆盖的文字 == 该 href 对应 `<a>` 的文字」。
 
 **为什么代码块必须独立成块**：`comiis_blockcode` 的每个 `<li>` 是一行代码，单行里还可能
 带 `<br>` 与 `&nbsp;` 缩进。把 `li` 当段落边界就会散架；必须整块取出、按 `<li>`/`<br>`

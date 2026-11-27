@@ -329,6 +329,32 @@ GET home.php?mod=space&uid={uid}&do=thread&view=me&from=space&mobile=2  # 最近
 `i.pstatus`（「本帖最后由 X 于 … 编辑」）。正文图片 `span.comiis_postimg img` 的真实地址在
 `comiis_loadimages`（`src` 是 `none.png` 占位）。
 
+### 21.1b 相册图片列表（`ul.comiis_img_list`）— 2026-11-27 实测
+
+OP 只发相册附件时，正文里**没有** `span.comiis_postimg`：模板把整组图片渲染在消息末尾的
+`ul.comiis_img_list` 里，每个 `<li>` 只有一张图：
+
+```html
+<div class="comiis_messages comiis_aimg_show cl">
+  <div class="comiis_a comiis_message_table cl">正文…<br /></div>
+  <ul class="comiis_img_list cl">
+    <li><span onclick="window.location.href='forum.php?mod=viewthread&tid=177269&aid=385428&from=album&page=1'">
+      <img id="aimg_385428"
+           src="https://cdn.binmt.cc/template/comiis_app/pic/none.png"
+           comiis_loadimages="https://oos.binmt.cc/forum/202611/25/162253m7ggudgxv23911ey.jpg"
+           alt="…[1000005490.jpg]" class="comiis_loadimages" /></span></li>
+    <!-- 同帖共 4 个 li，aid=385428..385431 -->
+  </ul>
+</div>
+```
+
+- 真实地址同样只在 `comiis_loadimages`（`src` 是 `none.png` 占位），落盘域名 `oos.binmt.cc`。
+- 该帖整页 24 个 `<img>` / 37 个 `comiis_loadimages`，其中**正文内只有这 4 个**；其余在
+  楼层头部头像、快捷发帖版块选择器（`li.bbslist_ico img`）与页脚，不属于正文管线。
+- 样本：`app/src/test/resources/forum/album_images_177269.html`（整页抓取，thread 177269）。
+- 解析约定：图片列表（有 `comiis_img_list` 类，或“只有图、没有文字”的 `ul`）按文档顺序
+  发 `Picture` 块；混排列表保留文字行、图片按序跟在列表之后。见 HANDOVER §3.5。
+
 ### 21.2 DOM 选择器
 
 - 正文容器：`div.comiis_postli` → `div.comiis_messages`（`ForumHtmlParser.parsePost`）。
@@ -361,6 +387,9 @@ GET home.php?mod=space&uid={uid}&do=thread&view=me&from=space&mobile=2  # 最近
   `div.comiis_attach` 里是真实 `.mtp` 附件 + `static/image/filetype/unknown.gif` 角标。
 - `app/src/test/resources/forum/rich_156696.html` —— 网盘对比帖：**首行整行加粗当表头**的
   五列表格（`<td><div align="center"><strong>`），块级对齐的唯一真实证据。
+- `app/src/test/resources/forum/album_images_177269.html` —— thread 177269 整页：正文唯一图片
+  来源是 `ul.comiis_img_list` 相册列表（4 张 `oos.binmt.cc` 图，见 §21.1b），用于钉住
+  「图片列表不能当 bullet list」与「正文 `<img>` 数量 == 渲染 `Picture` 数量」这两条。
 
 **诚实说明**：上述真实样本的 `blockquote` 内都没有 `<img>`；引用内图片的修复由合成用例
 （按站点真实 `<img>` 属性形状）支撑，不是某条 fixture 直接证明的。
