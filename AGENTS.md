@@ -61,7 +61,10 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
 8. **弹窗按风格分支**：OS4 → `GlassPopup` / `GlassIconDropdownMenu`；OS3 → `WindowListPopup`。
    **底部面板同理**：OS4 → `GlassBottomSheet`（内联，渲染进根 `Miuix Scaffold` 的 dialog 层，
    因此宿主 `MiuixComponentHost` 必须在；`backdrop` 传页面内容层或 `null`），
-   OS3 → `WindowBottomSheet`（真实窗口）。实例见 `ForumSignInSheet`、`AttachmentChoiceSheet`。
+   OS3 → `WindowBottomSheet`（真实窗口）。**回复面板与签到面板共用同一个 sheet 实现**：
+   统一走 `ui/page/miuix/widgets/MiuixBottomSheet`（标题头 + 关闭动作 + 相同内边距/圆角/手势，
+   风格分支只在该助手里），别各写一套。实例见 `ForumSignInSheet`、`ReplyComposer`、
+   `AttachmentChoiceSheet`。
 9. **不要条件化 `MiuixComponentHost`**：`SubcomposeLayout` 同帧销毁会崩溃。
 10. **禁止日志打印 Cookie 明文**，只可打 uid / isLoggedIn。
 11. **提交**：Conventional Commits；主体 ≤72 字符；不加 AI 署名或 Co-authored-by。
