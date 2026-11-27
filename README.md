@@ -51,6 +51,13 @@
 
 所有网络与解析都在 `Dispatchers.IO` 上执行，`MainThreadSafetyTest` 是静态回归守卫。
 
+### 界面
+
+UI 对齐 Miuix 官方示例应用（`example/`）：OS4 玻璃顶栏只采样页面内容层（`barBackdrop` 守卫，
+不会采到包含顶栏自身的宿主层）、长列表叠 `VerticalScrollBar`、连续行用一组
+`Card`/`MiuixCardSegment` 画成一张卡片。细节与前后对比见
+[docs/HANDOVER_CN.md §17](docs/HANDOVER_CN.md)。
+
 ## 构建
 
 ```bash

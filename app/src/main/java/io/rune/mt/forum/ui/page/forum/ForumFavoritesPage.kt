@@ -46,6 +46,7 @@ import io.rune.mt.forum.ui.navigation.LocalNavigator
 import io.rune.mt.forum.ui.navigation.Route
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBackButton
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixConfirmDialog
+import io.rune.mt.forum.ui.page.miuix.widgets.MiuixPageScrollBar
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopAppBar
 import io.rune.mt.forum.ui.page.miuix.widgets.rememberMiuixPageChrome
 import io.rune.mt.forum.ui.theme.AppTheme
@@ -143,55 +144,64 @@ fun ForumFavoritesPage(
                 pullToRefreshState = pullToRefreshState,
                 contentPadding = contentPadding,
             ) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .scrollEndHaptic()
-                        .overScrollVertical()
-                        .nestedScroll(chrome.scrollBehavior.nestedScrollConnection),
-                    contentPadding = contentPadding,
-                ) {
-                    when {
-                        !session.isLoggedIn || state.loginRequired -> item {
-                            FavoritesLoginCard(onLogin = { navigator.push(Route.Login) })
-                        }
+                // Scroll bar as a sibling of the list (the Miuix example's PullToRefreshPage
+                // shape), so the pull gesture keeps a single owner.
+                Box(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .scrollEndHaptic()
+                            .overScrollVertical()
+                            .nestedScroll(chrome.scrollBehavior.nestedScrollConnection),
+                        contentPadding = contentPadding,
+                    ) {
+                        when {
+                            !session.isLoggedIn || state.loginRequired -> item {
+                                FavoritesLoginCard(onLogin = { navigator.push(Route.Login) })
+                            }
 
-                        state.isLoading -> item { ForumLoadingCard() }
+                            state.isLoading -> item { ForumLoadingCard() }
 
-                        state.error != null && state.favorites.isEmpty() -> item {
-                            ForumErrorCard(
-                                message = state.error.orEmpty(),
-                                onRetry = viewModel::refresh,
-                            )
-                        }
-
-                        state.favorites.isEmpty() -> item {
-                            ForumEmptyCard(text = stringResource(R.string.favorites_empty))
-                        }
-
-                        else -> {
-                            items(items = state.favorites, key = { "favorite_${it.favid}" }) { favorite ->
-                                FavoriteRow(
-                                    favorite = favorite,
-                                    onOpen = { tid ->
-                                        favorite.title.let { title ->
-                                            navigator.push(Route.ForumThread(tid, title))
-                                        }
-                                    },
-                                    onDelete = { pendingDelete = favorite },
+                            state.error != null && state.favorites.isEmpty() -> item {
+                                ForumErrorCard(
+                                    message = state.error.orEmpty(),
+                                    onRetry = viewModel::refresh,
                                 )
                             }
-                            item {
-                                ForumPagingFooter(
-                                    page = state.page,
-                                    totalPages = state.totalPages,
-                                    isAppending = state.isAppending,
-                                    onLoadMore = viewModel::loadMore,
-                                )
+
+                            state.favorites.isEmpty() -> item {
+                                ForumEmptyCard(text = stringResource(R.string.favorites_empty))
+                            }
+
+                            else -> {
+                                items(items = state.favorites, key = { "favorite_${it.favid}" }) { favorite ->
+                                    FavoriteRow(
+                                        favorite = favorite,
+                                        onOpen = { tid ->
+                                            favorite.title.let { title ->
+                                                navigator.push(Route.ForumThread(tid, title))
+                                            }
+                                        },
+                                        onDelete = { pendingDelete = favorite },
+                                    )
+                                }
+                                item {
+                                    ForumPagingFooter(
+                                        page = state.page,
+                                        totalPages = state.totalPages,
+                                        isAppending = state.isAppending,
+                                        onLoadMore = viewModel::loadMore,
+                                    )
+                                }
                             }
                         }
                     }
+                    MiuixPageScrollBar(
+                        listState = listState,
+                        contentPadding = contentPadding,
+                        scrollBehavior = chrome.scrollBehavior,
+                    )
                 }
             }
         }

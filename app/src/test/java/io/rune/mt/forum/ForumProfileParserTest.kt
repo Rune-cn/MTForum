@@ -84,6 +84,31 @@ class ForumProfileParserTest {
     }
 
     @Test
+    fun `qr code overlay row is not surfaced as a profile field`() {
+        // Both fixtures carry `<li><a class="profile_a profile_ewmbox">…<span>二维码</span></a></li>`.
+        // The site's QR is a JS-only overlay (the anchor is `javascript:;`), so it has no value a
+        // native client could show; the parser drops the row instead of yielding an empty field.
+        for ((fixtureName, uid) in listOf("space_profile.html" to 132694, "space_profile_own.html" to 153466)) {
+            val profile = ForumHtmlParser.parseUserProfile(fixture(fixtureName), uid = uid)
+            val labels = profile.fields.map { it.label }
+            assertFalse("$fixtureName must not surface the QR row: $labels", labels.any { it.contains("二维码") })
+            assertFalse("$fixtureName must not surface a QR glyph row", labels.any { it.isBlank() })
+        }
+
+        // The real fields on the same block must survive, in site order.
+        val other = ForumHtmlParser.parseUserProfile(fixture("space_profile.html"), uid = 132694)
+        assertEquals(
+            listOf("用户ID", "生日", "性别", "在线时间", "注册时间", "最后访问"),
+            other.fields.map { it.label },
+        )
+        // The signature row lives in the very same `div.comiis_space_profile` block as the QR row
+        // on `space_profile.html`, so dropping the QR must not take the signature with it.
+        val own = ForumHtmlParser.parseUserProfile(fixture("space_profile_own.html"), uid = 153466)
+        assertNotNull("the 个人签名 row must still parse on one's own profile", own.signature)
+        assertFalse("the signature is not a detail field", own.fields.any { it.label == "个人签名" })
+    }
+
+    @Test
     fun `recent thread listing reuses the board row parser`() {
         val page = ForumHtmlParser.parseThreadPage(fixture("space_threads.html"), fid = 0, page = 1)
         assertEquals(2, page.threads.size)

@@ -2,6 +2,7 @@
 package io.rune.mt.forum.ui.page.forum
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,6 +46,7 @@ import io.rune.mt.forum.ui.navigation.LocalNavigator
 import io.rune.mt.forum.ui.navigation.Route
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixPageScaffold
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopBarIconButton
+import io.rune.mt.forum.ui.page.miuix.widgets.miuixGroupedItems
 import io.rune.mt.forum.ui.page.miuix.widgets.rememberMiuixPageChrome
 import io.rune.mt.forum.ui.theme.AppTheme
 import org.koin.androidx.compose.koinViewModel
@@ -133,12 +135,19 @@ fun ForumHomePage(
 
                 if (state.hotRanking.isNotEmpty()) {
                     item { SmallTitle(stringResource(R.string.forum_hot_ranking)) }
-                    items(
-                        // The site already ranked these rows; render them verbatim, in site order.
+                    // The site prints 热帖排行 as one contiguous block, and the example renders
+                    // consecutive rows of a section as a single grouped card
+                    // (`component/GroupedCardItems.kt` + `MainPage.kt`). Grouping the ranking the
+                    // same way replaces the stack of ten separate cards with one card whose rows
+                    // are square between the first and last.
+                    miuixGroupedItems(
                         items = state.hotRanking,
+                        keyPrefix = "hot",
                         key = { entry -> "hot_${entry.tid}" },
-                    ) { entry ->
-                        ForumRankCard(
+                        outerBottomPadding = 12.dp,
+                        insidePadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                    ) { entry, _ ->
+                        ForumRankRow(
                             entry = entry,
                             onClick = { navigator.push(Route.ForumThread(entry.tid, entry.title)) },
                         )
@@ -513,45 +522,45 @@ internal fun ForumBadge(text: String, modifier: Modifier = Modifier) {
  * that instead of inventing reply/view metadata. Ranking is never recomputed: the list is
  * rendered in server order with the server's own badge number, and the top three keep the
  * tinted badge they have on the site.
+ *
+ * The row itself is padding-free: it is drawn inside one grouped card
+ * (`miuixGroupedItems`), which owns the gutters and corners.
  */
 @Composable
-private fun ForumRankCard(
+private fun ForumRankRow(
     entry: ForumHotEntry,
     onClick: () -> Unit,
 ) {
-    Card(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 10.dp),
-        onClick = onClick,
-        insideMargin = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+            .clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier.size(28.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = entry.rank.toString(),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (entry.rank <= 3) {
-                        MiuixTheme.colorScheme.primary
-                    } else {
-                        MiuixTheme.colorScheme.onSurfaceVariantSummary
-                    },
-                )
-            }
-            Spacer(Modifier.width(10.dp))
+        Box(
+            modifier = Modifier.size(28.dp),
+            contentAlignment = Alignment.Center,
+        ) {
             Text(
-                text = entry.title,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-                lineHeight = 21.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
+                text = entry.rank.toString(),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (entry.rank <= 3) {
+                    MiuixTheme.colorScheme.primary
+                } else {
+                    MiuixTheme.colorScheme.onSurfaceVariantSummary
+                },
             )
         }
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = entry.title,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            lineHeight = 21.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
     }
 }

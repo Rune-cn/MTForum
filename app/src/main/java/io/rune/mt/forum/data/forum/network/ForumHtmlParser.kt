@@ -499,6 +499,13 @@ object ForumHtmlParser {
             if (label.isBlank()) null else ForumProfileStat(label = label, value = value)
         }
         val fields = doc.select("div.comiis_space_profile li").mapNotNull { li ->
+            // The site prints an extra 二维码 row next to the real fields: an `a.profile_ewmbox`
+            // whose only behaviour is a `javascript:;` handler that pops up a QR overlay drawn by
+            // the template's own JS. There is nothing to render for it in a native client (the
+            // overlay is not part of the HTML we receive), and it carries no value either — the
+            // row's `div.profile_rs` holds two icon-font glyphs. Drop it here so the parser stays
+            // honest about what it can actually deliver instead of surfacing an empty field.
+            if (li.selectFirst("a.profile_ewmbox, .profile_ewm") != null) return@mapNotNull null
             val valueEl = li.selectFirst("div.profile_rs") ?: return@mapNotNull null
             val label = li.selectFirst("span")?.text()?.trim().orEmpty()
             if (label.isBlank()) null else ForumProfileField(label = label, value = valueEl.text().trim())

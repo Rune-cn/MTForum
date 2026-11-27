@@ -62,11 +62,14 @@ import io.rune.mt.forum.domain.forum.model.ForumPost
 import io.rune.mt.forum.ui.navigation.LocalNavigator
 import io.rune.mt.forum.ui.navigation.Route
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBackButton
+import io.rune.mt.forum.ui.page.miuix.widgets.MiuixPageScrollBar
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopAppBar
 import io.rune.mt.forum.ui.page.miuix.widgets.rememberMiuixPageChrome
 import io.rune.mt.forum.ui.theme.AppTheme
 import org.koin.androidx.compose.koinViewModel
 import timber.log.Timber
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.FloatingActionButton
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.PullToRefresh
@@ -211,56 +214,66 @@ fun ForumThreadPage(
                         pullToRefreshState = pullToRefreshState,
                         contentPadding = contentPadding,
                     ) {
-                        LazyColumn(
-                            state = listState,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .scrollEndHaptic()
-                                .overScrollVertical()
-                                .nestedScroll(chrome.scrollBehavior.nestedScrollConnection),
-                            contentPadding = contentPadding,
-                        ) {
-                            if (state.isLoading) {
-                                item { ForumLoadingCard() }
-                            } else if (state.error != null && state.posts.isEmpty()) {
-                                item {
-                                    ForumErrorCard(
-                                        message = state.error.orEmpty(),
-                                        onRetry = viewModel::refreshThread,
-                                    )
-                                }
-                            } else {
-                                if (state.posts.isEmpty()) {
-                                    item { ForumEmptyCard(stringResource(R.string.forum_empty_posts)) }
+                        // The scroll bar is a sibling of the list inside PullToRefresh (exactly the
+                        // shape PullToRefreshPage.kt uses in the Miuix example), so the pull
+                        // gesture keeps a single owner and the thumb still tracks the drag.
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            LazyColumn(
+                                state = listState,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .scrollEndHaptic()
+                                    .overScrollVertical()
+                                    .nestedScroll(chrome.scrollBehavior.nestedScrollConnection),
+                                contentPadding = contentPadding,
+                            ) {
+                                if (state.isLoading) {
+                                    item { ForumLoadingCard() }
+                                } else if (state.error != null && state.posts.isEmpty()) {
+                                    item {
+                                        ForumErrorCard(
+                                            message = state.error.orEmpty(),
+                                            onRetry = viewModel::refreshThread,
+                                        )
+                                    }
                                 } else {
-                                    items(items = state.posts, key = { "post_${it.pid}" }) { post ->
-                                        ForumPostCard(
-                                            post = post,
-                                            forumName = state.forumName,
-                                            onAuthorClick = { author ->
-                                                // `authorUid == 0` means the row carried no profile
-                                                // link (guest/deleted account); pushing a profile
-                                                // for uid 0 would 404, so the card skips it.
-                                                if (author.authorUid != 0) {
-                                                    navigator.push(
-                                                        Route.UserProfile(author.authorUid, author.authorName),
-                                                    )
-                                                }
-                                            },
-                                            onImageClick = { viewerUrl = it },
+                                    if (state.posts.isEmpty()) {
+                                        item { ForumEmptyCard(stringResource(R.string.forum_empty_posts)) }
+                                    } else {
+                                        items(items = state.posts, key = { "post_${it.pid}" }) { post ->
+                                            ForumPostCard(
+                                                post = post,
+                                                forumName = state.forumName,
+                                                onAuthorClick = { author ->
+                                                    // `authorUid == 0` means the row carried no profile
+                                                    // link (guest/deleted account); pushing a profile
+                                                    // for uid 0 would 404, so the card skips it.
+                                                    if (author.authorUid != 0) {
+                                                        navigator.push(
+                                                            Route.UserProfile(author.authorUid, author.authorName),
+                                                        )
+                                                    }
+                                                },
+                                                onImageClick = { viewerUrl = it },
+                                            )
+                                        }
+                                    }
+
+                                    item {
+                                        ForumPagingFooter(
+                                            page = state.page,
+                                            totalPages = state.totalPages,
+                                            isAppending = state.isAppending,
+                                            onLoadMore = viewModel::loadMorePosts,
                                         )
                                     }
                                 }
-
-                                item {
-                                    ForumPagingFooter(
-                                        page = state.page,
-                                        totalPages = state.totalPages,
-                                        isAppending = state.isAppending,
-                                        onLoadMore = viewModel::loadMorePosts,
-                                    )
-                                }
                             }
+                            MiuixPageScrollBar(
+                                listState = listState,
+                                contentPadding = contentPadding,
+                                scrollBehavior = chrome.scrollBehavior,
+                            )
                         }
                     }
                 }
@@ -340,15 +353,21 @@ internal fun ForumPostCard(
     }
     val authorClickable = Modifier.clickable(enabled = post.authorUid != 0) { onAuthorClick(post) }
 
-    Column(
+    // The card is Miuix's own `Card`, the container the example builds every grouped section
+    // from (`component/CardSection.kt`, `GroupedCardItems.kt`): its surface color, 16dp corner
+    // radius and squircle clipping come from `CardDefaults` instead of a hand-rolled
+    // `clip(RoundedCornerShape(18.dp)).background(...)`. The inner paddings stay explicit so the
+    // body keeps its full-bleed width for images and tables.
+    Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(bottom = 12.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(
-                if (op) MiuixTheme.colorScheme.surfaceContainerHigh
-                else MiuixTheme.colorScheme.surfaceContainer,
-            ),
+            .padding(bottom = 12.dp),
+        insideMargin = PaddingValues(0.dp),
+        colors = if (op) {
+            CardDefaults.defaultColors(color = MiuixTheme.colorScheme.surfaceContainerHigh)
+        } else {
+            CardDefaults.defaultColors(color = MiuixTheme.colorScheme.surfaceContainer)
+        },
     ) {
         // Board label on the OP card only: it answers "where am I?" without repeating the app bar
         // title, and a long thread's later floors do not need it.

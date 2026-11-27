@@ -51,6 +51,7 @@ import io.rune.mt.forum.domain.forum.model.ForumNoticeTab
 import io.rune.mt.forum.ui.navigation.LocalNavigator
 import io.rune.mt.forum.ui.navigation.Route
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBackButton
+import io.rune.mt.forum.ui.page.miuix.widgets.MiuixPageScrollBar
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopAppBar
 import io.rune.mt.forum.ui.page.miuix.widgets.rememberMiuixPageChrome
 import io.rune.mt.forum.ui.theme.AppTheme
@@ -129,71 +130,80 @@ fun ForumNoticesPage(
                 pullToRefreshState = pullToRefreshState,
                 contentPadding = contentPadding,
             ) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .scrollEndHaptic()
-                        .overScrollVertical()
-                        .nestedScroll(chrome.scrollBehavior.nestedScrollConnection),
-                    contentPadding = contentPadding,
-                ) {
-                    item(key = "notice_tabs") {
-                        // Miuix TabRow scrolls horizontally and paints the selected tab with the
-                        // theme's container in both OS3 and OS4, so no style branch is needed.
-                        TabRow(
-                            tabs = tabs.map { stringResource(it.labelRes) },
-                            selectedTabIndex = state.selected.ordinal,
-                            onTabSelected = { index -> viewModel.selectTab(tabs[index]) },
-                            modifier = Modifier.padding(bottom = 10.dp),
-                        )
-                    }
-
-                    when {
-                        !session.isLoggedIn -> item {
-                            MessagesInfoCard(
-                                title = stringResource(R.string.forum_notices_login_required),
-                                subtitle = stringResource(R.string.forum_notices_login_hint),
+                // Scroll bar as a sibling of the list (the Miuix example's PullToRefreshPage
+                // shape), so the pull gesture keeps a single owner.
+                Box(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .scrollEndHaptic()
+                            .overScrollVertical()
+                            .nestedScroll(chrome.scrollBehavior.nestedScrollConnection),
+                        contentPadding = contentPadding,
+                    ) {
+                        item(key = "notice_tabs") {
+                            // Miuix TabRow scrolls horizontally and paints the selected tab with the
+                            // theme's container in both OS3 and OS4, so no style branch is needed.
+                            TabRow(
+                                tabs = tabs.map { stringResource(it.labelRes) },
+                                selectedTabIndex = state.selected.ordinal,
+                                onTabSelected = { index -> viewModel.selectTab(tabs[index]) },
+                                modifier = Modifier.padding(bottom = 10.dp),
                             )
                         }
 
-                        current.isLoading -> item { ForumLoadingCard() }
-
-                        current.error != null && current.notices.isEmpty() -> item {
-                            ForumErrorCard(
-                                message = current.error.orEmpty(),
-                                onRetry = viewModel::refresh,
-                            )
-                        }
-
-                        current.notices.isEmpty() -> item {
-                            ForumEmptyCard(text = stringResource(R.string.forum_notices_empty))
-                        }
-
-                        else -> {
-                            items(
-                                items = current.notices,
-                                key = { notice -> "notice_${state.selected.value}_${notice.id ?: notice.hashCode()}" },
-                            ) { notice ->
-                                NoticeRow(
-                                    notice = notice,
-                                    onOpenThread = { tid, title ->
-                                        navigator.push(Route.ForumThread(tid, title))
-                                    },
+                        when {
+                            !session.isLoggedIn -> item {
+                                MessagesInfoCard(
+                                    title = stringResource(R.string.forum_notices_login_required),
+                                    subtitle = stringResource(R.string.forum_notices_login_hint),
                                 )
                             }
-                            if (current.totalPages > 1) {
-                                item {
-                                    ForumPagingFooter(
-                                        page = current.page,
-                                        totalPages = current.totalPages,
-                                        isAppending = current.isAppending,
-                                        onLoadMore = viewModel::loadMore,
+
+                            current.isLoading -> item { ForumLoadingCard() }
+
+                            current.error != null && current.notices.isEmpty() -> item {
+                                ForumErrorCard(
+                                    message = current.error.orEmpty(),
+                                    onRetry = viewModel::refresh,
+                                )
+                            }
+
+                            current.notices.isEmpty() -> item {
+                                ForumEmptyCard(text = stringResource(R.string.forum_notices_empty))
+                            }
+
+                            else -> {
+                                items(
+                                    items = current.notices,
+                                    key = { notice -> "notice_${state.selected.value}_${notice.id ?: notice.hashCode()}" },
+                                ) { notice ->
+                                    NoticeRow(
+                                        notice = notice,
+                                        onOpenThread = { tid, title ->
+                                            navigator.push(Route.ForumThread(tid, title))
+                                        },
                                     )
+                                }
+                                if (current.totalPages > 1) {
+                                    item {
+                                        ForumPagingFooter(
+                                            page = current.page,
+                                            totalPages = current.totalPages,
+                                            isAppending = current.isAppending,
+                                            onLoadMore = viewModel::loadMore,
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
+                    MiuixPageScrollBar(
+                        listState = listState,
+                        contentPadding = contentPadding,
+                        scrollBehavior = chrome.scrollBehavior,
+                    )
                 }
             }
         }

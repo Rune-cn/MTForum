@@ -146,6 +146,19 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     权限/登录/限流文案必须判失败。接口不返回数字——签到后的排名/连续/累计只能**重新取页**，
     不要自己 +1。游客按规则 18 走登录卡片。解析在 `ForumHtmlParser.parseSignInState` /
     `parseSignInOutcome`，CDATA 抽取只此一处（见 REVERSE_SPEC §22）。
+28. **顶栏只能采样页面内容层**：`chrome.backdrop` 由 `MiuixPageChrome.contentBackdropModifier`
+    录在滚动容器上（不含顶栏）。`MiuixTopAppBar` 三个分支都只读
+    `barBackdrop(backdrop, pageBackdrop)`，宿主层 `MiuixComponentScope.pageBackdrop` 会被拒绝。
+    不要为了“加模糊”把 `pageBackdrop` 传给顶栏——那是 §23 同一个自环（HANDOVER §17.2）。
+29. **长列表要带滚动条**：`MiuixPageScaffold` 已内置 `MiuixPageScrollBar`；自带 `Scaffold` 的页面
+    （帖子/版块/提醒/收藏）把 `MiuixPageScrollBar` 作为列表**兄弟**放在同一个 `Box` 里，传列表自己的
+    `contentPadding` 与 `chrome.scrollBehavior`（下拉刷新不受影响，示例 `PullToRefreshPage.kt` 同形）。
+30. **分组卡片用 `MiuixGroupedCards`**：需要把连续行画成一张 Miuix 卡片时用
+    `miuixGroupedItems` / `MiuixCardSegment`（圆角取 `CardDefaults.CornerRadius`），
+    不要各自 `clip(RoundedCornerShape(...))` 手写。单个卡片直接用 `Card` + `CardDefaults`。
+31. **解析器只出“能渲染的信息”**：站点模板里纯 JS 的动作行（如 `a.profile_ewmbox` 的 二维码
+    浮层）在 `ForumHtmlParser` 就丢弃并写明原因（HANDOVER §17.1）；不要留到 UI 端靠“空值”判断，
+    否则会连带吞掉真正空值的字段。
 
 ## Miuix 双风格（OS3 / OS4）
 

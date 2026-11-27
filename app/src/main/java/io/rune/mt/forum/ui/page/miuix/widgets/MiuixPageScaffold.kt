@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package io.rune.mt.forum.ui.page.miuix.widgets
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -58,6 +59,10 @@ class MiuixPageChrome internal constructor(
  *
  * Both the backdrop and the scroll behavior are derived from the ambient style, so no caller
  * has to decide when glass applies.
+ *
+ * The backdrop is a **content** layer: [MiuixPageScaffold] applies [MiuixPageChrome.contentBackdropModifier]
+ * to the scroll container only, and pages that own their `Scaffold` (thread, board, notices) do
+ * the same around their list. It therefore never contains the top bar that samples it.
  */
 @Composable
 fun rememberMiuixPageChrome(enableBlur: Boolean = true): MiuixPageChrome {
@@ -75,6 +80,17 @@ fun rememberMiuixPageChrome(enableBlur: Boolean = true): MiuixPageChrome {
 
 /**
  * Standard Miuix page: the shared top bar plus a scroll container already wired to the backdrop.
+ *
+ * Layer model (the shape `example/.../MainPage.kt` uses):
+ *
+ *  - `chrome.backdrop` is recorded by `Modifier.layerBackdrop` on the scroll container, i.e. a
+ *    layer that holds **only the page body**;
+ *  - the same instance is handed to [MiuixTopAppBar], which is composed in the `Scaffold`'s
+ *    `topBar` slot — outside that recorded subtree, so the bar samples the body and can never
+ *    source itself;
+ *  - `MiuixComponentScope.pageBackdrop` (the app-wide layer recorded around the whole navigation
+ *    tree) is deliberately **not** used here. It contains the bar, and `MiuixTopAppBar` filters
+ *    it out through `barBackdrop` even if a caller passes it by mistake.
  *
  * @param title Bar title, already resolved from resources.
  * @param navigationIcon Leading control; typically [MiuixBackButton] on secondary screens.
@@ -116,18 +132,37 @@ fun MiuixPageScaffold(
             )
         },
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(chrome.contentBackdropModifier)
-                .scrollEndHaptic()
-                .overScrollVertical()
-                .nestedScroll(chrome.scrollBehavior.nestedScrollConnection),
-            state = listState,
-            contentPadding = insetsOf(innerPadding, horizontalSafeInsets, outerPadding, horizontalPadding, verticalPadding, layoutDirection),
-            overscrollEffect = null,
-            content = content,
+        val contentPadding = insetsOf(
+            innerPadding,
+            horizontalSafeInsets,
+            outerPadding,
+            horizontalPadding,
+            verticalPadding,
+            layoutDirection,
         )
+        // The scroll bar is a sibling overlay of the list, matching the Miuix example pages
+        // (`VerticalScrollBar(rememberScrollBarAdapter(listState))` inside the content `Box`).
+        // It reads the same content padding the list uses, so the thumb never covers the first
+        // or last row and the track stops at the scaffold's own bar inset.
+        Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(chrome.contentBackdropModifier)
+                    .scrollEndHaptic()
+                    .overScrollVertical()
+                    .nestedScroll(chrome.scrollBehavior.nestedScrollConnection),
+                state = listState,
+                contentPadding = contentPadding,
+                overscrollEffect = null,
+                content = content,
+            )
+            MiuixPageScrollBar(
+                listState = listState,
+                contentPadding = contentPadding,
+                scrollBehavior = chrome.scrollBehavior,
+            )
+        }
     }
 }
 

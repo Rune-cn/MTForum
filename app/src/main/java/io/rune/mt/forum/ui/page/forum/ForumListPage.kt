@@ -45,6 +45,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Search
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBackButton
+import io.rune.mt.forum.ui.page.miuix.widgets.MiuixPageScrollBar
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopAppBar
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopBarIconButton
 import io.rune.mt.forum.ui.page.miuix.widgets.rememberMiuixPageChrome
@@ -159,45 +160,54 @@ fun ForumListPage(
                 pullToRefreshState = pullToRefreshState,
                 contentPadding = contentPadding,
             ) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .scrollEndHaptic()
-                        .overScrollVertical()
-                        .nestedScroll(chrome.scrollBehavior.nestedScrollConnection),
-                    contentPadding = contentPadding,
-                ) {
-                    // 主题分类 strip, directly under the top bar and part of the scroll content so
-                    // it behaves like the 导读 tabs. Boards without categories print none here.
-                    if (state.categories.isNotEmpty()) {
-                        item(key = "forum_categories") {
-                            ForumCategoryTabs(
-                                categories = state.categories,
-                                selectedTypeId = state.typeId,
-                                onSelect = viewModel::selectCategory,
-                                modifier = Modifier.padding(bottom = 10.dp),
+                // Scroll bar as a sibling of the list (the shape the Miuix example's
+                // PullToRefreshPage uses), so the pull gesture keeps a single owner.
+                Box(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .scrollEndHaptic()
+                            .overScrollVertical()
+                            .nestedScroll(chrome.scrollBehavior.nestedScrollConnection),
+                        contentPadding = contentPadding,
+                    ) {
+                        // 主题分类 strip, directly under the top bar and part of the scroll content so
+                        // it behaves like the 导读 tabs. Boards without categories print none here.
+                        if (state.categories.isNotEmpty()) {
+                            item(key = "forum_categories") {
+                                ForumCategoryTabs(
+                                    categories = state.categories,
+                                    selectedTypeId = state.typeId,
+                                    onSelect = viewModel::selectCategory,
+                                    modifier = Modifier.padding(bottom = 10.dp),
+                                )
+                            }
+                        }
+                        if (state.isLoading) {
+                            item { ForumLoadingCard() }
+                        } else if (state.error != null && state.threads.isEmpty()) {
+                            item {
+                                ForumErrorCard(
+                                    message = state.error.orEmpty(),
+                                    onRetry = viewModel::refreshForum,
+                                )
+                            }
+                        } else {
+                            ForumListBody(
+                                state = state,
+                                onOpenThread = { thread ->
+                                    navigator.push(Route.ForumThread(thread.tid, thread.title))
+                                },
+                                onLoadMore = viewModel::loadMoreThreads,
                             )
                         }
                     }
-                    if (state.isLoading) {
-                        item { ForumLoadingCard() }
-                    } else if (state.error != null && state.threads.isEmpty()) {
-                        item {
-                            ForumErrorCard(
-                                message = state.error.orEmpty(),
-                                onRetry = viewModel::refreshForum,
-                            )
-                        }
-                    } else {
-                        ForumListBody(
-                            state = state,
-                            onOpenThread = { thread ->
-                                navigator.push(Route.ForumThread(thread.tid, thread.title))
-                            },
-                            onLoadMore = viewModel::loadMoreThreads,
-                        )
-                    }
+                    MiuixPageScrollBar(
+                        listState = listState,
+                        contentPadding = contentPadding,
+                        scrollBehavior = chrome.scrollBehavior,
+                    )
                 }
             }
         }

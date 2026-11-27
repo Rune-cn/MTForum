@@ -379,6 +379,10 @@ bash tools/build.sh :app:lintVitalStableRelease     # 改字符串/资源后必�
 | `ForumImageScreenshotTest` | **JVM 截图**：真实卡片 + 正文渲染、失败占位块落盘 PNG |
 | `ForumBodyRichParserTest` | 代码块（DOM 计数/多行/实体还原）、字号标题、`hr` 分隔、表格、附件卡、引用作者、`[code]` 转义 |
 | `ForumRichBodyScreenshotTest` | **JVM 截图**：代码块+标题+表格+附件+引用+列表合成图、真实 `rich_bbcode_reply` 回复 |
+| `ForumProfileParserTest` | 个人主页：头部/计数/积分/资料行；**二维码行动画层被丢弃**、签名行保留（§17.1） |
+| `TopAppBarBackdropTest` | 顶栏采样层守卫 `barBackdrop()`：只接受页面内容层，宿主层被拒（§17.2） |
+| `MiuixPageScrollBarTest` | 长列表滚动条覆盖层：贴右缘、满页高、与列表同 padding + 截图（§17.3） |
+| `MiuixGroupedCardsTest` | 分组卡片：相邻行无缝相接、保留 12dp 页边距 + 截图（§17.4） |
 | `ForumSignInParserTest` | 签到页两份真实样本（签到前/后）的昵称/等级/排名/连续/累计、已签到判定、`formhash` 兜底、CDATA 抽取与 `已签到`/成功/失败映射 |
 | `ForumSignInViewModelTest` | 签到卡片状态机：首次加载、签到后刷新数字并保留服务器文案、`已签到`、登录要求、失败不进已签到 |
 
@@ -394,12 +398,14 @@ bash tools/build.sh :app:testStableDebugUnitTest \
 ```
 
 产物统一在 `app/build/ui-screenshots/`（`ThreadActionsPopupLayoutTest` 的菜单图、`ForumImageScreenshotTest`、
-`Os4PredictiveBackScreenshotTest`）。仓库里存了样例：
+`Os4PredictiveBackScreenshotTest`、`MiuixPageScrollBarTest`、`MiuixGroupedCardsTest`）。仓库里存了样例：
 [docs/screenshots/os4-thread-actions-menu.png](screenshots/os4-thread-actions-menu.png)、
 [docs/screenshots/os4-thread-actions-predictive-back.png](screenshots/os4-thread-actions-predictive-back.png)
 （菜单展开时手势 p=0.5 的关闭预览）、
 [docs/screenshots/jvm-image-render.png](screenshots/jvm-image-render.png)、
-[docs/screenshots/os4-predictive-back.png](screenshots/os4-predictive-back.png)（页面返回 p=0.45 的手势中间帧）。
+[docs/screenshots/os4-predictive-back.png](screenshots/os4-predictive-back.png)（页面返回 p=0.45 的手势中间帧）、
+[docs/screenshots/os4-page-scrollbar.png](screenshots/os4-page-scrollbar.png)（§17.3 的滚动条覆盖层）、
+[docs/screenshots/grouped-card-section.png](screenshots/grouped-card-section.png)（§17.4 的分组卡片）。
 
 ⚠️ miuix 的 squircle 用了 AGSL RuntimeShader，Robolectric 自带 Skia 编译不了
 （`'color' is not a valid layout qualifier`）。截图测试里用
@@ -1215,3 +1221,130 @@ htmlon / usesig / save`（另有 `hiddenreplies`、`ordertype` 等可选 checkbo
 - **补签未实现**：只记录入口地址（`home.php?mod=magic&mid=k_misign:k_misign_bq`），
   它走道具（魔法）流程，会消耗站点道具，未做。
 - 签到状态不落盘（每次进设置页取一次页），符合「签到状态是抓取的，不缓存」。
+
+---
+
+## 18. 对齐官方示例应用（Miuix `example/`）— 2026-11-27
+
+参考实现：`compose-miuix-ui/miuix` 的 `example/shared/src/commonMain/kotlin/`（本机只读检出在
+`miuix-ref`）。本次不做整块重写，而是拆成 5 个可单独验证的改动，每个一个 commit。
+
+### 18.1 个人主页去掉二维码行（用户请求 1）
+
+站点在第一个 `div.comiis_space_profile` 里多印一行 二维码：
+
+```html
+<li class="b_t">
+  <a href="javascript:;" class="profile_a profile_ewmbox">
+    <div class="profile_rs"><i class="comiis_font f_d">…</i><i class="comiis_font profile_ewm f_d">…</i></div>
+    <span>二维码</span>
+  </a>
+</li>
+```
+
+该行是**模板 JS 的二维码浮层入口**（`href="javascript:;"`），HTML 里没有任何可渲染的值——
+`div.profile_rs` 里只有两个 icon-font 私有区字符。客户端此前把它当普通资料行，结果是多出一行空的
+「二维码」。**在解析层丢弃**（`ForumHtmlParser.parseUserProfile`，判据 `a.profile_ewmbox, .profile_ewm`），
+因为渲染层无法用“空值”判断该不该渲染——那会连带吞掉站点上真正空值的字段。
+
+- 文件：`app/src/main/java/io/rune/mt/forum/data/forum/network/ForumHtmlParser.kt`
+- 不改：签名行（`div.profile_face`，它在同一块里且**紧邻**二维码行）、用户ID/生日/性别/在线时间/
+  注册时间/最后访问等真实字段
+- 测试：`ForumProfileParserTest.qr code overlay row is not surfaced as a profile field`
+  （两个 fixture 都断言没有「二维码」行、`space_profile.html` 的 6 个真实字段顺序不变、
+  `space_profile_own.html` 的签名仍然解析出来）
+
+### 18.2 顶栏采样层守卫（示例 `MainPage.kt` + `utils/PageUtils.kt`）
+
+示例的模型是：`MainPage` 在 **Scaffold 内容里**的 `Box` 上挂 `Modifier.layerBackdrop(backdrop)`，
+再把同一个 backdrop 交给 `Scaffold` 的 `topBar` 里的 `BlurredBar`。也就是说**顶栏采样的层里没有顶栏**。
+
+本仓库此前结构上已经是这样（`MiuixPageChrome.contentBackdropModifier` 只挂在滚动容器上），
+但**没有任何地方阻止**把宿主层 `MiuixComponentScope.pageBackdrop`（`SettingsActivity` 绕整棵导航树
+录制的那一层）塞进顶栏——那正是 §11 / §15.9 的 RenderNode 自采样环。本次加了一个**唯一决策点**：
+
+```kotlin
+internal fun barBackdrop(contentBackdrop: LayerBackdrop?, hostBackdrop: LayerBackdrop?): LayerBackdrop?
+```
+
+`MiuixTopAppBar` 的三个分支（OS4 渐进模糊、OS4 普通玻璃、OS3 `miuixBlurEffect`）现在都只读它，
+非法层降级为不透明顶栏而不是崩溃。
+
+- 文件：`app/src/main/java/io/rune/mt/forum/ui/page/miuix/widgets/MiuixTopAppBar.kt`、
+  `MiuixPageScaffold.kt`（补上分层模型的 KDoc）
+- 测试：`TopAppBarBackdropTest`（内容层通过、宿主层被拒、无层兜底）；
+  既有 `ThreadActionsPopupLayoutTest` 10 例全绿（菜单安全不变）
+
+### 18.3 长列表滚动条（示例 `MainPage.kt` / `SettingsPage.kt` / `ComponentPage.kt` / `PullToRefreshPage.kt`）
+
+示例的每个长列表都在内容 `Box` 里叠一个
+`VerticalScrollBar(rememberScrollBarAdapter(listState))`；`PullToRefreshPage.kt` 证明它和下拉刷新
+**可以共存**，因为它是列表的**兄弟**而不是外层包装。
+
+本应用此前没有任何滚动条，帖子页一屏好几楼、根本没法预判位置。新增统一覆盖层：
+
+- 文件：`app/src/main/java/io/rune/mt/forum/ui/page/miuix/widgets/MiuixScrollBar.kt`（新）
+- 接入：`MiuixPageScaffold`（设置页/主题页/首页/导读等全部经此）、
+  以及自带 `Scaffold` 的 `ForumThreadPage` / `ForumListPage` / `ForumNoticesPage` /
+  `ForumFavoritesPage`（它们必须把列表包进 `PullToRefresh`，所以拿不到 helper，改动形状与示例相同）
+- 契约：`trackPadding` 用列表自己的 `contentPadding`，`topAppBarScrollBehavior = chrome.scrollBehavior`
+  ——滚动条不会钻到顶栏或悬浮导航栏下面
+- 测试：`MiuixPageScrollBarTest`（3 例）＋截图
+  [docs/screenshots/os4-page-scrollbar.png](screenshots/os4-page-scrollbar.png)
+
+### 18.4 分组卡片（示例 `component/GroupedCardItems.kt`、`component/CardSection.kt`）
+
+示例把同一段落的连续行画成**一张卡片**：首行留上圆角、末行留下圆角、中间行是直角，圆角半径取自
+`CardDefaults.CornerRadius`；`Card` 只有一个 `cornerRadius` 参数表达不了四角，所以示例用
+`squircleSurface`。本次原样移植成 `MiuixGroupedCards.kt`（`MiuixCardSegment` +
+`LazyListScope.miuixGroupedItems`，含示例那条「不透明缝补 2px」的处理，防止 0.5x 降采样时出现黑缝）。
+
+两处改动落地：
+
+1. **首页热帖排行**：原先是 10 张独立 `Card`，每张 `padding(bottom = 10.dp)`；站点本身是**一整块**
+   排行列表，现在是一张分组卡（行内只剩名次 + 标题）。名次/顺序/前三天色徽标均不变。
+2. **帖子楼层卡**（`ForumPostCard`）：原先是手写
+   `clip(RoundedCornerShape(18.dp)).background(surfaceContainer*)`，现在改用 Miuix 自己的
+   `Card` + `CardDefaults.defaultColors()`，圆角与 squircle 裁剪回到库的 16dp 约定。
+   `insideMargin = 0` 保留，因为署名行与正文各自有显式 padding（正文图片/表格要通栏）。
+
+- 文件：`app/src/main/java/io/rune/mt/forum/ui/page/miuix/widgets/MiuixGroupedCards.kt`（新）、
+  `app/src/main/java/io/rune/mt/forum/ui/page/forum/ForumHomePage.kt`、
+  `app/src/main/java/io/rune/mt/forum/ui/page/forum/ForumThreadPage.kt`
+- 测试：`MiuixGroupedCardsTest`（3 例：相邻行 y 相接、页边距保留、截图
+  [docs/screenshots/grouped-card-section.png](screenshots/grouped-card-section.png)）；
+  `ForumPostCardScreenshotTest` 重新出图
+  [docs/screenshots/os4-thread-post-cards.png](screenshots/os4-thread-post-cards.png)
+
+### 18.5 顶栏动作：**没有**迁移到 `GlassPopupAnchor`
+
+示例的 OS4 顶栏动作用 `GlassIconButton` + `Modifier.glassPopupAnchor(anchor, …)` +
+`GlassTransformPopup`/`GlassIconDropdownMenu`。本应用的帖子菜单用的是
+`ThreadActionsState.anchorBounds`（`boundsInWindow()`）+ 内联 `GlassPopup`。
+
+**结论：保留现有实现**，理由（文档 + 实测对照）：
+
+- `GlassPopup` 的官方契约**就是** `anchorBounds: Rect`（窗口坐标），见
+  `docs/zh_CN/components/glass/glasspopup.md` 属性表第一项。现有代码用的正是这个 API，
+  不是自造替代品。
+- `glassPopupAnchor` 是 `GlassTransformPopup` / `GlassIconDropdownMenu` 的锚点工厂，它额外做
+  「展开时隐藏原控件、复制控件外观做变换」。帖子菜单是**纯列表**（6 行动作），没有可变换的锚点内容，
+  换成 `GlassIconDropdownMenu` 就必须把所有行改造成 `DropdownEntry`/`DropdownItem`，会丢掉
+  `GlassPopupItem` 的 icon slot 与 48dp 触控目标（§15.9 已就此单独验证过）。
+- 更关键的是崩溃面：`GlassTransformPopup` 需要一个 **backdrop**，而示例给它的是页面背景层
+  （`PageUtils.kt` 里 `rememberBlurBackdrop` 的 `backdrop`）——在我们这里等价于
+  `MiuixComponentScope.pageBackdrop`，也就是 §11/§15.9 那个**包含菜单自身**的层。
+  现有实现刻意只给它 `chrome.backdrop`（内容层），并留了 `threadMenuBackdrop()` 的显式拒绝。
+  为了“对齐示例”而把采样源换成页面层，等于重新引入已确证的渲染线程崩溃。
+- 风险不对称：迁移只带来视觉变换动画，代价是重写已验证的安全边界。**不做**。
+
+仍然保留：`ThreadActionsBackHandler`（`PredictiveBackHandler(enabled = expanded)`）与
+`ThreadActionsGlassMenu` 在页面根 `BoxScope` 的组合顺序（§15 / AGENTS 规则 15、23）。
+
+### 18.6 验证
+
+- `:app:compileStableDebugKotlin` → BUILD SUCCESSFUL
+- `:app:testStableDebugUnitTest` → **44 suites / 232 tests / 0 failures / 0 errors**
+  （基线 41 / 222，新增 3 个 suite / 10 个用例）
+- `:app:lintVitalStableRelease` → BUILD SUCCESSFUL（无新增 lint 错误）
+- 未做设备验证（本机无模拟器），UI 结论全部来自 Robolectric 几何断言 + 截图。
