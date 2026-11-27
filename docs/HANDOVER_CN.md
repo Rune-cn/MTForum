@@ -1812,3 +1812,32 @@ AGSL 在 Robolectric 下编译不了，和前几轮同一限制）。
 
 **未验证**：OS4 玻璃覆盖层里最近搜索列表的实际观感只能真机确认；OS4 输入法只有「Done」、
 提交只能点确认行，这是 miuix 组件的既定行为。
+
+### 21.2 消息页签「系统···」被截断（2026-11-27）
+
+**原因**（读 miuix `TabRow.kt` 字节码确认，不是猜）：四个页签放在 `LazyRow` 里，但**四个页签共用
+一个宽度** —— `calculateTabWidth = clamp(availableWidth / count, minWidth..maxWidth)`，默认
+`minWidth = 76.dp`、`maxWidth = 98.dp`；`TabItem` 再给文字左右各 12dp padding，并用
+`maxLines = 1` + `TextOverflow.Ellipsis` 绘制。360dp 手机上内容区 336dp → 每签 77dp，文字只剩
+53dp，而「系统提醒」4 个汉字（`body1` 16sp）需要 64dp → 必然显示成「系统…」。
+411dp 时每签约 90dp，文字 66dp，刚好放得下，所以只有窄屏出问题。
+
+**修法**：新增 `rememberTabRowLabelWidth(labels)`
+（`ui/page/miuix/widgets/MiuixTabRowWidth.kt`）：用 `TextMeasurer` 按 `TabItem` 的真实样式
+（`body1` 字号、选中态的 Bold、单行、字距 0）量出最宽标签，加 24dp（左右各 12dp 内边距）与 2dp
+余量，作为 `TabRow` 的 `minWidth = maxWidth`。这样每个签按内容宽度绘制；四个签在 411dp 下放得下
+（同时把 `itemSpacing` 从默认 9dp 收到 5dp，OS3/OS4 两种 411dp gutter 都验证过），360dp 下放不下
+则由 `TabRow` 自带的横向滚动兜底 —— **标签本身永不被省略号裁剪**。
+
+**测试**（`ForumMessagesTabRowTest`，4 个）：直接组合真实 `ForumMessagesPage`（Koin 假仓库，
+locale 用 `zh-rCN`）。断言是布局级的：合并后的页签节点宽度 ≥ 标签在相同样式下的固有宽度 + 24dp。
+360dp 与 411dp 各一条，另外各出一张截图。**做过反证**：把 `minWidth/maxWidth` 去掉再跑，360dp
+用例立刻失败（`tab "系统提醒" is 159px wide but needs at least 176px`），说明这条断言真能抓住
+原来的 bug，不是恒真。
+
+- 411dp：[screenshots/messages-tab-row.png](screenshots/messages-tab-row.png)（四个标签完整）
+- 360dp：[screenshots/messages-tab-row-360.png](screenshots/messages-tab-row-360.png)（前三个完整，
+  第四个被**视口边缘**裁掉、可横向滚动；它不是省略号截断）
+
+**未验证**：OS4 玻璃顶栏 + 16dp gutter 的 411dp 组合没有截图像素级验证（Robolectric 下 OS4 的
+render-effect 路径不可用，和前几轮一致）；按宽度算式 4×90dp + 3×5dp = 375dp ≤ 379dp，仍应放得下。
