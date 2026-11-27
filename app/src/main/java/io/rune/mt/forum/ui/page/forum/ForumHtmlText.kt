@@ -142,6 +142,10 @@ internal sealed interface ForumBodyBlock {
      * [iconUrl] is the site's file-type badge (`static/image/filetype/`), [previewUrl] a real
      * thumbnail when the attachment is an image, and [isImage] tells the UI which affordance to
      * show (an image attachment is worth previewing as well as downloading).
+     *
+     * [costCoins] is the price the card advertises in its `p.attach_size` line
+     * (`下载积分: 金币 -1` → 1). It is only a hint so the chooser can warn *before* the request;
+     * the authoritative charge happens server-side through the attachcredit handshake.
      */
     data class Attachment(
         val name: String,
@@ -150,6 +154,7 @@ internal sealed interface ForumBodyBlock {
         val iconUrl: String? = null,
         val previewUrl: String? = null,
         val isImage: Boolean = false,
+        val costCoins: Int = 0,
     ) : ForumBodyBlock
 
     /** The template's moderator-action note (`div.comiis_modact`). */
@@ -680,6 +685,18 @@ private fun AttachmentCard(
                     lineHeight = 17.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            // The card's size line already prints `下载积分: 金币 -1`; this reads it out in the
+            // user's language so the cost is visible on the row before the chooser even opens.
+            if (block.costCoins > 0) {
+                Text(
+                    text = stringResource(R.string.forum_attach_cost_hint, block.costCoins),
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp,
+                    color = MiuixTheme.colorScheme.primary,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }

@@ -417,7 +417,15 @@ internal object ForumBodyParser {
                 ?: link?.selectFirst("p.attach_tit")?.text()?.trim()?.substringBefore("上传")?.trim()
                     ?.takeIf { it.isNotBlank() }
                 ?: "附件"
-            val caption = attach.selectFirst("p.attach_size")?.text()?.trim()?.takeIf { it.isNotBlank() }
+            val sizeLine = attach.selectFirst("p.attach_size")?.text()?.trim()
+            val caption = sizeLine?.takeIf { it.isNotBlank() }
+            // `下载积分: 金币 -1` is the price hint Discuz prints on a paid attachment. The number is
+            // the *deduction*, so its absolute value is the cost; 0/absent means "free" and the
+            // chooser then skips the warning row entirely.
+            val costCoins = sizeLine
+                ?.let { ATTACH_COST.find(it)?.groupValues?.get(1)?.toIntOrNull() }
+                ?.let { kotlin.math.abs(it) }
+                ?: 0
 
             // The card carries a *file-type* icon (`static/image/filetype/`) and, for image
             // attachments, sometimes a real preview thumbnail. Conflating the two turned the icon
@@ -438,6 +446,7 @@ internal object ForumBodyParser {
                     iconUrl = iconUrl,
                     previewUrl = previewUrl,
                     isImage = previewUrl != null || name.hasImageExtension(),
+                    costCoins = costCoins,
                 )
             } else {
                 blocks += ForumBodyBlock.Paragraph(AnnotatedString(name))
@@ -952,6 +961,12 @@ internal object ForumBodyParser {
 
     /** Discuz's file-type badge path — an icon, never a picture of the attachment. */
     private const val FILETYPE_ICON_PATH = "static/image/filetype"
+
+    /**
+     * `下载积分: 金币 -1` on the attachment card's size line. The captured number is the signed
+     * deduction; the parsed cost is its absolute value.
+     */
+    private val ATTACH_COST = Regex("""下载积分\s*[:：]\s*金币\s*([-+]?\d+)""")
 
     private val IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "heif")
 

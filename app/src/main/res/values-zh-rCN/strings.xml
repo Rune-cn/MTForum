@@ -271,6 +271,7 @@
     <string name="forum_body_quote_truncated">……（站点已截断）</string>
     <string name="forum_attach_download">下载到本机</string>
     <string name="forum_attach_download_detail">使用论坛登录状态，无需浏览器</string>
+    <string name="forum_attach_cost_hint">下载将扣除 %1$d 金币</string>
     <string name="forum_attach_open_browser">在浏览器打开</string>
     <string name="forum_attach_open_browser_detail">需浏览器已登录论坛</string>
     <string name="forum_attach_copied">链接已复制</string>

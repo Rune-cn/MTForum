@@ -96,6 +96,19 @@ internal fun AttachmentChoiceSheet(
         Column(modifier = Modifier.fillMaxWidth()) {
             AttachmentHeader(attachment)
 
+            // Paid attachments: say so before the user commits. The charge itself is enforced by
+            // the site through the attachcredit handshake; the card value is only the advertised
+            // price, so it is a hint and never a local balance check.
+            if (attachment.costCoins > 0) {
+                Text(
+                    text = stringResource(R.string.forum_attach_cost_hint, attachment.costCoins),
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                    color = MiuixTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+
             if (download != null) {
                 Spacer(Modifier.height(12.dp))
                 DownloadProgressPanel(

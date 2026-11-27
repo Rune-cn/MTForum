@@ -347,4 +347,35 @@ class ForumBodyRichParserTest {
         )
         assertEquals("no preview expected for a non-image", null, attach.previewUrl)
     }
+
+    /**
+     * A paid attachment advertises its price on the card's size line (`下载积分: 金币 -1`). The
+     * parser turns that into [ForumBodyBlock.Attachment.costCoins] so the chooser can warn *before*
+     * a download is requested; the site remains the authority that actually charges.
+     */
+    @Test
+    fun `a paid attachment card parses its coin cost from the size caption`() {
+        val page = fixture("attach_paid_thread.html")
+        val cardHtml = Jsoup.parse(page).selectFirst("div.comiis_attach")!!.outerHtml()
+        val attach = ForumBodyParser.parse(cardHtml).filterIsInstance<ForumBodyBlock.Attachment>().single()
+
+        assertEquals("the card advertises a 1-coin deduction", 1, attach.costCoins)
+        assertEquals("mt-tts-plugin.txt", attach.name)
+        assertTrue("the size line stays available, got ${attach.caption}", attach.caption?.contains("62.54 KB") == true)
+        assertTrue("the download url must be kept, got ${attach.url}", attach.url.contains("mod=attachment"))
+    }
+
+    @Test
+    fun `a free attachment card has no coin cost`() {
+        val free = """
+            <div class="comiis_attach">
+              <a href="https://bbs.binmt.cc/forum.php?mod=attachment&amp;aid=abc">
+                <p class="attach_tit"><span class="f_ok">free.zip</span></p>
+                <p class="attach_size f_c">12.34 KB , 下载次数: 2</p>
+              </a>
+            </div>
+        """.trimIndent()
+        val attach = ForumBodyParser.parse(free).filterIsInstance<ForumBodyBlock.Attachment>().single()
+        assertEquals("no price line means free", 0, attach.costCoins)
+    }
 }

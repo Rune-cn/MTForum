@@ -441,3 +441,53 @@ CDATA 里的文本就是给用户看的结果。**实测到的两种文案**：
   `ForumRepository.getSignInState/signIn`、`ForumSignInViewModel` + `ForumSignInCard`
   （设置页账号区块下方的签到卡片）。
 
+## 23. 付费附件下载（attachcredit 两跳）— 2026-11-27 实测
+
+**触发条件**：附件卡的 `p.attach_size` 里有 `下载积分: 金币 -1`（数字是扣减额，绝对值即价格）。
+免费附件没有这句，第一跳就是文件。
+
+**实测链路**（目标帖 `thread-177248-1-1.html`，OP 附件 `mt-tts-plugin.txt`，62.54 KB，扣 1 金币）：
+
+1. `GET https://bbs.binmt.cc/forum.php?mod=attachment&aid=Mzg1Mzc2fDY1ZDE3ZTE3fDE3OTU3NTQ1NzB8MTUzNDY2fDE3NzI0OA%3D%3D`
+   **不返回文件**，302 到：
+   `https://bbs.binmt.cc/forum.php?mod=misc&action=attachcredit&aid=385376&formhash=<formhash>&mobile=2`
+   （302 里的 `aid` 是**纯数字 385376**，不是哈希）。
+2. 该页是 Discuz 的「提示信息」页，`div#messagetext` 文案：
+   `您的 金币 -1 ，现在将开始下载“mt-tts-plugin.txt”`
+   页内**恰好一个**继续链接，文本 `点击此链接进行跳转`：
+   `https://bbs.binmt.cc/forum.php?mod=attachment&aid=Mzg1Mzc2fGRkNmNhODk2fDE3OTU3NTQ3Nzh8MTUzNDY2fDE3NzI0OA%3D%3D&ck=452985a0&mobile=2`
+   **关键**：继续链接的 `aid` 哈希被**重新生成**（与第 1 步不同），并多出 `ck=452985a0` 令牌；
+   HTML 源里写作 `&amp;`。解析后必须把实体还原成 `&`，并按**原字符串**请求——重新编码会破坏
+   哈希/令牌。
+3. `GET` 继续链接 → `200`、`60687` 字节，随后 302 到对象存储：
+   `https://oos.binmt.cc/forum/202611/25/082913dsim5c95lzx1x1dd.txt?OSSAccessKeyId=…&Expires=…&Signature=…`
+
+**客户端判定（`ForumHtmlParser`）**：
+
+| 首跳响应 | 判定 | 动作 |
+|---|---|---|
+| 最终 URL 含 `action=attachcredit`，或正文含 `attachcredit` / `点击此链接进行跳转` | 握手页 | 取继续链接，**只再跳一次** |
+| `div#messagetext` 等提示框命中 `金币不足/抱歉/无法下载/请先登录/权限/不存在/已失效/购买/余额不足` | 失败通知 | 把服务端文案直接作为错误抛出，**不重试** |
+| 正文含 `acw_sc__v2` / `var arg1=` | acw 挑战页 | 交给既有 `AcwInterceptor`；这里只报失败，**不加第二套求解器** |
+| 其余 HTML | 未知页面 | `IOException("HTML page instead of a file…")` |
+
+**防环**：握手最多一跳。第二跳（继续链接）若再次返回 HTML，一律按失败处理，绝不继续跟，
+避免无限循环或重复扣金币。免费附件不经过本流程（一次请求直达文件）。
+
+**UI**：付费提示必须出现在**用户选择「下载」之前**——附件卡行与选择面板都会显示
+「下载将扣除 N 金币」（`forum_attach_cost_hint`），下载仍只在用户点了「下载到本机」后开始，
+绝不自动确认。
+
+**代码落点**：`ForumAttachmentDownloader.followAttachCredit`（握手 + 第二跳 HTML 直接失败）、
+`ForumHtmlParser.isAttachCreditPage / attachCreditContinueUrl / isAcwChallenge /
+isAttachmentFailureNotice / extractNotice`、`ForumBodyParser` 的 `ATTACH_COST`
+（`下载积分: 金币 -1` → `ForumBodyBlock.Attachment.costCoins = 1`）。
+
+**样本**：
+- `app/src/test/resources/forum/attach_paid_thread.html` —— 目标帖 OP 的附件块
+  （`div.comiis_attach` + `p.attach_size` 含 `下载积分: 金币 -1`，测试解析出 `costCoins = 1`）。
+- `app/src/test/resources/forum/attach_paid_credit.html` —— 第 2 步的提示信息页
+  （`div#messagetext` + 唯一的 `点击此链接进行跳转` 继续链接，含 `&amp;` 与 `ck`）。
+- 下载器测试只把该页的站内 host 换成本机回环地址，其余字段（aid 哈希 / `ck` / `&amp;`）保持
+  原样，所以全程无外网。
+

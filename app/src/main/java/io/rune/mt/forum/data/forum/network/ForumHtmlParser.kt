@@ -796,10 +796,77 @@ object ForumHtmlParser {
     fun extractNotice(html: String): String? {
         val doc = Jsoup.parse(html)
         val el = doc.selectFirst(
-            "div#messagetext, div.messagetext, div.comiis_msgbox div.msg_mes, p.alert, div.alert_info",
+            "div#messagetext, div.messagetext, div.comiis_msgbox div.msg_mes, p.alert, div.alert_info, " +
+                // The Comiis mobile 提示信息 page (the attachcredit handshake) prints its one line in
+                // `div.comiis_password_top > p`. Selecting the parent `div` instead would also pick
+                // up the icon-font glyph of `div.comiis_password_ico`, which then leaks into the
+                // user-facing error text. Captured sample: `attach_paid_credit.html`.
+                "div.comiis_password_top p",
         )
-        return el?.text()?.trim()?.takeIf { it.isNotBlank() }
+        // The template indents the sentence with runs of spaces (and glues a NBSP before ，
+        // on some pages), which would otherwise leak into the user-facing error string.
+        return el?.text()?.cleanTitle()?.replace('\u00A0', ' ')?.replace(NOTICE_WHITESPACE, " ")?.trim()
+            ?.takeIf { it.isNotBlank() }
     }
+
+    // ---- Paid-attachment handshake (attachcredit) --------------------------
+    //
+    // Discuz answers `mod=attachment&aid=…` for a *paid* attachment with a 302 to
+    // `mod=misc&action=attachcredit&aid=…&formhash=…&mobile=2`. That page is a 提示信息 page whose
+    // only useful content is a `点击此链接进行跳转` anchor carrying a **regenerated** aid hash and a
+    // `ck` token — following it is what actually returns the file. See REVERSE_SPEC §23.
+
+    /** Text of the continue anchor on the attachcredit page. */
+    private const val ATTACH_CREDIT_TEXT = "点击此链接进行跳转"
+
+    /**
+     * True when [html] (served from [finalUrl], when known) is the paid-attachment handshake page.
+     *
+     * The page is identified by its URL (`action=attachcredit`), by the word `attachcredit` in the
+     * markup, or by its continue-anchor text; any one is enough, because the several Discuz mobile
+     * variants do not all keep the action in the body.
+     */
+    fun isAttachCreditPage(html: String, finalUrl: String? = null): Boolean =
+        finalUrl?.contains("action=attachcredit", ignoreCase = true) == true ||
+            html.contains("attachcredit", ignoreCase = true) ||
+            html.contains(ATTACH_CREDIT_TEXT)
+
+    /**
+     * The continue link on the attachcredit page.
+     *
+     * Jsoup already decodes `&amp;` in the attribute, so the caller gets the URL as the browser
+     * would use it, `ck` token included. Resolution against the page URL is the caller's job.
+     *
+     * @return the raw `href`, or null when this is not an attachcredit page or it carries no link
+     *   (an outright refusal, e.g. 金币不足, is a failure notice and must not be followed).
+     */
+    fun attachCreditContinueUrl(html: String): String? {
+        if (!isAttachCreditPage(html)) return null
+        val doc = Jsoup.parse(html)
+        val anchors = doc.select("a[href]")
+        val anchor = anchors.firstOrNull { it.text().contains(ATTACH_CREDIT_TEXT) }
+            ?: anchors.firstOrNull { it.attr("href").contains("mod=attachment", ignoreCase = true) }
+        return anchor?.attr("href")?.trim()?.takeIf { it.isNotEmpty() }
+    }
+
+    /** True when [html] is the `acw_sc__v2` JS stub (the interceptor normally solves it first). */
+    fun isAcwChallenge(html: String): Boolean =
+        html.contains("acw_sc__v2") || html.contains("var arg1=")
+
+    /**
+     * True when a `提示信息` body is a refusal rather than a handshake/progress notice.
+     *
+     * Used to surface the server's own wording (金币不足 / 抱歉 / 无法下载 / 请先登录 / 权限) instead
+     * of retrying an attachment download blindly.
+     */
+    fun isAttachmentFailureNotice(html: String): Boolean {
+        val notice = extractNotice(html) ?: return false
+        return ATTACH_FAILURE_WORDS.containsMatchIn(notice)
+    }
+
+    /** Server wordings that mean "this attachment will not be delivered". */
+    private val ATTACH_FAILURE_WORDS =
+        Regex("""金币不足|抱歉|无法下载|请先登录|登录后|权限|不存在|已失效|购买|余额不足""")
 
     /** Extracts a thread id from a success redirect (`thread-123-1-1.html`). */
     fun resultTid(html: String): Int? = TID_RESULT.find(html)?.groupValues?.get(1)?.toIntOrNull()

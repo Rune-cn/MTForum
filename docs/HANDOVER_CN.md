@@ -172,7 +172,7 @@ HTML，任务是**忠实渲染这段 HTML**——不引 WebView、不引第三�
 | `Divider` | `<hr class="l">` | 1dp 分隔线 |
 | `BulletList(items)` | `ul/ol > li`（支持 2–3 层嵌套） | 圆点 / 序号 + 缩进 |
 | `Table(rows)` | `table/tr/th\|td`（含 `colspan`） | weight 网格 + 细边框；**表头加粗+底色，`colspan` 变 weight** |
-| `Attachment(name, caption, url, iconUrl, previewUrl, isImage)` | `div.comiis_attach`（`span.f_ok`、`p.attach_size`、`a[href*=mod=attachment]`、`img[src*=filetype]`） | 附件卡片，**尾随下载图标 + 文件类型角标；点击弹出"下载/浏览器/复制"选择**（见 §3.9） |
+| `Attachment(name, caption, url, iconUrl, previewUrl, isImage, costCoins)` | `div.comiis_attach`（`span.f_ok`、`p.attach_size`、`a[href*=mod=attachment]`、`img[src*=filetype]`） | 附件卡片，**尾随下载图标 + 文件类型角标；点击弹出"下载/浏览器/复制"选择**；付费附件另有「下载将扣除 N 金币」提示（见 §3.9） |
 | `ModeratorNote` | `div.comiis_modact` | 蓝色信息 chip |
 | `EditNote` | `i.pstatus`（「本帖最后由…编辑」） | 12sp 暗色说明，非斜体 |
 | `Picture` / `EmojiRow` | `<img>`（懒加载属性）/ `[#xxx]` token | 全宽图片 / 小表情行（引用内降为 96dp 缩略图） |
@@ -194,7 +194,12 @@ HTML，任务是**忠实渲染这段 HTML**——不引 WebView、不引第三�
 | `[table][tr][td]` | `<table><tr><td>` |
 | `[hr]` | `<hr class="l">` |
 | 表情 | `<img src=…/smiley/… smilieid=…>` |
-| 附件 | `div.comiis_attach`（文件名 + 「N KB , 下载次数…」） |
+| 附件 | `div.comiis_attach`（文件名 + 「N KB , 下载次数…」）；付费附件同一行还有 `下载积分: 金币 -N` |
+
+付费附件的价格只从这张卡片的 `p.attach_size` 里取（`ForumBodyParser` 的 `ATTACH_COST`，
+`金币 -1` → `costCoins = 1`），客户端**不做**余额判断，也不经手金币；真正的扣费由站点的
+attachcredit 握手完成（见 §3.9）。卡片行与选择面板都会先显示「下载将扣除 N 金币」，
+且下载仍只在用户显式点「下载到本机」后开始。
 
 行内样式映射：
 
@@ -322,8 +327,20 @@ OS4/OS3 分支按铁律 8：OS3 用经典 `WindowBottomSheet`；OS4 的玻璃版
 3. 进度按整数百分比节流回调；`Content-Length` 缺失时回调 `null` → UI 显示不确定进度条；
 4. 每轮读取 `ensureActive()`，协程取消能真正中断（`CancellationException` 按「用户取消」处理，
    不显示错误）；
-5. 校验：非 2xx 抛 `IOException("HTTP xxx")`；`Content-Type: text/html` 直接判定为挑战页并失败；
-   实际字节数 ≠ `Content-Length` 判定为截断并失败。失败时删掉半成品文件，**不留假成功**。
+5. 校验：非 2xx 抛 `IOException("HTTP xxx")`；`Content-Type: text/html` 先判断是不是付费附件
+   的 attachcredit 握手页（见下）；实际字节数 ≠ `Content-Length` 判定为截断并失败。失败时删掉
+   半成品文件，**不留假成功**。
+
+**付费附件两跳（2026-11-27 补）**：卡面有 `下载积分: 金币 -N` 的附件，首跳不会给文件：
+`mod=attachment&aid=<hash>` 302 到
+`mod=misc&action=attachcredit&aid=<数字>&formhash=…&mobile=2` 的「提示信息」页；页内唯一
+`点击此链接进行跳转` 链接的 `aid` 哈希**重新生成**、并多带 `ck` 令牌，HTML 里的 `&amp;` 需
+还原成 `&` 后**原样**请求。下载器识别该页 → 取继续链接 → **只再跳一次**；第二跳若仍是 HTML
+就按失败处理（防环、防重复扣币）。失败通知（`金币不足/抱歉/无法下载/请先登录/权限`）直接把
+服务端文案当错误抛出，不重试；acw 挑战页仍交给既有 `AcwInterceptor`，**不写第二套求解器**。
+免费附件不经过该流程（一次请求直达文件）。判定函数在 `ForumHtmlParser`
+（`isAttachCreditPage / attachCreditContinueUrl / isAcwChallenge / isAttachmentFailureNotice`），
+完整规格与样本见 REVERSE_SPEC §23。
 
 **落盘位置**：`context.cacheDir/attachments/<sanitised name>`——所有受支持 API 级别都无需存储权限，
 缓存清扫器（`AutoCacheSweeper`）负责回收。下载完成后 sheet 行变为「已保存到应用缓存」，
@@ -339,6 +356,12 @@ OS4/OS3 分支按铁律 8：OS3 用经典 `WindowBottomSheet`；OS4 的玻璃版
 失败，只能在真机确认；失败时 `Timber.w` 记录并静默返回，不会崩。
 没有加 MediaStore 写公共 Downloads：那需要额外权限/分区存储分支，当前实现用「缓存 + 分享」覆盖
 「下载到本机」的诉求，且不需要任何运行时权限。
+
+**付费 attachcredit 两跳的残余风险**：整条链路只在「单元测试（回环假服务器 + 机主抓取的
+`attach_paid_thread.html` / `attach_paid_credit.html`）+ 机主的 Python fetcher」上验证过，
+**App 内真实付费下载尚未在真机跑通**。未证实点：站点是否对 `ck` 令牌有时效/一次性约束、
+低金币账号的失败文案与跳转形态、以及扣费是否正好一次。上线前需用真实登录账号跑一次
+`thread-177248-1-1.html` 的附件下载并核对金币变化。
 
 `ForumThreadPage` 通过 `koinInject()` 取 `ForumHttpClient` 传给下载器（构造参数可注入，方便测试）。
 
