@@ -1609,3 +1609,27 @@ internal fun barBackdrop(contentBackdrop: LayerBackdrop?, hostBackdrop: LayerBac
   `os4-thread-post-cards.png`
 - ⚠️ 本机无设备/模拟器：所有 UI 证据是 Robolectric 版面断言 + NATIVE 截图；
   「真机不崩」「玻璃观感」「下载面板实际观感」仍未实测。
+
+### 19. 第七轮真机反馈（2026-11-27）
+
+四条独立修复，全部来自机主实测反馈；本机无设备/模拟器，证据均为 fixture + 单测 + Robolectric 截图。
+
+| 反馈 | 根因 | 修复 | 证据 |
+|---|---|---|---|
+| App 里看不到站点草稿箱原有的草稿 | `ForumDraftsPage` 把 `!session.isLoggedIn` 放在所有数据分支之前，且 `loginRequired` 一旦命中就把 `loaded` 置真永不再问 → 已取回的行被登录卡片挡住 | 数据优先（有行就渲染）+ `ForumDraftsPhase{Rows,Loading,LoginRequired,Error,Empty}` 五态分离 + 登录后重问 + 每次加载打 `rows/parsed/finalUrl` 日志 | `drafts_live_list.html`（真实 2 行）、`ForumDraftServiceTest`、`ForumDraftsViewModelTest`(8) |
+| 图片不显示（thread-177269） | 相册图在 `ul.comiis_img_list > li > span > img`，`emitList` 只收文字 → 4 张图全丢且留 4 个空 bullet | 图片唯一列表识别为相册 → 每图一个 `Picture`；混合列表保留文字行并把图片作为尾随图 | `album_images_177269.html`（4 张 oos 图）、`ForumBodyGalleryTest`、截图 `album-gallery.png` |
+| 有些 bbcode 蓝色解析错位置 | `normalize()` 折叠空白后按单一 `leadingTrim` 平移所有 span/`LinkAnnotation` → 内部空白折叠使偏移漂移 | 折叠时记录 raw→new 索引映射，span/段落样式/link 注解统一按映射重定位 | `ForumRichTextTest` 新增 5 例（含真实 `rich_166223.html`、`album_images_177269.html`） |
+| 签到放到主页右上角 | 签到卡片原在设置页 | 首页顶栏右侧新增签到入口（`MiuixTopBarIconButton`），点击开 `ForumSignInSheet`（OS4 玻璃 / OS3 弹窗），签到卡片从设置页移除；游客走登录卡片 | `ForumHomeSignInEntryTest`(3)、`SettingsAccountEntryTest` 增「设置页已无签到卡」、截图 `home-sign-in-entry.png` |
+| 插件下载（thread-177248） | 付费附件（金币 -1）`mod=attachment` 不直接返回文件，而是 302 到 `misc&action=attachcredit` 提示信息页，其中 `点击此链接进行跳转` 的链接带**重新生成的 aid 哈希 + `ck`** | 下载器增加一次 attachcredit 握手跳（最多 1 次），并把「将扣除 N 金币」在下载前提示；拒绝/金币不足按服务端原文报错 | 真实抓取页 `attach_paid_credit.html`、`attach_paid_thread_real.html`、`ForumAttachmentDownloadTest` |
+
+**站点事实补充（本轮实测，写入 REVERSE_SPEC §23）**：attachcredit 页的提示语在
+`div.comiis_password_top > p`（不是桌面版 `#messagetext`），且该 `div` 里还有图标字体 glyph，
+所以只能取 `p` 并 `cleanTitle()`；页面本身不含 `attachcredit` 字样，识别必须靠
+「跳转文案 / `action=attachcredit` URL」，不能只靠关键字。
+
+**验证（合入 main 后）**：`:app:testStableDebugUnitTest` → **52 suites / 317 tests / 0 failures /
+0 errors / 0 skipped**；`:app:lintVitalStableRelease` → BUILD SUCCESSFUL；三语字符串各 **275** 键。
+
+**仍未验证**：OS4 玻璃签到面板在 Robolectric 下无法渲染（AGSL 着色器 `cannot swizzle value of
+type 'shader'`，与三点菜单同一限制），装机体感未测；付费附件的 `ck` 时效/一次性、再次 acw 挑战、
+扣费次数均只能在真机确认。
