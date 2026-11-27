@@ -12,12 +12,14 @@ import io.rune.mt.forum.data.forum.repository.ForumDraftRepositoryImpl
 import io.rune.mt.forum.data.forum.repository.ForumDraftServiceImpl
 import io.rune.mt.forum.data.forum.repository.ForumPasswordAuthenticator
 import io.rune.mt.forum.data.forum.repository.ForumRepositoryImpl
+import io.rune.mt.forum.data.forum.repository.ForumSearchHistoryRepositoryImpl
 import io.rune.mt.forum.data.forum.repository.ForumSessionStore
 import io.rune.mt.forum.data.image.ForumImageHostClient
 import io.rune.mt.forum.domain.forum.model.ImageHostGateway
 import io.rune.mt.forum.domain.forum.repository.ForumDraftRepository
 import io.rune.mt.forum.domain.forum.repository.ForumDraftService
 import io.rune.mt.forum.domain.forum.repository.ForumRepository
+import io.rune.mt.forum.domain.forum.repository.ForumSearchHistoryRepository
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
@@ -26,6 +28,9 @@ import org.koin.dsl.module
 
 /** Qualifier of the offline draft store, kept as a safety net next to the site drafts. */
 private val DRAFT_DATA_STORE = named("ForumDraftDataStore")
+
+/** Qualifier of the local recent-search list (a convenience, unrelated to the site's search). */
+private val SEARCH_HISTORY_DATA_STORE = named("ForumSearchHistoryDataStore")
 
 val forumModule = module {
     singleOf(::ForumCookieJar)
@@ -50,5 +55,16 @@ val forumModule = module {
     }
     single<ForumDraftRepository> {
         ForumDraftRepositoryImpl(dataStore = get(DRAFT_DATA_STORE), json = get())
+    }
+
+    // Recent search keywords: device-local shortcuts for the home magnifier, with their own
+    // DataStore file so clearing them can never touch drafts or settings.
+    single<DataStore<Preferences>>(SEARCH_HISTORY_DATA_STORE) {
+        PreferenceDataStoreFactory.create(
+            produceFile = { androidContext().preferencesDataStoreFile("forum_search_history") },
+        )
+    }
+    single<ForumSearchHistoryRepository> {
+        ForumSearchHistoryRepositoryImpl(dataStore = get(SEARCH_HISTORY_DATA_STORE), json = get())
     }
 }

@@ -4,7 +4,9 @@ package io.rune.mt.forum
 import android.content.Intent
 import android.net.Uri
 import io.rune.mt.forum.ui.activity.SettingsActivity
+import io.rune.mt.forum.ui.navigation.Route
 import io.rune.mt.forum.ui.navigation.forumDeepLinkFrom
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -35,8 +37,10 @@ class ForumDeepLinkManifestTest {
             "https://bbs.binmt.cc/forum-41-1.html",
             "https://bbs.binmt.cc/forum.php?mod=viewthread&tid=171354",
             "https://bbs.binmt.cc/forum.php?mod=forumdisplay&fid=41",
+            "https://bbs.binmt.cc/forum.php",
             "mtforum://thread/171354",
             "mtforum://forum/41",
+            "mtforum://home",
         ).forEach { url ->
             val resolved = resolve(url)
             assertTrue(
@@ -68,6 +72,8 @@ class ForumDeepLinkManifestTest {
             resolve(guideUrl).any { it.activityInfo.name == settingsActivity },
         )
         assertNull(forumDeepLinkFrom(Uri.parse(guideUrl)))
+        // The bare board index is the home link and parses to the shell.
+        assertEquals(Route.Main, forumDeepLinkFrom(Uri.parse("https://bbs.binmt.cc/forum.php")))
     }
 
     private fun resolve(url: String) = RuntimeEnvironment.getApplication().packageManager

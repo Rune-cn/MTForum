@@ -50,8 +50,17 @@ class Navigator(val backStack: NavBackStack) {
      * home rather than a page that happened to be open when the link was tapped. When the stack
      * is already the bare shell a plain push produces the same stack without a clear+refill,
      * which would make the NavDisplay drop the entry it is currently showing.
+     *
+     * A home link (`Route.Main`) collapses to the bare shell — not `[Main, Main]` — and does not
+     * push anything: the shell itself is the destination, and the caller selects the 论坛 pager
+     * page through `SettingsSharedViewModel.requestMainPage`.
      */
     fun navigateToDeepLink(route: Route) {
+        if (route == Route.Main) {
+            if (backStack.size == 1 && backStack.lastOrNull() == Route.Main) return
+            replaceAll(listOf(Route.Main))
+            return
+        }
         if (backStack.size == 1 && backStack.lastOrNull() == Route.Main) {
             push(route)
         } else {

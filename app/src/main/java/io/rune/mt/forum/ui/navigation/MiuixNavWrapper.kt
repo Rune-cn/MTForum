@@ -77,11 +77,24 @@ fun MiuixMainPageWrapper(uiState: ThemeState, sharedViewModel: SettingsSharedVie
         )
     }
 
+    // A home deep link can ask for a specific page (the 论坛 tab) before/after this graph exists; an
+// explicit request wins over the restored tab, so the link lands on the home tab even when the
+// user left the app on 消息/设置.
+    val requestedPage = sharedState.pendingMainPageIndex
     val pagerState = rememberPagerState(
-        initialPage = sharedState.lastMainPageIndex,
+        initialPage = resolveInitialMainPageIndex(
+            lastIndex = sharedState.lastMainPageIndex,
+            requestedIndex = requestedPage,
+            pageCount = navigationItems.size,
+        ),
         pageCount = { navigationItems.size },
     )
     val mainPagerState = rememberMainPagerState(pagerState)
+    LaunchedEffect(requestedPage) {
+        val target = requestedPage ?: return@LaunchedEffect
+        mainPagerState.animateToPage(target)
+        sharedViewModel.consumeMainPageRequest()
+    }
     val currentPage = mainPagerState.pagerState.currentPage
     val settledPage = mainPagerState.pagerState.settledPage
     LaunchedEffect(currentPage) {

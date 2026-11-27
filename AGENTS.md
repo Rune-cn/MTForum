@@ -97,6 +97,13 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
 17. **深链只有一个入口**：外部 URL 一律经 `ui/navigation/ForumDeepLink.kt` 的
     `forumDeepLinkFrom(Uri)` 解析；Manifest 的 intent-filter 与 Activity 的 `onNewIntent`
     都只调用它，不要再写第二套 intent 解析。
+    **首页深链也是深链**：`https://bbs.binmt.cc/forum.php`（无 `mod` 或 `mod=index`）与
+    `mtforum://home` 解析成 `Route.Main`；`AppNavContainer` 收到它时先
+    `sharedViewModel.requestMainPage(MAIN_PAGE_FORUM)` 再导航（否则只会回到上次的页签，
+    `lastMainPageIndex` 会把它还原成消息/设置）；`Navigator.navigateToDeepLink(Route.Main)` 折叠成
+    `[Main]`，**不要**压出重复的 `Main`。shell 的第一页由
+    `resolveInitialMainPageIndex(last, requested, count)` 决定，`MiuixNavWrapper` 用
+    `mainPagerState.animateToPage` 兑现请求并 `consumeMainPageRequest()` 一次性清除。
 18. **会员页先判登录**：搜索 / 提醒 / 个人资料 / 收藏 / 草稿只对登录态可见（匿名 302 登录页）。
     仓库抛 `ForumLoginRequiredException` 或先用 `ForumHtmlParser.isLoginRequired()` 判，
     UI 显示登录卡片 + 跳 `Route.Login`，**不要**把登录页解析成“空结果”。
@@ -104,6 +111,14 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     两者都是登录账号自己的论坛数据，放在这里最直觉）；**提醒不进顶栏**——系统提醒 / 坛友互动 /
     我的帖子三个分类在底栏「消息」页里用 `TabRow` 与「私信」并列（`ForumMessagesPage`），首页顶栏
     只留「搜索放大镜 / 发帖 / 签到」三个动作。
+    **搜索入口只有一个**：首页顶栏放大镜（`ForumSearchOverlay`，OS4 `GlassSearchOverlay` /
+    OS3 自绘面板）；版块列表 / 帖子页 / 设置页都**不要**再放搜索图标或搜索卡片
+    （`ForumListPage` 顶栏的搜索图标已删除，宫格上方的搜索卡片也已删除）。覆盖层的
+    「搜索 “关键词”」确认行、最近搜索行与 OS3 的输入法搜索键必须走**同一个**提交函数：trim →
+    记录历史 → `onSubmit` → `Route.ForumSearch(keyword)`，绝不允许提交空串。最近搜索由
+    `ForumSearchHistoryRepository`（DataStore `forum_search_history`，上限 10 条、忽略大小写
+    去重、可清除）保存。`ForumSearchPage` 收到带关键词的路由要**立即**执行搜索（不再要求用户
+    再按一次「搜索」），字段保留该关键词以便原地改写重搜（`ForumSearchViewModel.prepare`）。
     **每日签到从首页顶栏最右侧的 `Tasks` 图标进**（`ForumSignInSheet` 底部面板，OS4 玻璃/OS3
     窗口；面板内容 `ForumSignInCard`，游客仍是登录卡片），签到**不进**设置页；
     我的主页从账号卡片点头像/昵称进（`AccountSection` 的 `onOpenProfile`），不要再往设置页
@@ -274,6 +289,11 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
   底部导航 `MiuixGlassNavigationBar`（OS4）/ `FloatingBottomBar`（OS3）。
 - **OS4 专属视觉**：`size`、`Glass*` 来自 `miuix-material`/`miuix-glass`；
   OS3 下不得泄漏玻璃组件，反之亦然。
+- **主题模式切换用示例应用的形态**：`ThemeModePreviewRow`（浅色/深色两张预览 tile，单选）+
+  `ThemeModeFollowSystemRow`（跟随系统开关），见 `ThemeModeSelector.kt`；持久化仍走
+  `ThemeSettingsAction.SetThemeMode` → `UpdateSettingUseCase`，**不要**退回下拉 Spinner
+  （旧 `MiuixThemeModeWidget` 已删）。tile 的 `Role.RadioButton` + `selected` 放在内容列上，
+  不要放在 `Card` 的 modifier 上（`Card` 的 clickable 会自成合并节点，标题与选中态会被拆开）。
 
 ## 测试环境说明
 

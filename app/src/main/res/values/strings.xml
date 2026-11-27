@@ -298,7 +298,9 @@
     <string name="forum_new_thread_board_title">Choose a board</string>
     <string name="forum_new_thread_board_hint">The new thread is posted in the board you pick.</string>
     <string name="forum_search_cancel">Cancel</string>
-    <string name="forum_search_submit_format">Search for &quot;%1$s&quot;</string>
+    <string name="forum_search_submit_format">Search for “%1$s”</string>
+    <string name="forum_search_recent">Recent searches</string>
+    <string name="forum_search_clear_history">Clear</string>
     <string name="forum_paging_page_format">%1$d / %2$d</string>
     <string name="forum_messages_login_required">Sign in to view messages</string>
     <string name="forum_messages_empty">No conversations yet</string>

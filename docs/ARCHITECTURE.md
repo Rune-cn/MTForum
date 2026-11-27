@@ -123,7 +123,12 @@ Compose 页面（Miuix 组件，OS3/OS4 自适应）
    可分页的「最新主题」流（同样走 `getGuidePage(ForumGuideView.Latest, page)`，服务端顺序 + 真实
    `div.pg`），否则主页的帖子就"永远显示不完整"（HANDOVER §20.3.1）。
 11. **深链只有一个入口**：`ForumDeepLink.forumDeepLinkFrom(Uri)` + `ForumDeepLinkState`
-   一次性 hand-off；Manifest filter 与 `onNewIntent` 不另写解析。
+   一次性 hand-off；Manifest filter 与 `onNewIntent` 不另写解析。**首页深链**
+   （`https://bbs.binmt.cc/forum.php` 无 `mod`/`mod=index`、`mtforum://home`）解析成 `Route.Main`：
+   `AppNavContainer` 先用 `SettingsSharedViewModel.requestMainPage(MAIN_PAGE_FORUM)` 请求论坛页签，
+   `Navigator.navigateToDeepLink(Route.Main)` 折叠为 `[Main]`（不压重复 Main）；shell 初始页由
+   `resolveInitialMainPageIndex(last, requested, count)` 结合 `lastMainPageIndex` 与一次性请求解析，
+   `MiuixNavWrapper` 用 `animateToPage` + `consumeMainPageRequest()` 兑现。
 12. **会员页必须先判登录**：搜索（`search.php`）、提醒（`do=notice`）、个人资料（`do=profile`）、
    收藏（`do=favorite`）都只对登录态可见，匿名会 302 到登录页。仓库层用
    `ForumLoginRequiredException`（或 `isLoginRequired()`）抛/判，UI 显示登录卡片，不发“空结果”。

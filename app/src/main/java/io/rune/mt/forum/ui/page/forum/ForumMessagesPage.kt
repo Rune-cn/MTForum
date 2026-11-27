@@ -48,6 +48,7 @@ import io.rune.mt.forum.ui.navigation.LocalNavigator
 import io.rune.mt.forum.ui.navigation.Route
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixPageScaffold
 import io.rune.mt.forum.ui.page.miuix.widgets.rememberMiuixPageChrome
+import io.rune.mt.forum.ui.page.miuix.widgets.rememberTabRowLabelWidth
 import io.rune.mt.forum.ui.theme.AppTheme
 import org.koin.androidx.compose.koinViewModel
 import top.yukonga.miuix.kmp.basic.Card
@@ -87,6 +88,12 @@ fun ForumMessagesPage(
     val listState = rememberLazyListState()
     val pullToRefreshState = rememberPullToRefreshState()
     val tabs = ForumNoticeTab.entries
+    // Four labels share this row; the width comes from the widest one (bold, as the selected tab is
+    // drawn) so no label is ever ellipsized — the row scrolls instead (see
+    // `rememberTabRowLabelWidth`).
+    val tabLabels = listOf(stringResource(R.string.forum_messages_tab_private)) +
+        tabs.map { stringResource(it.labelRes) }
+    val tabWidth = rememberTabRowLabelWidth(tabLabels)
     // -1 = 私信, otherwise the ordinal of the selected notice category.
     var selected by rememberSaveable { mutableIntStateOf(PRIVATE_TAB) }
     val noticeTab = tabs.getOrNull(selected)
@@ -144,9 +151,11 @@ fun ForumMessagesPage(
                         contentPadding = contentPadding,
                     ) {
                         item(key = "messages_tabs") {
+                            // Labels are content-sized (see `rememberTabRowLabelWidth`): miuix's
+                            // default equal-width split clipped 系统提醒 to 「系统···」 on a
+                            // 360dp phone. With a content minimum the row scrolls instead.
                             TabRow(
-                                tabs = listOf(stringResource(R.string.forum_messages_tab_private)) +
-                                    tabs.map { stringResource(it.labelRes) },
+                                tabs = tabLabels,
                                 selectedTabIndex = selected + 1,
                                 onTabSelected = { index ->
                                     val next = index - 1
@@ -154,6 +163,9 @@ fun ForumMessagesPage(
                                     tabs.getOrNull(next)?.let(noticesViewModel::selectTab)
                                 },
                                 modifier = Modifier.padding(bottom = 10.dp),
+                                minWidth = tabWidth,
+                                maxWidth = tabWidth,
+                                itemSpacing = MESSAGES_TAB_SPACING,
                             )
                         }
 
@@ -243,6 +255,15 @@ fun ForumMessagesPage(
 
 /** Tab index of the private-message half; the notice categories follow at 0..n. */
 private const val PRIVATE_TAB = -1
+
+/**
+ * Gap between the four tabs.
+ *
+ * Smaller than Miuix's 9dp default so the four content-sized tabs still fit on a 411dp phone in
+ * both styles (OS3's 12dp page gutter and OS4's 16dp one); on a 360dp phone the row scrolls, which
+ * is the intended fallback instead of an ellipsized label.
+ */
+private val MESSAGES_TAB_SPACING = 5.dp
 
 @Composable
 private fun ConversationRow(

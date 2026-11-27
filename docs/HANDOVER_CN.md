@@ -2125,3 +2125,148 @@ HTTP 403 / 服务器拖 2s + `deadline=400ms`（callTimeout 生效）/ 非法 JS
 - 三语字符串各 **318** 键（新增 6 键：`update_up_to_date_format` / `update_last_checked_format` /
   `update_check_failed_format` / `update_check_skip_offline|debug|channel`）
 - ⚠️ 未在真机连真实 GitHub 网络验证「超时」的体感；超时/取消路径由本地 server + 单测覆盖。
+
+## 25. 第九轮真机反馈（2026-11-27）
+
+机主这一轮的四条（原话）：
+
+1. 「板块内的搜索去掉，只需要主页右上角那个搜索，你优化下」
+2. 「消息那里的分类被截断了「系统···」」
+3. 「深色模式浅色模式的切换的按钮也改成示例应用的那种」
+4. 「主页也加个深链」
+
+### 25.1 搜索只留一个入口 + 覆盖层优化（2026-11-27）
+
+**入口收敛**：`ForumListPage`（版块列表）顶栏的放大镜删除，以及首页宫格上方那块遗留的
+`ForumSearchEntryCard`（早先版本已停用、但函数还留着）一起删掉。现在全应用**只有一个**搜索
+入口：论坛首页顶栏左侧的放大镜 → `ForumSearchOverlay`。板内搜索原先还会把版块名塞进
+`Route.ForumSearch(keyword)` 当关键词，这既是第二个入口，也会被站点当成一次真实搜索；两条
+一起消失（AGENTS 规则 18 已写死这一点）。
+
+**覆盖层补成真正的搜索面板**（`ForumSearchOverlay.kt`）：
+
+| 能力 | 实现 |
+|---|---|
+| 关键词必须带过去 | 确认行、最近搜索行、OS3 输入法搜索键都走同一个 `submitKeyword`：trim → `historyViewModel.record` → `onSubmit` → `Route.ForumSearch(keyword)`；空串被拒 |
+| 最近搜索 | `ForumSearchHistoryRepository`（新，DataStore `files/datastore/forum_search_history`，一条 JSON 列表）+ `ForumSearchHistoryViewModel`；上限 `FORUM_SEARCH_HISTORY_LIMIT = 10`，忽略大小写去重，最新在前 |
+| 一键复搜 | 点最近搜索行直接提交该关键词（先记历史再跳转），不用再输入 |
+| 清除历史 | 最近搜索标题右侧 `Clear` → `clear()` 清空整个列表 |
+| 返回 / 取消关闭 | OS3：`BackHandler(enabled = expanded)` + `Cancel` 按钮；OS4：`GlassSearchOverlay` 自带 |
+| 输入法搜索键 | OS3 的 `TextField` 用 `ImeAction.Search` → 提交；OS4 的玻璃覆盖层内部固定 `ImeAction.Done` 只收键盘（组件没有提交回调），所以两种风格都保留确认行作为提交入口 |
+
+**结果页**（`ForumSearchPage` / `ForumSearchViewModel`）：带关键词的路由现在会**立刻**执行搜索
+（`prepare()` 里 trim 后直接 `search()`），不再出现「跳过去只有一个填好的输入框、还得再按一次
+搜索」；`prepared` 保证重组不会重放。字段保留该关键词，改了再按「搜索」就是原地重搜（并把列表
+滚回顶部）；重搜的关键词也会写进最近搜索。
+
+**样式分支不变**：OS4 仍是 `GlassSearchOverlay`，OS3 仍是自绘面板；两者都没有采样
+`pageBackdrop`（规则 23/28），覆盖层只画自己的背景。
+
+**验证**：新增 `ForumSearchHistoryStoreTest`（7：顺序/去重/大小写/空串/上限/清除/损坏文档）、
+`ForumSearchViewModelTest`（6：关键词语义立即搜索/幂等/空路由不请求/原地重搜/游客登录卡片/
+服务端错误重试）、`ForumSearchOverlayTest`（6：最近搜索一键复搜、确认行携带关键词、IME 提交、
+返回键关闭、清除历史、截图）。截图
+[screenshots/search-overlay-os3.png](screenshots/search-overlay-os3.png)（OS3；OS4 玻璃覆盖层的
+AGSL 在 Robolectric 下编译不了，和前几轮同一限制）。
+
+**未验证**：OS4 玻璃覆盖层里最近搜索列表的实际观感只能真机确认；OS4 输入法只有「Done」、
+提交只能点确认行，这是 miuix 组件的既定行为。
+
+### 25.2 消息页签「系统···」被截断（2026-11-27）
+
+**原因**（读 miuix `TabRow.kt` 字节码确认，不是猜）：四个页签放在 `LazyRow` 里，但**四个页签共用
+一个宽度** —— `calculateTabWidth = clamp(availableWidth / count, minWidth..maxWidth)`，默认
+`minWidth = 76.dp`、`maxWidth = 98.dp`；`TabItem` 再给文字左右各 12dp padding，并用
+`maxLines = 1` + `TextOverflow.Ellipsis` 绘制。360dp 手机上内容区 336dp → 每签 77dp，文字只剩
+53dp，而「系统提醒」4 个汉字（`body1` 16sp）需要 64dp → 必然显示成「系统…」。
+411dp 时每签约 90dp，文字 66dp，刚好放得下，所以只有窄屏出问题。
+
+**修法**：新增 `rememberTabRowLabelWidth(labels)`
+（`ui/page/miuix/widgets/MiuixTabRowWidth.kt`）：用 `TextMeasurer` 按 `TabItem` 的真实样式
+（`body1` 字号、选中态的 Bold、单行、字距 0）量出最宽标签，加 24dp（左右各 12dp 内边距）与 2dp
+余量，作为 `TabRow` 的 `minWidth = maxWidth`。这样每个签按内容宽度绘制；四个签在 411dp 下放得下
+（同时把 `itemSpacing` 从默认 9dp 收到 5dp，OS3/OS4 两种 411dp gutter 都验证过），360dp 下放不下
+则由 `TabRow` 自带的横向滚动兜底 —— **标签本身永不被省略号裁剪**。
+
+**测试**（`ForumMessagesTabRowTest`，4 个）：直接组合真实 `ForumMessagesPage`（Koin 假仓库，
+locale 用 `zh-rCN`）。断言是布局级的：合并后的页签节点宽度 ≥ 标签在相同样式下的固有宽度 + 24dp。
+360dp 与 411dp 各一条，另外各出一张截图。**做过反证**：把 `minWidth/maxWidth` 去掉再跑，360dp
+用例立刻失败（`tab "系统提醒" is 159px wide but needs at least 176px`），说明这条断言真能抓住
+原来的 bug，不是恒真。
+
+- 411dp：[screenshots/messages-tab-row.png](screenshots/messages-tab-row.png)（四个标签完整）
+- 360dp：[screenshots/messages-tab-row-360.png](screenshots/messages-tab-row-360.png)（前三个完整，
+  第四个被**视口边缘**裁掉、可横向滚动；它不是省略号截断）
+
+**未验证**：OS4 玻璃顶栏 + 16dp gutter 的 411dp 组合没有截图像素级验证（Robolectric 下 OS4 的
+render-effect 路径不可用，和前几轮一致）；按宽度算式 4×90dp + 3×5dp = 375dp ≤ 379dp，仍应放得下。
+
+### 25.3 主题模式切换改成示例应用的形态（2026-11-27）
+
+原来设置页的「主题模式」是一行 `MiuixSpinnerPreference` + 下拉菜单。示例应用
+（`example/.../ThemeSettingsPage.kt`）不是这样：它是**两张预览卡片**（Light Mode / Dark Mode 并排，
+`selectableGroup()` + `Role.RadioButton`，选中态主色 3dp 描边、标题变主色）加一行
+**Follow System 开关**。本轮照这个形态重做，见
+[screenshots/theme-mode-control.png](screenshots/theme-mode-control.png)。
+
+- 新文件 `ui/page/miuix/settings/preferred/theme/ThemeModeSelector.kt`：
+  `ThemeModePreviewRow`（两张 tile）与 `ThemeModeFollowSystemRow`（第三模式）。tile 的示意缩略图
+  直接移植示例的渐变 + 两行「截图式」圆角条几何（`ThemeModeIllustration`），圆角用
+  `squircleBorder` / `squircleClip`（与示例一致），因此截图测试里要
+  `LocalSquircleEnabled provides false`。
+- **仍然是三种模式**：`ThemeMode.LIGHT / DARK / SYSTEM`；tile 对应浅色/深色，「跟随系统」开关对应
+  SYSTEM。关掉开关不会改配色，而是取应用**当前实际渲染**的深浅（`AppTheme.isDark` → DARK 或 LIGHT），
+  与示例的行为一致。
+- **持久化完全没变**：两个回调依旧是 `ThemeSettingsAction.SetThemeMode` →
+  `ThemeSettingsViewModel.dispatch` → `UpdateSettingUseCase` → `AppSettingsRepository.putString`，
+  tile 只是换了外观。旧的 `MiuixThemeModeWidget`（下拉）已删除。
+- 语义：把 `Role.RadioButton` + `selected` 放在 tile 的内容列上（不放在 `Card` 的 modifier 上）。
+  `Card` 的 clickable 会自成合并节点，放在外层会让「标题」与「选中态」落在两个节点上；放在内容列上
+  后，一个节点同时带标题与 `Selected`，读屏和测试都能一次拿到。
+
+**测试**（`ThemeModeControlTest`，6 个）：真实 `ThemeSettingsViewModel` + 假
+`AppSettingsRepository`（记录 `putString` 并把 themeMode 回灌到 `preferencesFlow`）组合本控件：
+两张 tile 与开关都存在；点深色 tile → `Selected=true`、写库 `DARK`；点浅色 → `LIGHT`；开关
+关/开各写一次 `LIGHT` / `SYSTEM`；再用源码约定检查设置页确实换了控件（`ThemeModePreviewRow(` /
+`ThemeModeFollowSystemRow(` 在、`MiuixThemeModeWidget` 不在）。截图
+[screenshots/theme-mode-control.png](screenshots/theme-mode-control.png)。
+
+**未验证**：切换后的深色/浅色**整页**观感没有截图（控件本身与页面接线已验证）；tile 的
+squircle 圆角在 Robolectric 下退化为普通圆角，真机是超椭圆。
+
+### 25.4 首页深链（2026-11-27）
+
+之前 `https://bbs.binmt.cc/forum.php`（无 `mod`）**能进 App 但不会导航**：`ForumDeepLink` 对空 `mod`
+返回 null，App 只是停在启动时恢复的页签（`SettingsSharedState.lastMainPageIndex`，可能是消息/设置）。
+本轮把「首页」做成真正的深链目标，仍然**只有一个入口**（规则 17）：
+
+| 形态 | 解析 | 落地 |
+|---|---|---|
+| `https://bbs.binmt.cc/forum.php`（无 `mod` / `mod=` / `mod=index`） | `Route.Main` | shell + 论坛页签 |
+| `mtforum://home`（大小写不敏感，允许尾部 `/`） | `Route.Main` | shell + 论坛页签 |
+| `thread-*.html` / `forum-*.html` / `mod=viewthread|forumdisplay` / `mtforum://thread|forum` | 各自路由 | 不变 |
+| 其他 `mod`（guide/search…） | `null` | 不导航（维持旧行为） |
+
+实现分三处，都在既有机制上：
+
+1. **解析**（`ForumDeepLink.kt`）：首页形态返回 `Route.Main`；Manifest 新增 `mtforum://home`
+   filter（`https://…/forum.php` 本来就被现有 forum.php 过滤器覆盖，不需要新 filter）。
+2. **导航**（`Navigator.navigateToDeepLink`）：`Route.Main` 折叠成 `[Main]`——**不是**
+   `[Main, Main]`；已经在 shell 时是 no-op，所以返回键仍然退出 App 而不是退回被链接替换的页面。
+3. **页签选择**（`AppNavContainer` + `SettingsSharedViewModel` + `MiuixNavWrapper`）：深链到达时
+   `requestMainPage(MAIN_PAGE_FORUM)` 发一次性请求；shell 的
+   `resolveInitialMainPageIndex(last, requested, count)` 让请求优先于恢复的页签（并夹在底栏范围内），
+   `LaunchedEffect` 用 `mainPagerState.animateToPage` 兑现，随后 `consumeMainPageRequest()` 清除，
+   下次重组回落到 `lastMainPageIndex`。冷启动时 pager 若已按旧页签建立，会动画到论坛页签；
+   `selectedPage` 在动画开始时就已是 0。
+
+**测试**：`ForumDeepLinkTest` 19（新增裸 `forum.php`/`mod=index`/`mtforum://home`/大小写、
+冷启动与热启动）、`ForumDeepLinkNavigationTest` 6（新增首页链接折叠成 `[Main]`、在 shell 上 no-op）、
+`ForumDeepLinkActivityTest` 7（新增两种首页冷启动）、`ForumDeepLinkManifestTest` 3（新增
+`mtforum://home` 能被系统解析）、新 `MainShellPageTest` 5（`resolveInitialMainPageIndex` 的优先级与
+夹取、`requestMainPage/consumeMainPageRequest` 一次性语义、以及 `AppNavContainer`/`MiuixNavWrapper`
+的接线源码检查）。
+
+**未验证**：无真机，无法验证浏览器点 `https://bbs.binmt.cc/forum.php` 时系统是否把链接交给 App
+（站点没有 `assetlinks.json`，Android 12+ 可能仍走浏览器 —— HANDOVER §14.5 的老限制）；冷启动时
+从恢复页签动画到论坛页签的观感也没在设备上看过。

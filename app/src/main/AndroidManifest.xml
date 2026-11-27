@@ -92,6 +92,19 @@
                     android:scheme="mtforum"
                     android:host="forum" />
             </intent-filter>
+            <!--
+                首页：mtforum://home（解析为 Route.Main 的 论坛 页签）。
+                网页形态 https://bbs.binmt.cc/forum.php 已由上方的 forum.php 过滤器覆盖，
+                查询参数由 ForumDeepLink 解析，这里不再单独声明。
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="mtforum"
+                    android:host="home" />
+            </intent-filter>
         </activity>
 
         <activity-alias

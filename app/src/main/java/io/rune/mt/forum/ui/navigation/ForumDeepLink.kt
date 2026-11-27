@@ -16,8 +16,13 @@ import kotlinx.coroutines.flow.asStateFlow
  *  - `https://bbs.binmt.cc/forum-<fid>-<page>.html`
  *  - `https://bbs.binmt.cc/forum.php?mod=viewthread&tid=<tid>`
  *  - `https://bbs.binmt.cc/forum.php?mod=forumdisplay&fid=<fid>`
+ *  - `https://bbs.binmt.cc/forum.php` / `forum.php?mod=index` — the **home** page
  *  - `mtforum://thread/<tid>`
  *  - `mtforum://forum/<fid>`
+ *  - `mtforum://home` — the **home** page
+ *
+ * The home page is `Route.Main`: the shell's pager page 0 is the 论坛 tab, and a home link also
+ * clears any deeper scroll/tab the shell was on (`SettingsSharedViewModel.requestMainPage`).
  *
  * Every caller is untrusted (browsers, other apps, `adb shell am start`), so each branch is a
  * total function: a malformed or incomplete URI returns `null` instead of throwing. The list and
@@ -26,6 +31,7 @@ import kotlinx.coroutines.flow.asStateFlow
 private const val FORUM_HOST = "bbs.binmt.cc"
 private const val CUSTOM_SCHEME = "mtforum"
 private const val FORUM_PHP_PATH = "/forum.php"
+private const val HOME_HOST = "home"
 
 private val THREAD_PATH = Regex("""^/thread-(\d+)(?:-\d+)*\.html$""", RegexOption.IGNORE_CASE)
 private val BOARD_PATH = Regex("""^/forum-(\d+)(?:-\d+)*\.html$""", RegexOption.IGNORE_CASE)
@@ -51,7 +57,9 @@ private fun webRoute(uri: Uri): Route? {
     BOARD_PATH.matchEntire(path)?.let { return boardRoute(it.groupValues[1]) }
     if (!FORUM_PHP_PATH.equals(path, ignoreCase = true)) return null
     // forum.php carries the destination in the query string; an unknown mod is not our link.
-    return when (uri.getQueryParameter("mod")?.lowercase()) {
+    return when (val mod = uri.getQueryParameter("mod")?.lowercase()) {
+        // The bare board index (and Discuz's `mod=index`) is the app's home: the 论坛 tab.
+        null, "", "index" -> Route.Main
         "viewthread" -> threadRoute(uri.getQueryParameter("tid"))
         "forumdisplay" -> boardRoute(uri.getQueryParameter("fid"))
         else -> null
@@ -63,6 +71,8 @@ private fun customRoute(uri: Uri): Route? {
     return when (uri.host?.lowercase()) {
         "thread" -> threadRoute(id)
         "forum" -> boardRoute(id)
+        // `mtforum://home` (with or without a trailing slash path) is the board index.
+        HOME_HOST -> Route.Main
         else -> null
     }
 }

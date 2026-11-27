@@ -76,9 +76,17 @@ class ForumDeepLinkTest {
     }
 
     @Test
-    fun `forum php with unknown or missing mod is ignored`() {
+    fun `forum php without a mod is the home page`() {
+        // The board index is the app's home: the shell navigates there and selects the 论坛 tab.
+        assertEquals(Route.Main, parse("https://bbs.binmt.cc/forum.php"))
+        assertEquals(Route.Main, parse("https://bbs.binmt.cc/forum.php?"))
+        assertEquals(Route.Main, parse("https://bbs.binmt.cc/forum.php?mod=index"))
+        assertEquals(Route.Main, parse("https://bbs.binmt.cc/forum.php?mod=INDEX&mobile=2"))
+    }
+
+    @Test
+    fun `forum php with unknown or incomplete mod is ignored`() {
         assertNull(parse("https://bbs.binmt.cc/forum.php?mod=guide&view=hot&index=1&page=1"))
-        assertNull(parse("https://bbs.binmt.cc/forum.php"))
         assertNull(parse("https://bbs.binmt.cc/forum.php?mod=viewthread&fid=41"))
         assertNull(parse("https://bbs.binmt.cc/forum.php?mod=forumdisplay&tid=1"))
         // The query form only exists on forum.php, not on arbitrary site paths.
@@ -93,6 +101,13 @@ class ForumDeepLinkTest {
         assertEquals(Route.ForumThread(171354, ""), parse("mtforum://thread/171354"))
         assertEquals(Route.ForumList(41, ""), parse("mtforum://forum/41"))
         assertEquals(Route.ForumThread(171354, ""), parse("mtforum://THREAD/171354"))
+    }
+
+    @Test
+    fun `custom scheme home is the app home page`() {
+        assertEquals(Route.Main, parse("mtforum://home"))
+        assertEquals(Route.Main, parse("mtforum://home/"))
+        assertEquals(Route.Main, parse("mtforum://HOME"))
     }
 
     @Test
@@ -161,6 +176,19 @@ class ForumDeepLinkTest {
 
         state.onNewIntent(intent("mtforum://forum/7"))
         assertEquals(Route.ForumList(7, ""), state.route.value)
+
+        state.onNewIntent(intent("mtforum://home"))
+        assertEquals(Route.Main, state.route.value)
+    }
+
+    @Test
+    fun `cold start from a home link publishes the shell route`() {
+        val state = ForumDeepLinkState()
+        state.onColdStart(intent("https://bbs.binmt.cc/forum.php"), null)
+        assertEquals(Route.Main, state.route.value)
+
+        state.onNewIntent(intent("mtforum://home"))
+        assertEquals(Route.Main, state.route.value)
     }
 
     @Test

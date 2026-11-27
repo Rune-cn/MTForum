@@ -71,8 +71,9 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * the server's order with the server's rank numbers — never re-sorted client-side.
  *
  * The top bar carries three actions: the search magnifier, 发帖 and 每日签到 at the far right.
- * The search magnifier opens [`ForumSearchOverlay`] instead of navigating; confirming a keyword
- * lands on the existing `Route.ForumSearch` result page. 发帖 asks for a board with
+ * The magnifier opens [`ForumSearchOverlay`] instead of navigating; it is the app's **only** search
+ * entry (the board listing's icon is gone, rule 18). Confirming a keyword — or tapping a recent
+ * search — lands on the existing `Route.ForumSearch` result page. 发帖 asks for a board with
  * [`ForumBoardPickerSheet`] and then pushes `Route.NewThread`; a guest is sent to the login page
  * first (rule 18). The 消息提醒 bell moved to the bottom bar's 消息 tab, which now splits private
  * messages and the three site notice categories with a `TabRow`.
@@ -327,43 +328,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.ForumHomeLatestFeed(
                 isAppending = state.isAppendingLatest,
                 onLoadMore = onLoadMore,
             )
-        }
-    }
-}
-
-/**
- * Entry card of the in-forum search, placed above the board grid.
- *
- * The site offers search only from a tucked-away tab, so the home screen gives it one visible row;
- * it is rendered before the grid and never depends on the index request finishing.
- */
-@Composable
-private fun ForumSearchEntryCard(onClick: () -> Unit) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 12.dp),
-        onClick = onClick,
-        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(imageVector = Icons.Rounded.Search, contentDescription = null)
-            Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.forum_search),
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = stringResource(R.string.forum_search_hint),
-                    fontSize = 12.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
         }
     }
 }
