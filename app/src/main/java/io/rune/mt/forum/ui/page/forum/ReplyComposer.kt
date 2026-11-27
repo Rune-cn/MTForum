@@ -60,10 +60,10 @@ import top.yukonga.miuix.kmp.window.WindowDialog
  * internally, the smiley picker, the error line, and a prominent send button that shows progress.
  * `imePadding()` keeps the field and buttons above the keyboard.
  *
- * Drafts are **client-local** (the site cannot store them; see docs/REVERSE_SPEC.md §16). The
- * footer's 保存草稿 writes [io.rune.mt.forum.domain.forum.repository.ForumDraftRepository] only,
- * dismissing a non-blank sheet auto-saves it, and an existing draft for the thread is offered as a
- * 恢复草稿/丢弃 prompt instead of silently filling the field.
+ * Drafts are stored by the **site** (`save=1` on the same reply form, see docs/REVERSE_SPEC.md
+ * §16.1); the footer's 保存草稿 posts that. A draft found for the thread is offered as a
+ * 恢复草稿/丢弃 prompt instead of silently filling the field, and a failed save keeps the text plus
+ * a device copy so nothing is lost.
  */
 @Composable
 internal fun ReplyComposer(
@@ -103,7 +103,7 @@ internal fun ReplyComposer(
         }
     }
 
-    val errorText = state.errorRes?.let { stringResource(it) } ?: state.error
+    val errorText = state.draftError ?: state.errorRes?.let { stringResource(it) } ?: state.error
 
     WindowDialog(show = state.visible, onDismissRequest = onDismiss) {
         Column(
@@ -216,7 +216,7 @@ internal fun ReplyComposer(
                 TextButton(
                     text = stringResource(R.string.draft_save),
                     onClick = onSaveDraft,
-                    enabled = state.text.isNotBlank() && !state.isSubmitting,
+                    enabled = state.text.isNotBlank() && !state.isSubmitting && !state.isDraftBusy,
                 )
                 Spacer(Modifier.width(8.dp))
                 Button(
@@ -240,12 +240,12 @@ internal fun ReplyComposer(
         }
     }
 
-    // Second window on top of the sheet: a saved local draft for this thread is offered, never
+    // Second window on top of the sheet: a stored draft for this thread is offered, never
     // silently applied. A back/outside dismissal keeps the draft for the next open.
     DraftRestoreDialog(
         visible = state.visible && state.pendingDraft != null,
         title = stringResource(R.string.draft_restore_title),
-        message = stringResource(R.string.draft_restore_message),
+        message = stringResource(R.string.draft_restore_message_local),
         confirmText = stringResource(R.string.draft_restore_confirm),
         discardText = stringResource(R.string.draft_restore_discard),
         onConfirm = onRestoreDraft,

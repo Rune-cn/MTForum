@@ -4,6 +4,10 @@ package io.rune.mt.forum.data.forum.network
 import io.rune.mt.forum.domain.forum.model.Forum
 import io.rune.mt.forum.domain.forum.model.ForumCategory
 import io.rune.mt.forum.domain.forum.model.ForumConversationDetail
+import io.rune.mt.forum.domain.forum.model.ForumDraft
+import io.rune.mt.forum.domain.forum.model.ForumDraftEdit
+import io.rune.mt.forum.domain.forum.model.ForumDraftPage
+import io.rune.mt.forum.domain.forum.model.ForumEditForm
 import io.rune.mt.forum.domain.forum.model.ForumFavorite
 import io.rune.mt.forum.domain.forum.model.ForumFavoritesPage
 import io.rune.mt.forum.domain.forum.model.ForumHotEntry
@@ -543,6 +547,7 @@ object ForumHtmlParser {
         return io.rune.mt.forum.domain.forum.model.ForumNewThreadForm(formhash, posttime, captcha)
     }
 
+<<<<<<< HEAD
     // ---- Daily sign-in (每日签到) -------------------------------------------
 
     /**
@@ -628,6 +633,147 @@ object ForumHtmlParser {
      */
     fun parseCdataMessage(raw: String): String? =
         CDATA.find(raw)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotBlank() }
+=======
+    // ---- Drafts (草稿) -------------------------------------------------------
+
+    /**
+     * Rows of the 草稿 list (`forum.php?mod=guide&view=my&type=thread&filter=save&fid=0&mobile=2`).
+     *
+     * The list reuses the guide/board row DOM (`li.forumlist_li`), so the same furniture shows up:
+     * the title comes from `div.mmlist_li_box h2 a`, the body preview from `div.list_body a`, the
+     * board from `div.comiis_xznalist_bk a` (`forum-<fid>-1.html`) and the relative time from
+     * `div.forumlist_li_time span`. The row does not print the draft's `pid`; the edit form does.
+     */
+    fun parseDraftPage(html: String, page: Int = 1): ForumDraftPage {
+        val doc = Jsoup.parse(html)
+        return ForumDraftPage(
+            drafts = doc.select("li.forumlist_li").mapNotNull { parseDraftRow(it) },
+            page = page,
+            totalPages = parseTotalPages(doc),
+        )
+    }
+
+    private fun parseDraftRow(li: Element): ForumDraft? {
+        val titleLink = li.selectFirst("div.mmlist_li_box h2 a")
+            ?: li.selectFirst("h2 a[href*=thread-]")
+            ?: return null
+        val tid = TID_IN_HREF.find(titleLink.attr("href"))?.groupValues?.get(1)?.toIntOrNull()
+            ?: return null
+        val boardLink = li.selectFirst("div.comiis_xznalist_bk a[href*=forum-]")
+            ?: li.selectFirst("a[href*=forum-]")
+        val fid = FORUM_HREF.find(boardLink?.attr("href").orEmpty())
+            ?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        return ForumDraft(
+            tid = tid,
+            fid = fid,
+            title = threadTitle(titleLink),
+            excerpt = li.selectFirst("div.list_body a")?.text()?.let(::draftText)
+                ?.takeIf { it.isNotBlank() },
+            forumName = boardLink?.text()?.cleanTitle()?.takeIf { it.isNotBlank() },
+            // The relative time is printed as `5&nbsp;分钟前`; jsoup keeps the NBSP, so it is
+            // normalised or every timestamp would carry an invisible non-breaking space.
+            timeText = (li.selectFirst("div.forumlist_li_time span")
+                ?: li.selectFirst("span.kmtime"))?.text()?.let(::draftText)?.takeIf { it.isNotBlank() },
+            threadUrl = ForumUrls.absolute(titleLink.attr("href")),
+        )
+    }
+
+    /** Collapses the NBSP/whitespace the draft rows mix into their text. */
+    private fun draftText(raw: String): String =
+        raw.replace('\u00A0', ' ').replace(DRAFT_WHITESPACE, " ").trim()
+
+    /** Post id of a draft's thread page (`div.comiis_postli#pid…`), i.e. the id its edit form needs. */
+    fun draftThreadPid(html: String): Long? =
+        Jsoup.parse(html).selectFirst("div.comiis_postli[id^=pid]")
+            ?.let { PID_ID.find(it.id())?.groupValues?.get(1)?.toLongOrNull() }
+
+    /**
+     * True when a thread page carries the site's 草稿 badge (`span.top_jg` reading 草稿).
+     *
+     * The badge is what makes the draft case visible at all: the page otherwise renders like a
+     * normal thread, because the site does not link drafts from their board.
+     */
+    fun isDraftThread(html: String): Boolean =
+        Jsoup.parse(html).selectFirst("span.top_jg")?.text()?.contains("草稿") == true
+
+    /**
+     * The edit form of a draft (`forum.php?mod=post&action=edit&fid=&tid=&pid=&mobile=2`).
+     *
+     * Every field the form prints is harvested instead of hand-built: the server rejects (or
+     * silently ignores) an incomplete field set, and the three submit paths — 发表 (`save` empty),
+     * 保存草稿 (`save=1`) and 删除 (`delete=1`) — are all "the same form with one field changed".
+     * Disabled inputs are still kept (the mobile template marks `htmlon` disabled but Discuz
+     * expects the field), unchecked checkboxes are dropped (a browser would not submit them), and
+     * file/button inputs are skipped because they carry no value.
+     *
+     * [tid]/[fid]/[pid] are request-side fallbacks for a template variant that omits the hidden ids.
+     */
+    fun parseDraftEdit(html: String, tid: Int, fid: Int, pid: Long? = null): ForumDraftEdit {
+        val doc = Jsoup.parse(html)
+        val form = doc.selectFirst("form#postform") ?: doc.selectFirst("form[action*=editsubmit]")
+        val fields = form?.let(::formFields).orEmpty()
+        val subject = fields["subject"] ?: form?.selectFirst("input[name=subject]")?.attr("value").orEmpty()
+        val message = fields["message"] ?: form?.selectFirst("textarea[name=message]")?.text().orEmpty()
+        val action = form?.attr("action")?.trim().orEmpty().ifBlank { EDIT_FALLBACK_ACTION }
+        return ForumDraftEdit(
+            tid = fields["tid"]?.toIntOrNull() ?: tid,
+            fid = fields["fid"]?.toIntOrNull() ?: fid,
+            pid = fields["pid"]?.toLongOrNull() ?: pid,
+            subject = subject,
+            message = message,
+            form = ForumEditForm(
+                action = normalizeFormAction(action),
+                formhash = fields["formhash"].orEmpty(),
+                tid = fields["tid"]?.toIntOrNull() ?: tid,
+                fid = fields["fid"]?.toIntOrNull() ?: fid,
+                pid = fields["pid"]?.toLongOrNull() ?: pid,
+                subject = subject,
+                message = message,
+                fields = fields,
+            ),
+        )
+    }
+
+    /** Every submittable field of [form], in document order (later duplicates do not overwrite). */
+    private fun formFields(form: Element): Map<String, String> {
+        val fields = linkedMapOf<String, String>()
+        form.select("input[name], textarea[name], select[name]").forEach { el ->
+            val name = el.attr("name").trim()
+            if (name.isEmpty()) return@forEach
+            when (el.tagName()) {
+                "textarea" -> fields[name] = el.text()
+                "select" -> {
+                    val selected = el.select("option[selected]").firstOrNull()
+                        ?: el.select("option").firstOrNull()
+                    selected?.let { fields[name] = it.attr("value") }
+                }
+
+                else -> {
+                    when (el.attr("type").lowercase()) {
+                        "file", "button", "submit", "image", "reset" -> return@forEach
+                        "checkbox", "radio" -> if (!el.hasAttr("checked")) return@forEach
+                    }
+                    fields[name] = el.attr("value")
+                }
+            }
+        }
+        return fields
+    }
+
+    /**
+     * Makes a form action usable as a `ForumHttpClient` path.
+     *
+     * The mobile template prints either `forum.php?…` or an absolute `https://bbs.binmt.cc/…` URL,
+     * and the client's POST helpers take a site-relative path; `mobile=2` is kept because it is
+     * what selects the mobile template this client parses.
+     */
+    private fun normalizeFormAction(action: String): String {
+        val path = action.removePrefix(ForumHttpClient.BASE_URL)
+            .replace("https://bbs.binmt.cc/", "")
+            .removePrefix("/")
+        return if (path.contains("mobile=2")) path else "$path&mobile=2"
+    }
+>>>>>>> feat/draft2
 
     // ---- Action-result helpers ---------------------------------------------
 
@@ -778,6 +924,7 @@ object ForumHtmlParser {
     /** Label the site prints on the first 主题分类 tab, which is the unfiltered listing. */
     private const val CATEGORY_ALL_LABEL = "全部"
 
+<<<<<<< HEAD
     // ---- 每日签到 (k_misign) ------------------------------------------------
 
     /** `签到等级 Lv.8` → `Lv.8`; the page sometimes drops the space. */
@@ -797,4 +944,11 @@ object ForumHtmlParser {
 
     /** The XML/CDATA wrapper every plugin ajax endpoint answers with. */
     private val CDATA = Regex("""<!\[CDATA\[(.*?)\]\]>""", setOf(RegexOption.DOT_MATCHES_ALL))
+=======
+    /** Edit-form action the mobile template prints; used when the form element itself is missing. */
+    private const val EDIT_FALLBACK_ACTION =
+        "forum.php?mod=post&action=edit&extra=&editsubmit=yes&mobile=2"
+
+    private val DRAFT_WHITESPACE = Regex("""\s+""")
+>>>>>>> feat/draft2
 }

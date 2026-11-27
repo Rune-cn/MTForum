@@ -39,6 +39,7 @@ import coil3.compose.AsyncImage
 import io.rune.mt.forum.R
 import io.rune.mt.forum.ui.navigation.LocalNavigator
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBackButton
+import io.rune.mt.forum.ui.page.miuix.widgets.MiuixConfirmDialog
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixPageScaffold
 import io.rune.mt.forum.ui.page.miuix.widgets.rememberMiuixPageChrome
 import org.koin.androidx.compose.koinViewModel
@@ -51,18 +52,20 @@ import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * Compose a new thread (`forum.php?mod=post&action=newthread&fid=`).
+ * Compose a new thread (`forum.php?mod=post&action=newthread&fid=`), or edit an existing **site
+ * draft** (`action=edit`).
  *
  * The body is BBCode, exactly like the reply composer, because that is what the site's own editor
  * posts. Images are attached inline (multipart `Filedata`), which is how the mobile form works.
  *
- * Drafts are **client-local**: the site's 保存草稿 publishes instead of saving (measured:
- * `save=1` + `topicsubmit=yes` created a real thread), so 保存草稿 here only writes to
- * [io.rune.mt.forum.domain.forum.repository.ForumDraftRepository]. Leaving the page auto-saves a
- * non-blank composer (`DisposableEffect` below), and reopening the same board offers a
- * 恢复草稿/丢弃 prompt when a draft exists. Images are persisted as URIs only; ones that can no
- * longer be opened after a restart are reported as skipped instead of failing the restore.
- * The picker is an open-document picker so the read grant survives a process restart.
+ * Drafts are stored by the site: 保存草稿 POSTs the very same form with the hidden `save` field set
+ * to `1`, creating (or updating) an author-only draft thread that is listed under 草稿. The
+ * device store is only the fallback for text a failed save never delivered. Two actions are
+ * deliberately explicit and confirmed:
+ * - 发表 publishes a draft (`save` empty), i.e. it turns the draft into a real thread;
+ * - 删除 drops it (`delete=1`).
+ * Leaving the page never publishes and never posts anything: the `DisposableEffect` below only
+ * writes the offline copy.
  */
 @Composable
 fun NewThreadPage(
@@ -70,6 +73,8 @@ fun NewThreadPage(
     forumName: String,
     enableBlur: Boolean,
     outerPadding: PaddingValues,
+    draftTid: Int = 0,
+    draftPid: Long? = null,
     viewModel: NewThreadViewModel = koinViewModel(),
 ) {
     val chrome = rememberMiuixPageChrome(enableBlur)
@@ -77,6 +82,8 @@ fun NewThreadPage(
     val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     var pickerOpen by remember { mutableStateOf(false) }
+    var publishConfirm by remember { mutableStateOf(false) }
+    var deleteConfirm by remember { mutableStateOf(false) }
     val draftSavedText = stringResource(R.string.draft_saved_toast)
 
     val pickImages = rememberLauncherForActivityResult(
@@ -85,14 +92,20 @@ fun NewThreadPage(
         contract = ActivityResultContracts.OpenMultipleDocuments(),
     ) { uris -> viewModel.attachImages(context, uris) }
 
-    LaunchedEffect(fid) { viewModel.open(fid, forumName) }
+    LaunchedEffect(fid, draftTid) { viewModel.open(fid, forumName, draftTid, draftPid) }
     LaunchedEffect(state.successTid, state.successMessage) {
         if (state.successTid != null || state.successMessage != null) {
             android.widget.Toast.makeText(context, "发布成功", android.widget.Toast.LENGTH_SHORT).show()
             navigator.pop()
         }
     }
-    // Saved-draft confirmation (explicit 保存草稿 only; auto-save stays silent).
+    LaunchedEffect(state.draftDeleted) {
+        if (state.draftDeleted) {
+            android.widget.Toast.makeText(context, "草稿已删除", android.widget.Toast.LENGTH_SHORT).show()
+            navigator.pop()
+        }
+    }
+    // Saved-draft confirmation (explicit 保存草稿 only; the offline copy stays silent).
     LaunchedEffect(state.draftSaved) {
         if (state.draftSaved) {
             android.widget.Toast.makeText(context, draftSavedText, android.widget.Toast.LENGTH_SHORT).show()
@@ -102,22 +115,25 @@ fun NewThreadPage(
     LaunchedEffect(state.restoreImageUris) {
         if (state.restoreImageUris.isNotEmpty()) viewModel.resolveRestoredImages(context)
     }
-    // Save-on-leave: covers the back button and a predictive-back dismissal of this entry. The VM
-    // skips it when the composer is blank, when a draft is already un-restored, or after publish.
+    // Save-on-leave: covers the back button and a predictive-back dismissal of this entry. It only
+    // writes the offline copy — never a network save, never a publish — and the VM skips it when
+    // the composer is blank, when a draft is already un-actioned, or after publish/delete.
     DisposableEffect(Unit) {
         onDispose { viewModel.saveOnLeave() }
     }
 
     MiuixPageScaffold(
-        title = "发表主题",
+        title = if (state.isDraftEdit) "编辑草稿" else "发表主题",
         chrome = chrome,
         outerPadding = outerPadding,
         horizontalPadding = 12.dp,
         verticalPadding = 12.dp,
-        navigationIcon = { MiuixBackButton(onClick = {
-            viewModel.saveOnLeave()
-            navigator.pop()
-        }) },
+        navigationIcon = {
+            MiuixBackButton(onClick = {
+                viewModel.saveOnLeave()
+                navigator.pop()
+            })
+        },
     ) {
         if (state.isLoadingForm) {
             item { ForumLoadingCard() }
@@ -127,11 +143,19 @@ fun NewThreadPage(
             Card(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
                 Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
                     Text(
-                        text = forumName.ifBlank { "版块 $fid" },
+                        text = forumName.ifBlank { state.forumName.ifBlank { "版块 $fid" } },
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
+                    if (state.isDraftEdit) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = stringResource(R.string.draft_edit_hint),
+                            fontSize = 12.sp,
+                            color = MiuixTheme.colorScheme.primary,
+                        )
+                    }
                     Spacer(Modifier.height(10.dp))
                     Text("标题", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     TextField(
@@ -198,30 +222,46 @@ fun NewThreadPage(
                         Spacer(Modifier.height(8.dp))
                         Text(text = it, fontSize = 12.sp, color = MiuixTheme.colorScheme.error)
                     }
+                    state.draftError?.let {
+                        Spacer(Modifier.height(8.dp))
+                        Text(text = it, fontSize = 12.sp, color = MiuixTheme.colorScheme.error)
+                    }
 
                     Spacer(Modifier.height(12.dp))
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(text = "取消", onClick = {
-                            viewModel.saveOnLeave()
-                            navigator.pop()
-                        })
+                        if (state.isDraftEdit) {
+                            TextButton(
+                                text = stringResource(R.string.drafts_delete_action),
+                                onClick = { deleteConfirm = true },
+                                enabled = !state.isDraftBusy && !state.isSubmitting,
+                            )
+                        } else {
+                            TextButton(text = "取消", onClick = {
+                                viewModel.saveOnLeave()
+                                navigator.pop()
+                            })
+                        }
                         Spacer(Modifier.weight(1f))
                         TextButton(
                             text = stringResource(R.string.draft_save),
-                            onClick = viewModel::saveDraft,
-                            enabled = !state.isSubmitting &&
+                            onClick = { viewModel.saveDraft(context) },
+                            enabled = !state.isSubmitting && !state.isDraftBusy &&
                                 (state.title.isNotBlank() || state.message.isNotBlank() || state.images.isNotEmpty()),
                         )
                         Spacer(Modifier.width(8.dp))
                         Button(
-                            onClick = { viewModel.submit(context) },
+                            onClick = {
+                                // A brand-new thread posts directly; turning a draft into a thread
+                                // is destructive enough (it becomes public) to ask first.
+                                if (state.isDraftEdit) publishConfirm = true else viewModel.submit(context)
+                            },
                             enabled = state.canSubmit,
                         ) {
-                            if (state.isSubmitting) {
+                            if (state.isSubmitting || state.isDraftBusy) {
                                 InfiniteProgressIndicator(modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
                             }
-                            Text("发布")
+                            Text(if (state.isDraftEdit) "发表" else "发布")
                         }
                     }
                 }
@@ -230,13 +270,46 @@ fun NewThreadPage(
     }
 
     DraftRestoreDialog(
-        visible = state.pendingDraft != null,
+        visible = state.pendingDraft != null || state.pendingServerDraft != null,
         title = stringResource(R.string.draft_restore_title),
-        message = stringResource(R.string.draft_restore_message),
+        // The site's draft wins when both exist; say which one is being offered.
+        message = if (state.pendingServerDraft != null) {
+            stringResource(R.string.draft_restore_message_server)
+        } else {
+            stringResource(R.string.draft_restore_message_local)
+        },
         confirmText = stringResource(R.string.draft_restore_confirm),
         discardText = stringResource(R.string.draft_restore_discard),
-        onConfirm = viewModel::restoreDraft,
+        onConfirm = {
+            if (state.pendingServerDraft != null) viewModel.restoreServerDraft() else viewModel.restoreDraft()
+        },
         onDiscard = viewModel::discardDraft,
         onDismiss = viewModel::dismissRestorePrompt,
+    )
+
+    MiuixConfirmDialog(
+        visible = publishConfirm,
+        title = stringResource(R.string.draft_publish_title),
+        message = stringResource(R.string.draft_publish_message),
+        confirmText = stringResource(R.string.draft_publish_confirm),
+        dismissText = stringResource(R.string.cancel),
+        onConfirm = {
+            publishConfirm = false
+            viewModel.publishDraft()
+        },
+        onDismiss = { publishConfirm = false },
+    )
+
+    MiuixConfirmDialog(
+        visible = deleteConfirm,
+        title = stringResource(R.string.drafts_delete_title),
+        message = stringResource(R.string.drafts_delete_message_format, state.title),
+        confirmText = stringResource(R.string.drafts_delete_action),
+        dismissText = stringResource(R.string.cancel),
+        onConfirm = {
+            deleteConfirm = false
+            viewModel.deleteDraft()
+        },
+        onDismiss = { deleteConfirm = false },
     )
 }

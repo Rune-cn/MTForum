@@ -3,6 +3,10 @@ package io.rune.mt.forum
 
 import io.rune.mt.forum.domain.forum.model.ForumCategory
 import io.rune.mt.forum.domain.forum.model.ForumConversationDetail
+import io.rune.mt.forum.domain.forum.model.DraftActionResult
+import io.rune.mt.forum.domain.forum.model.ForumDraftEdit
+import io.rune.mt.forum.domain.forum.model.ForumDraftPage
+import io.rune.mt.forum.domain.forum.model.ForumEditForm
 import io.rune.mt.forum.domain.forum.model.ForumFavorite
 import io.rune.mt.forum.domain.forum.model.ForumGuideView
 import io.rune.mt.forum.domain.forum.model.ForumFavoritesPage
@@ -24,6 +28,7 @@ import io.rune.mt.forum.domain.forum.model.ForumUser
 import io.rune.mt.forum.domain.forum.model.NewThreadImage
 import io.rune.mt.forum.domain.forum.model.NewThreadResult
 import io.rune.mt.forum.domain.forum.repository.ForumDraftRepository
+import io.rune.mt.forum.domain.forum.repository.ForumDraftService
 import io.rune.mt.forum.domain.forum.repository.ForumRepository
 import io.rune.mt.forum.ui.page.forum.ForumViewModel
 import kotlinx.coroutines.Dispatchers
@@ -63,7 +68,7 @@ class ForumListCategoryStateTest {
     @Test
     fun `selecting a category reloads page 1 and keeps the choice for paging and refresh`() {
         val repository = RecordingRepository()
-        val viewModel = ForumViewModel(repository, NoOpDraftRepository)
+        val viewModel = ForumViewModel(repository, NoOpDraftRepository, NoOpDraftService)
 
         viewModel.openForum(fid = 38, forumName = "建议反馈")
         assertEquals(listOf(1 to null), repository.threadCalls)
@@ -103,7 +108,7 @@ class ForumListCategoryStateTest {
     @Test
     fun `reopening the same board keeps its category and a new board starts at 全部`() {
         val repository = RecordingRepository()
-        val viewModel = ForumViewModel(repository, NoOpDraftRepository)
+        val viewModel = ForumViewModel(repository, NoOpDraftRepository, NoOpDraftService)
 
         viewModel.openForum(fid = 38, forumName = "建议反馈")
         viewModel.selectCategory(62)
@@ -232,4 +237,39 @@ private object NoOpDraftRepository : ForumDraftRepository {
     override suspend fun saveReplyDraft(draft: ForumReplyDraft) = Unit
     override suspend fun deleteReplyDraft(tid: Int) = Unit
     override suspend fun draftCount(): Int = 0
+}
+
+/** Same for the site draft service: no draft call is made by these board-listing checks. */
+private object NoOpDraftService : ForumDraftService {
+    override suspend fun getDrafts(page: Int): ForumDraftPage = ForumDraftPage(page = page)
+    override suspend fun saveNewThreadDraft(
+        fid: Int,
+        subject: String,
+        message: String,
+        form: ForumNewThreadForm,
+        images: List<NewThreadImage>,
+    ): DraftActionResult = error("drafts unused here")
+
+    override suspend fun saveReplyDraft(
+        tid: Int,
+        fid: Int,
+        message: String,
+        formhash: String,
+        noticeAuthor: String?,
+    ): DraftActionResult = error("drafts unused here")
+
+    override suspend fun loadDraft(tid: Int, fid: Int, pid: Long?): ForumDraftEdit =
+        error("drafts unused here")
+
+    override suspend fun publishDraft(edit: ForumEditForm): DraftActionResult =
+        error("drafts unused here")
+
+    override suspend fun deleteDraft(edit: ForumEditForm): DraftActionResult =
+        error("drafts unused here")
+
+    override suspend fun updateDraft(
+        edit: ForumEditForm,
+        subject: String,
+        message: String,
+    ): DraftActionResult = error("drafts unused here")
 }

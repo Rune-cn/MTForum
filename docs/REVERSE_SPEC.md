@@ -131,7 +131,7 @@ Content-Type: multipart/form-data
 - 附件也可先走 `forum.php?mod=misc&action=postattach` 上传拿 aid，但移动表单本身是 multipart，
   直接把 `Filedata` 一并提交即可（待真机/线上验证，本次未发真实帖以免污染版面）。
 
-### 16.1 `save` 字段 = 「保存草稿」按钮，但它会发布（2026-11-27 实测）
+### 16.1 `save` 字段 = 「保存草稿」按钮（真·服务器草稿）— 2026-11-27 复测
 
 移动表单里的保存草稿按钮：
 
@@ -141,15 +141,79 @@ Content-Type: multipart/form-data
         onclick="document.getElementById('postsave').value=1;$('postsubmit').click();"><em>保存草稿</em></button>
 ```
 
-- 它没有独立接口：只是把 `save=1` 加到同一个 newthread multipart POST 上。
-- **`save=1` + `topicsubmit=yes` → 主题被真实发布**，不是草稿。
-- `save=1` 不带 `topicsubmit=yes` → 服务端重渲染空白表单，不落任何草稿。
-- 逐地址核对 0 条草稿：`home.php?mod=space&do=thread&view=me&from=space`、
-  `home.php?mod=space&do=thread&view=me&type=draft`、`home.php?mod=spacecp&ac=draft`
-  （该页只是资料设置，无草稿管理）、以及桌面版同地址。
-- 站点草稿插件是关闭的（`forum_guard` 在删除该测试帖时抛过「编辑数据不存在」）。
-- **客户端结论**：草稿只存本机（`ForumDraftRepository`，DataStore `forum_drafts`，上限 20 条），
-  **永远不要为了「保存草稿」发送 `save=1`**。
+它没有独立接口：只是把 `save=1` 加到同一个 multipart POST 上。**`save=1` 就是真草稿**：
+
+```
+POST forum.php?mod=post&action=newthread&fid={fid}&extra=&topicsubmit=yes&mobile=2
+Content-Type: multipart/form-data
+字段：formhash, posttime, subject, message, htmlon=0, usesig=1, allownoticeauthor=1, save=1
+附件：Filedata（可多个）
+```
+
+服务端确实建出一个 `thread-<tid>`，但它的可见性与普通主题不同：
+
+| 观测点 | 结果 |
+|---|---|
+| `forum-<fid>-1.html`（版面列表） | **不含**该 tid（草稿不进版面） |
+| 匿名 GET 该草稿的线程页 | 空/拒绝页（只有作者可见） |
+| 作者本人 GET 线程页 | 正常渲染，并带 `<span class="top_jg bg_a f_f">草稿</span>` 徽标 |
+| 草稿列表 | **列出**该 tid |
+| `save` 为空（或缺省）的同一 POST | **发表**，草稿变成公开主题 |
+
+上一轮的「`save=1` 会直接发布」结论**是错的**：那次实测把 `save` 漏掉了（只发了
+`topicsubmit=yes`），所以走的是发表分支。判据就是 `save` 字段的有无。
+
+#### 草稿列表
+
+```
+GET forum.php?mod=guide&view=my&type=thread&filter=save&fid=0&mobile=2
+GET forum.php?mod=guide&view=my&type=thread&filter=save&fid=0        （桌面版，UA 门控）
+```
+
+行与导读/版块列表**同构**（`li.forumlist_li`）：
+
+| 字段 | 选择器 |
+|---|---|
+| tid | `div.mmlist_li_box h2 a` → `thread-<tid>-…` |
+| 标题 | 同上（去掉徽标） |
+| 摘要 | `div.list_body a` |
+| fid / 版块名 | `div.comiis_xznalist_bk a` → `forum-<fid>-1.html` |
+| 相对时间 | `div.forumlist_li_time span`（如 `5&nbsp;分钟前`） |
+
+桌面版行是 `tbody#normalthread_<tid>`。行里**没有 pid**，打开发帖页才拿得到。
+
+#### 草稿编辑页（发表 / 再存 / 删除）
+
+```
+GET forum.php?mod=post&action=edit&fid={fid}&tid={tid}&pid={pid}&page=1&mobile=2
+```
+
+`form#postform` 的隐藏域（**必须整份回放**，只手搓最小字段集会被拒绝或静默忽略）：
+
+```
+formhash, posttime, delete(=0), fid, tid, pid, page, editsubmit(=yes),
+subject, message, htmlon(=0), usesig(=1), save(=空)
+```
+
+三个动作都是「同一表单改一个字段」：
+
+| 动作 | 改的字段 |
+|---|---|
+| 发表（把草稿变成公开主题） | `save` 空 / `delete=0` |
+| 保存草稿（继续留作草稿） | `save=1` |
+| 删除 | `delete=1`（页面里的 `comiis_delthread()` 就是这么做的） |
+
+删除不可逆；发表不可逆（无法退回草稿）。两者在客户端都必须走显式二次确认。
+
+#### 回复草稿
+
+回复表单（`form#fastpostform`）带同样的隐藏 `postsave`/`save` 对，所以回复也能存草稿：
+把 `save=1` 加到 `replysubmit=yes` 的那个 POST 上即可。
+
+#### 客户端结论
+
+草稿由站点保存，客户端通过 `ForumDraftService` 读写；本机 `ForumDraftRepository` 只在
+站点保存失败或提前离开页面时兜底。**不要**再把「用 `save=1` 存草稿」当成禁忌。
 
 ---
 

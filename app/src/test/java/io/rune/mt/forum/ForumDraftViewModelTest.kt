@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package io.rune.mt.forum
 
+import io.rune.mt.forum.domain.forum.model.DraftActionResult
 import io.rune.mt.forum.domain.forum.model.ForumConversationDetail
+import io.rune.mt.forum.domain.forum.model.ForumDraft
+import io.rune.mt.forum.domain.forum.model.ForumDraftEdit
+import io.rune.mt.forum.domain.forum.model.ForumDraftPage
+import io.rune.mt.forum.domain.forum.model.ForumEditForm
 import io.rune.mt.forum.domain.forum.model.ForumFavorite
 import io.rune.mt.forum.domain.forum.model.ForumFavoritesPage
 import io.rune.mt.forum.domain.forum.model.ForumGuideView
@@ -22,6 +27,7 @@ import io.rune.mt.forum.domain.forum.model.ForumUserProfile
 import io.rune.mt.forum.domain.forum.model.NewThreadImage
 import io.rune.mt.forum.domain.forum.model.NewThreadResult
 import io.rune.mt.forum.domain.forum.repository.ForumDraftRepository
+import io.rune.mt.forum.domain.forum.repository.ForumDraftService
 import io.rune.mt.forum.domain.forum.repository.ForumRepository
 import io.rune.mt.forum.ui.page.forum.ForumViewModel
 import io.rune.mt.forum.ui.page.forum.NewThreadViewModel
@@ -45,13 +51,16 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
- * View-model level checks for the client-local drafts (发帖 + 回复).
+ * View-model level checks for the draft flows (发帖 + 回复).
  *
- * The repository and the draft store are fakes, so this covers the decisions the UI depends on:
- * a saved draft is only *offered*, restoring fills the fields, discarding deletes it, a successful
- * publish/reply removes it, and an un-restored draft is never overwritten by auto-save.
- * Robolectric is here for the `Context` that `NewThreadViewModel.submit()` takes (the screen cache
- * reads picked images through the content resolver; no images are involved in these cases).
+ * Drafts are now stored by the **site** (`save=1`), so these tests pin the decisions the UI
+ * depends on: 保存草稿 actually posts a draft, a site draft is preferred over the device copy,
+ * restoring a site draft switches the composer into edit mode, publishing and deleting are their
+ * own explicit actions, and a failed save keeps the text (and falls back to the device copy).
+ *
+ * The repository and the draft service are fakes, so nothing here touches the network. Robolectric
+ * is present for the `Context` the screen passes to `saveDraft`/`submit` (no images are attached in
+ * these cases).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -75,113 +84,250 @@ class ForumDraftViewModelTest {
     // ---- 发帖 (new thread) ---------------------------------------------------
 
     @Test
-    fun `opening a board with a saved draft offers restore instead of filling the fields`() {
-        val drafts = FakeDraftRepository()
-        drafts.newThreads[38] = ForumNewThreadDraft(fid = 38, forumName = "建议反馈", subject = "旧标题", message = "旧正文")
-        val viewModel = NewThreadViewModel(DraftTestRepository(), drafts)
-
-        viewModel.open(38, "建议反馈")
-
-        val state = viewModel.state.value
-        assertNotNull("an existing draft must surface the restore prompt", state.pendingDraft)
-        assertEquals("旧标题", state.pendingDraft?.subject)
-        assertEquals("the composer must stay empty until the user chooses 恢复草稿", "", state.title)
-        assertEquals("", state.message)
-    }
-
-    @Test
-    fun `restoring the offered draft fills subject and message`() {
-        val drafts = FakeDraftRepository()
-        drafts.newThreads[38] = ForumNewThreadDraft(fid = 38, subject = "旧标题", message = "旧正文")
-        val viewModel = NewThreadViewModel(DraftTestRepository(), drafts)
-        viewModel.open(38, "建议反馈")
-
-        viewModel.restoreDraft()
-
-        val state = viewModel.state.value
-        assertEquals("旧标题", state.title)
-        assertEquals("旧正文", state.message)
-        assertNull("the prompt closes once restored", state.pendingDraft)
-    }
-
-    @Test
-    fun `discarding the offered draft deletes the stored copy`() {
-        val drafts = FakeDraftRepository()
-        drafts.newThreads[38] = ForumNewThreadDraft(fid = 38, subject = "旧标题", message = "旧正文")
-        val viewModel = NewThreadViewModel(DraftTestRepository(), drafts)
-        viewModel.open(38, "建议反馈")
-
-        viewModel.discardDraft()
-        eventually("the stored draft should be deleted") { drafts.newThreads[38] == null }
-
-        assertEquals("", viewModel.state.value.title)
-        assertNull(viewModel.state.value.pendingDraft)
-    }
-
-    @Test
-    fun `explicit save stores the draft and sends nothing to the server`() {
+    fun `saving a new-thread draft posts it to the site instead of the device`() {
         val repository = DraftTestRepository()
         val drafts = FakeDraftRepository()
-        val viewModel = NewThreadViewModel(repository, drafts)
+        val draftsService = FakeDraftService()
+        val viewModel = NewThreadViewModel(repository, drafts, draftsService)
         viewModel.open(44, "综合交流")
         viewModel.updateTitle("新标题")
         viewModel.updateMessage("新正文")
 
-        viewModel.saveDraft()
-        eventually("the draft should be written") { drafts.newThreads[44] != null }
+        viewModel.saveDraft(context)
+        eventually("the draft must be posted to the site") { draftsService.saveNewThreadCalls == 1 }
 
-        val draft = drafts.newThreads.getValue(44)
-        assertEquals("新标题", draft.subject)
-        assertEquals("新正文", draft.message)
-        assertEquals("综合交流", draft.forumName)
-        assertEquals("save draft must not POST anything", 0, repository.createThreadCalls)
-        assertTrue("a manual save surfaces the confirmation flag", viewModel.state.value.draftSaved)
-        viewModel.consumeDraftSaved()
-        assertTrue(!viewModel.state.value.draftSaved)
+        val posted = draftsService.lastNewThreadDraft
+        assertEquals(44, posted?.fid)
+        assertEquals("新标题", posted?.subject)
+        assertEquals("新正文", posted?.message)
+        assertTrue("save draft must surface the confirmation flag", viewModel.state.value.draftSaved)
+        assertNull("a site save must not leave a device copy behind", drafts.newThreads[44])
+        assertEquals("save draft must not publish a thread", 0, repository.createThreadCalls)
     }
 
     @Test
-    fun `a successful publish deletes the stored draft`() {
-        val repository = DraftTestRepository()
-        repository.createThreadResult = NewThreadResult.Success(tid = 9001)
-        val drafts = FakeDraftRepository()
-        drafts.newThreads[44] = ForumNewThreadDraft(fid = 44, subject = "旧标题", message = "旧正文")
-        val viewModel = NewThreadViewModel(repository, drafts)
+    fun `a saved new-thread draft switches the composer into edit mode`() {
+        val draftsService = FakeDraftService()
+        draftsService.saveNewThreadResult = DraftActionResult.Success(tid = 5001)
+        // The server created the draft; reading its edit form is how the composer adopts it.
+        draftsService.edit = ForumDraftEdit(
+            tid = 5001,
+            fid = 44,
+            pid = 900_003,
+            subject = "新标题",
+            message = "新正文",
+            form = editForm(),
+        )
+        val viewModel = NewThreadViewModel(DraftTestRepository(), FakeDraftRepository(), draftsService)
         viewModel.open(44, "综合交流")
-        viewModel.restoreDraft()
-        viewModel.submit(context)
-        eventually("the thread should be published") { viewModel.state.value.successTid == 9001 }
+        viewModel.updateTitle("新标题")
+        viewModel.updateMessage("新正文")
 
-        assertEquals(1, repository.createThreadCalls)
-        eventually("the draft must be dropped after publishing") { drafts.newThreads[44] == null }
+        viewModel.saveDraft(context)
+        eventually("the composer should adopt the draft the server created") {
+            viewModel.state.value.draftTid == 5001
+        }
+
+        // A second save must update that draft, not create another one.
+        viewModel.updateMessage("改过的正文")
+        viewModel.saveDraft(context)
+        eventually("the second save updates the same draft") { draftsService.updateDraftCalls == 1 }
+        assertEquals("no second draft may be created", 1, draftsService.saveNewThreadCalls)
+        assertEquals("改过的正文", draftsService.lastUpdateMessage)
     }
 
     @Test
-    fun `leaving the page without restoring never overwrites the older draft`() {
-        val repository = DraftTestRepository()
+    fun `a failed site save keeps the text and falls back to the device copy`() {
+        val drafts = FakeDraftRepository()
+        val draftsService = FakeDraftService()
+        draftsService.saveNewThreadResult = DraftActionResult.Failure("抱歉，您的请求来路不正确")
+        val viewModel = NewThreadViewModel(DraftTestRepository(), drafts, draftsService)
+        viewModel.open(44, "综合交流")
+        viewModel.updateTitle("新标题")
+        viewModel.updateMessage("新正文")
+
+        viewModel.saveDraft(context)
+        eventually("the device copy is the safety net") { drafts.newThreads[44] != null }
+
+        assertEquals("the text must not be cleared on a failed save", "新标题", viewModel.state.value.title)
+        assertEquals("新正文", viewModel.state.value.message)
+        assertEquals("抱歉，您的请求来路不正确", viewModel.state.value.draftError)
+        assertTrue("a failed save must not claim success", !viewModel.state.value.draftSaved)
+        assertEquals("新正文", drafts.newThreads.getValue(44).message)
+    }
+
+    @Test
+    fun `opening a board offers the site draft when one exists`() {
+        val drafts = FakeDraftRepository()
+        // A device copy from an earlier failed save exists too; the site copy must win, and the
+        // prompt must say so.
+        drafts.newThreads[38] = ForumNewThreadDraft(fid = 38, forumName = "建议反馈", subject = "旧标题", message = "旧正文")
+        val draftsService = FakeDraftService()
+        draftsService.drafts = mutableListOf(
+            ForumDraft(tid = 7001, fid = 38, title = "站点草稿", forumName = "建议反馈"),
+        )
+        val viewModel = NewThreadViewModel(DraftTestRepository(), drafts, draftsService)
+
+        viewModel.open(38, "建议反馈")
+        eventually("the site draft must replace the local prompt") {
+            viewModel.state.value.pendingServerDraft != null
+        }
+
+        assertEquals(7001, viewModel.state.value.pendingServerDraft?.tid)
+        assertNull("the device prompt must yield to the site draft", viewModel.state.value.pendingDraft)
+        assertEquals("the composer stays empty until the user chooses 恢复草稿", "", viewModel.state.value.title)
+    }
+
+    @Test
+    fun `restoring the site draft fills the composer from its edit form`() {
+        val draftsService = FakeDraftService()
+        draftsService.drafts = mutableListOf(ForumDraft(tid = 7001, fid = 38, title = "站点草稿"))
+        draftsService.edit = ForumDraftEdit(
+            tid = 7001,
+            fid = 38,
+            pid = 900_001,
+            subject = "站点标题",
+            message = "站点正文",
+            form = editForm(),
+        )
+        val viewModel = NewThreadViewModel(DraftTestRepository(), FakeDraftRepository(), draftsService)
+        viewModel.open(38, "建议反馈")
+        eventually("the site draft should be offered") {
+            viewModel.state.value.pendingServerDraft != null
+        }
+
+        viewModel.restoreServerDraft()
+        eventually("the edit form should be loaded") { viewModel.state.value.isDraftEdit }
+
+        assertEquals("站点标题", viewModel.state.value.title)
+        assertEquals("站点正文", viewModel.state.value.message)
+        assertEquals(7001, viewModel.state.value.draftTid)
+        assertTrue("restoring a site draft is not a publish", viewModel.state.value.successTid == null)
+    }
+
+    @Test
+    fun `leaving the page only writes the device copy and never posts`() {
+        val drafts = FakeDraftRepository()
+        val draftsService = FakeDraftService()
+        val viewModel = NewThreadViewModel(DraftTestRepository(), drafts, draftsService)
+        viewModel.open(44, "综合交流")
+        viewModel.updateTitle("未保存的标题")
+        viewModel.updateMessage("未保存的正文")
+
+        viewModel.saveOnLeave()
+        eventually("the offline copy should be written") { drafts.newThreads[44] != null }
+
+        assertEquals("leaving must not save a site draft", 0, draftsService.saveNewThreadCalls)
+        assertEquals("未保存的正文", drafts.newThreads.getValue(44).message)
+    }
+
+    @Test
+    fun `leaving the page never overwrites an un-actioned draft`() {
         val drafts = FakeDraftRepository()
         drafts.newThreads[38] = ForumNewThreadDraft(fid = 38, subject = "旧标题", message = "旧正文")
-        val viewModel = NewThreadViewModel(repository, drafts)
+        val viewModel = NewThreadViewModel(DraftTestRepository(), drafts, FakeDraftService())
         viewModel.open(38, "建议反馈")
         // The user ignores the prompt and starts typing something else.
         viewModel.updateTitle("新标题")
 
         viewModel.saveOnLeave()
-        // Give a wrongly scheduled save a chance to show up before asserting it did not happen.
         Thread.sleep(100)
 
         assertEquals("旧标题", drafts.newThreads.getValue(38).subject)
         assertEquals("旧正文", drafts.newThreads.getValue(38).message)
-        assertEquals("nothing was published", 0, repository.createThreadCalls)
+    }
+
+    @Test
+    fun `publishing an open draft is its own confirmed action`() {
+        val draftsService = FakeDraftService()
+        val repository = DraftTestRepository()
+        val viewModel = NewThreadViewModel(repository, FakeDraftRepository(), draftsService)
+        draftsService.edit = ForumDraftEdit(
+            tid = 5001,
+            fid = 44,
+            pid = 900_002,
+            subject = "草稿标题",
+            message = "草稿正文",
+            form = editForm(),
+        )
+        viewModel.open(44, "综合交流", draftTid = 5001)
+        eventually("the draft should open") { viewModel.state.value.isDraftEdit }
+
+        viewModel.publishDraft()
+        eventually("the publish should reach the site") { draftsService.publishCalls == 1 }
+        eventually("publishing succeeds") { viewModel.state.value.successTid == 5001 }
+
+        assertEquals("publish must not create a second thread", 0, repository.createThreadCalls)
+        assertEquals("the edit form carries the composer's current text", "草稿正文", draftsService.lastPublishMessage)
+    }
+
+    @Test
+    fun `deleting an open draft removes it on the site`() {
+        val draftsService = FakeDraftService()
+        draftsService.edit = ForumDraftEdit(
+            tid = 5001,
+            fid = 44,
+            pid = 900_002,
+            subject = "草稿标题",
+            message = "草稿正文",
+            form = editForm(),
+        )
+        val viewModel = NewThreadViewModel(DraftTestRepository(), FakeDraftRepository(), draftsService)
+        viewModel.open(44, "综合交流", draftTid = 5001)
+        eventually("the draft should open") { viewModel.state.value.isDraftEdit }
+
+        viewModel.deleteDraft()
+        eventually("the delete should reach the site") { draftsService.deleteCalls == 1 }
+        eventually("the page should hear about it") { viewModel.state.value.draftDeleted }
+
+        assertEquals("delete must send the harvested form, not a publish", 0, draftsService.publishCalls)
     }
 
     // ---- 回复 (reply) --------------------------------------------------------
 
     @Test
+    fun `saving a reply draft posts it to the site with the quote included`() {
+        val draftsService = FakeDraftService()
+        val repository = DraftTestRepository()
+        val viewModel = ForumViewModel(repository, FakeDraftRepository(), draftsService)
+        viewModel.openThread(177_093, "帖子")
+        eventually("the thread should load") { viewModel.threadState.value.formhash != null }
+        viewModel.requestReply()
+        viewModel.updateReplyText("回复正文")
+
+        viewModel.saveReplyDraft()
+        eventually("the reply draft must be posted to the site") { draftsService.saveReplyCalls == 1 }
+
+        assertEquals(177_093, draftsService.lastReplyDraftTid)
+        assertEquals("回复正文", draftsService.lastReplyDraftMessage)
+        assertTrue(viewModel.replyState.value.draftSaved)
+        assertEquals("saving a draft must not send a reply", 0, repository.replyCalls)
+    }
+
+    @Test
+    fun `a failed reply draft save keeps the text and stores a device copy`() {
+        val drafts = FakeDraftRepository()
+        val draftsService = FakeDraftService()
+        draftsService.replyDraftResult = DraftActionResult.Failure("抱歉，您的请求来路不正确")
+        val viewModel = ForumViewModel(DraftTestRepository(), drafts, draftsService)
+        viewModel.openThread(177_093, "帖子")
+        eventually("the thread should load") { viewModel.threadState.value.formhash != null }
+        viewModel.requestReply()
+        viewModel.updateReplyText("回复正文")
+
+        viewModel.saveReplyDraft()
+        eventually("the device copy should be written") { drafts.replies[177_093] != null }
+
+        assertEquals("the text must stay in the composer", "回复正文", viewModel.replyState.value.text)
+        assertEquals("抱歉，您的请求来路不正确", viewModel.replyState.value.draftError)
+        assertTrue("a failed save must not claim success", !viewModel.replyState.value.draftSaved)
+    }
+
+    @Test
     fun `reply composer offers the stored draft of the same thread only`() {
         val drafts = FakeDraftRepository()
         drafts.replies[177_093] = ForumReplyDraft(tid = 177_093, text = "上次的回复")
-        val viewModel = ForumViewModel(DraftTestRepository(), drafts)
+        val viewModel = ForumViewModel(DraftTestRepository(), drafts, FakeDraftService())
         viewModel.openThread(177_093, "帖子")
         eventually("the thread should load") { viewModel.threadState.value.formhash != null }
 
@@ -192,7 +338,6 @@ class ForumDraftViewModelTest {
         assertEquals("上次的回复", viewModel.replyState.value.pendingDraft?.text)
         assertEquals("text is not applied until 恢复草稿", "", viewModel.replyState.value.text)
 
-        // A different thread has no draft for this tid.
         viewModel.dismissReply()
         assertEquals(177_093, drafts.replies.keys.single())
     }
@@ -206,7 +351,7 @@ class ForumDraftViewModelTest {
             quoteText = "引用内容",
             text = "上次的回复",
         )
-        val viewModel = ForumViewModel(DraftTestRepository(), drafts)
+        val viewModel = ForumViewModel(DraftTestRepository(), drafts, FakeDraftService())
         viewModel.openThread(177_093, "帖子")
         eventually("the thread should load") { viewModel.threadState.value.formhash != null }
         viewModel.requestReply()
@@ -224,7 +369,7 @@ class ForumDraftViewModelTest {
     fun `discarding the reply draft deletes it`() {
         val drafts = FakeDraftRepository()
         drafts.replies[177_093] = ForumReplyDraft(tid = 177_093, text = "上次的回复")
-        val viewModel = ForumViewModel(DraftTestRepository(), drafts)
+        val viewModel = ForumViewModel(DraftTestRepository(), drafts, FakeDraftService())
         viewModel.openThread(177_093, "帖子")
         eventually("the thread should load") { viewModel.threadState.value.formhash != null }
         viewModel.requestReply()
@@ -237,11 +382,11 @@ class ForumDraftViewModelTest {
     }
 
     @Test
-    fun `a successful reply deletes the stored draft`() {
+    fun `a successful reply deletes the device draft`() {
         val repository = DraftTestRepository()
         val drafts = FakeDraftRepository()
         drafts.replies[177_093] = ForumReplyDraft(tid = 177_093, text = "上次的回复")
-        val viewModel = ForumViewModel(repository, drafts)
+        val viewModel = ForumViewModel(repository, drafts, FakeDraftService())
         viewModel.openThread(177_093, "帖子")
         eventually("the thread should load") { viewModel.threadState.value.formhash != null }
         viewModel.requestReply()
@@ -263,6 +408,31 @@ class ForumDraftViewModelTest {
         }
         fail(message)
     }
+
+    private fun editForm() = ForumEditForm(
+        action = "forum.php?mod=post&action=edit&extra=&editsubmit=yes&mobile=2",
+        formhash = "16385279",
+        tid = 5001,
+        fid = 44,
+        pid = 900_002,
+        subject = "草稿标题",
+        message = "草稿正文",
+        fields = mapOf(
+            "formhash" to "16385279",
+            "posttime" to "1795733897",
+            "delete" to "0",
+            "fid" to "44",
+            "tid" to "5001",
+            "pid" to "900002",
+            "page" to "",
+            "editsubmit" to "yes",
+            "subject" to "草稿标题",
+            "message" to "草稿正文",
+            "htmlon" to "0",
+            "usesig" to "1",
+            "save" to "",
+        ),
+    )
 }
 
 /** In-memory [ForumDraftRepository]; the real serialization path is covered by [ForumDraftStoreTest]. */
@@ -292,8 +462,95 @@ private class FakeDraftRepository : ForumDraftRepository {
 }
 
 /**
+ * In-memory [ForumDraftService].
+ *
+ * The counters are what proves the client posts to the *right* endpoint: a save must go through
+ * `saveNewThreadDraft`/`saveReplyDraft`, publishing and deletion must go through their own calls,
+ * and `createThread`/`reply` must stay at zero for a draft write.
+ */
+private class FakeDraftService : ForumDraftService {
+    var drafts: MutableList<ForumDraft> = mutableListOf()
+    var edit: ForumDraftEdit? = null
+
+    var saveNewThreadResult: DraftActionResult = DraftActionResult.Success(tid = 5001)
+    var replyDraftResult: DraftActionResult = DraftActionResult.Success()
+
+    // The assertions poll these from the test thread while the VM writes on Main, so every
+    // observed field has to be volatile or the reads may see a stale value.
+    @Volatile var saveNewThreadCalls = 0
+    @Volatile var saveReplyCalls = 0
+    @Volatile var updateDraftCalls = 0
+    @Volatile var publishCalls = 0
+    @Volatile var deleteCalls = 0
+    @Volatile var loadDraftCalls = 0
+
+    @Volatile var lastNewThreadDraft: NewThreadDraftCall? = null
+    @Volatile var lastReplyDraftTid: Int? = null
+    @Volatile var lastReplyDraftMessage: String? = null
+    @Volatile var lastUpdateMessage: String? = null
+    @Volatile var lastPublishMessage: String? = null
+
+    data class NewThreadDraftCall(val fid: Int, val subject: String, val message: String)
+
+    override suspend fun getDrafts(page: Int): ForumDraftPage = ForumDraftPage(drafts.toList(), page, 1)
+
+    override suspend fun saveNewThreadDraft(
+        fid: Int,
+        subject: String,
+        message: String,
+        form: ForumNewThreadForm,
+        images: List<NewThreadImage>,
+    ): DraftActionResult {
+        // Payload first, counter last: the tests poll the counter, so it has to be the final
+        // write or a poll can observe "called" before the arguments it asserts on.
+        lastNewThreadDraft = NewThreadDraftCall(fid, subject, message)
+        saveNewThreadCalls++
+        return saveNewThreadResult
+    }
+
+    override suspend fun saveReplyDraft(
+        tid: Int,
+        fid: Int,
+        message: String,
+        formhash: String,
+        noticeAuthor: String?,
+    ): DraftActionResult {
+        lastReplyDraftTid = tid
+        lastReplyDraftMessage = message
+        saveReplyCalls++
+        return replyDraftResult
+    }
+
+    override suspend fun loadDraft(tid: Int, fid: Int, pid: Long?): ForumDraftEdit {
+        loadDraftCalls++
+        return edit ?: error("no edit fixture configured")
+    }
+
+    override suspend fun publishDraft(edit: ForumEditForm): DraftActionResult {
+        publishCalls++
+        lastPublishMessage = edit.fields["message"]
+        return DraftActionResult.Success(tid = edit.tid)
+    }
+
+    override suspend fun deleteDraft(edit: ForumEditForm): DraftActionResult {
+        deleteCalls++
+        return DraftActionResult.Success()
+    }
+
+    override suspend fun updateDraft(
+        edit: ForumEditForm,
+        subject: String,
+        message: String,
+    ): DraftActionResult {
+        updateDraftCalls++
+        lastUpdateMessage = message
+        return DraftActionResult.Success()
+    }
+}
+
+/**
  * Minimal [ForumRepository] fake: only the new-thread and thread/reply surfaces are wired, and the
- * counters let the tests assert that "save draft" never became a network call.
+ * counters let the tests assert that a draft save never became a publish.
  */
 private class DraftTestRepository : ForumRepository {
 

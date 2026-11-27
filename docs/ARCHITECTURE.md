@@ -17,7 +17,8 @@ app/src/main/java/io/rune/mt/forum/
 │   │   │   └── ForumHtmlParser.kt    jsoup 解析：版块/列表/帖子/楼层/分页/缩略图
 │   │   └── repository/
 │   │       ├── ForumRepositoryImpl.kt   仓库实现（每方法 withContext(IO)）
-│   │       ├── ForumDraftRepositoryImpl.kt  本机草稿（独立 DataStore `forum_drafts`，上限 20 条）
+│   │       ├── ForumDraftServiceImpl.kt 服务器草稿（`save=1` 存、`save` 空发表、`delete=1` 删）
+│   │       ├── ForumDraftRepositoryImpl.kt  本机草稿兜底（DataStore `forum_drafts`，上限 20 条）
 │   │       ├── ForumSessionStore.kt     DataStore 持久化 Cookie
 │   │       └── ForumPasswordAuthenticator.kt  账号密码登录
 │   ├── settings/                     设置项仓库
@@ -25,7 +26,7 @@ app/src/main/java/io/rune/mt/forum/
 ├── domain/
 │   ├── forum/
 │   │   ├── model/                    Forum / ForumThread / ForumPost / ForumUser / ForumSession / ForumDraft
-│   │   └── repository/               ForumRepository.kt / ForumDraftRepository.kt
+│   │   └── repository/               ForumRepository.kt / ForumDraftRepository.kt（含 ForumDraftService）
 │   ├── settings/                     偏好模型与用例
 │   └── updater/
 ├── di/
@@ -39,7 +40,7 @@ app/src/main/java/io/rune/mt/forum/
 ├── ui/
 │   ├── navigation/
 │   │   ├── Routes.kt                 Main / About / Theme / Login / ForumList / ForumThread
-│   │   │                             / PrivateConversation / NewThread
+│   │   │                             / PrivateConversation / NewThread / Favorites / Drafts
 │   │   └── AppNavContainer.kt        NavDisplay + entry 注册
 │   ├── page/
 │   │   ├── forum/                    论坛页面层
@@ -50,8 +51,10 @@ app/src/main/java/io/rune/mt/forum/
 │   │   │   ├── ForumMessagesPage.kt  私信会话列表
 │   │   │   ├── ForumConversationPage.kt  私信会话（气泡 + 回复框）
 │   │   │   ├── ForumMessagesViewModel.kt 私信列表/会话状态
-│   │   │   ├── NewThreadPage.kt      发新帖（标题/正文/图片附件）
-│   │   │   ├── NewThreadViewModel.kt 发帖表单与提交
+│   │   │   ├── NewThreadPage.kt      发新帖 / 编辑站点草稿（标题/正文/图片附件/保存草稿）
+│   │   │   ├── NewThreadViewModel.kt 发帖表单、站点草稿保存、发表与删除
+│   │   │   ├── ForumDraftsPage.kt    草稿列表（`filter=save`，下拉刷新/翻页/删除）
+│   │   │   ├── ForumDraftsViewModel.kt 草稿列表状态与删除
 │   │   │   ├── ForumImageViewer.kt   全屏图片查看（双指缩放/拖动）
 │   │   │   ├── ForumHtmlText.kt      正文渲染组件 + 块模型（段落/标题/代码/引用/列表/表格/附件）
 │   │   │   ├── ForumBodyParser.kt    正文 HTML → 块列表（dom 选择器只在此处；代码块不拍平）

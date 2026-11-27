@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package io.rune.mt.forum.di
 
+import io.rune.mt.forum.ui.page.forum.ForumDraftsViewModel
 import io.rune.mt.forum.ui.page.forum.ForumFavoritesViewModel
 import io.rune.mt.forum.ui.page.forum.ForumMessagesViewModel
 import io.rune.mt.forum.ui.page.forum.ForumNoticesViewModel
@@ -31,7 +32,11 @@ val viewModelModule = module {
     viewModelOf(::ForumSearchViewModel)
     viewModelOf(::ForumProfileViewModel)
     viewModelOf(::ForumFavoritesViewModel)
+<<<<<<< HEAD
     viewModelOf(::ForumSignInViewModel)
+=======
+    viewModelOf(::ForumDraftsViewModel)
+>>>>>>> feat/draft2
     viewModelOf(::NewThreadViewModel)
     viewModelOf(::LoginViewModel)
     viewModelOf(::AccountViewModel)

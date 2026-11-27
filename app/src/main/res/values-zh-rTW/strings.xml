@@ -233,11 +233,12 @@
     <string name="forum_body_code_label">程式碼</string>
     <string name="forum_body_copy">複製</string>
     <string name="forum_body_copied">已複製</string>
-    <!-- 本地草稿：僅存於本機，站點無法儲存草稿 -->
+    <!-- 草稿：由站點儲存（`save=1`），本機只留離線備援 -->
     <string name="draft_save">儲存草稿</string>
-    <string name="draft_saved_toast">草稿已儲存在本機</string>
+    <string name="draft_saved_toast">草稿已儲存到論壇</string>
     <string name="draft_restore_title">恢復草稿？</string>
-    <string name="draft_restore_message">草稿僅儲存在本機，站點不儲存草稿。</string>
+    <string name="draft_restore_message_server">論壇裡已有這個版塊的草稿，恢復後可以繼續編輯。</string>
+    <string name="draft_restore_message_local">這份草稿是上次儲存失敗時留在本機的副本，要恢復嗎？（論壇裡沒有它的草稿）</string>
     <string name="draft_restore_confirm">恢復草稿</string>
     <string name="draft_restore_discard">丟棄</string>
     <string name="draft_images_skipped_format">有 %1$d 張圖片已無法恢復，已略過。</string>
@@ -254,4 +255,16 @@
     <string name="sign_in_login_required">登入後可每日簽到。</string>
     <string name="sign_in_failed">簽到失敗</string>
     <string name="sign_in_refresh">重新整理</string>
+    <string name="draft_edit_hint">正在編輯論壇儲存的草稿</string>
+    <string name="draft_publish_title">發表這篇草稿？</string>
+    <string name="draft_publish_message">發表後它會變成所有人都能回覆的公開主題，無法再退回草稿狀態。</string>
+    <string name="draft_publish_confirm">發表</string>
+    <string name="drafts_title">草稿</string>
+    <string name="drafts_entry_desc">論壇為你儲存的草稿</string>
+    <string name="drafts_empty">還沒有草稿。在發帖頁點「儲存草稿」就會存到論壇。</string>
+    <string name="drafts_delete_title">刪除這篇草稿？</string>
+    <string name="drafts_delete_message_format">「%1$s」將從論壇刪除，且無法恢復。</string>
+    <string name="drafts_delete_action">刪除</string>
+    <string name="drafts_login_required_title">登入後才能查看草稿</string>
+    <string name="drafts_login_required_desc">草稿由論壇儲存在登入帳號名下，所以需要先登入。</string>
 </resources>
