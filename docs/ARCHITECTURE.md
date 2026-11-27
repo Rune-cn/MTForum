@@ -65,7 +65,7 @@ app/src/main/java/io/rune/mt/forum/
 │   │   ├── main/forum/               论坛 VM 与 State（旧位置，保留兼容）
 │   │   ├── miuix/
 │   │   │   ├── settings/             设置页（账号区块、主题入口、关于）
-│   │   │   └── widgets/              共享组件（页面脚手架、顶栏、弹窗等）
+│   │   │   └── widgets/              共享组件（页面脚手架、顶栏、滚动条、分组卡片、弹窗等）
 │   │   └── theme/ · library/ · animation/
 └── App.kt
 ```
@@ -132,3 +132,17 @@ Compose 页面（Miuix 组件，OS3/OS4 自适应）
 18. **私信/输入框的 IME inset 不要叠加**：用
    `WindowInsets.navigationBars.union(WindowInsets.ime)` 一次性取较大底边距，
    并把 composer 实测高度加进列表底部 padding。
+19. **顶栏只采样“页面内容层”，且经 `barBackdrop()` 单点过滤**：`chrome.backdrop`
+   由 `MiuixPageChrome.contentBackdropModifier` 录在滚动容器上（不含顶栏），
+   `MiuixTopAppBar` 的三个分支（OS4 渐进模糊 / OS4 玻璃 / OS3 `miuixBlurEffect`）都只读
+   `barBackdrop(backdrop, pageBackdrop)`；宿主层 `MiuixComponentScope.pageBackdrop`
+   包含顶栏自身，被该函数拒绝后降级为不透明顶栏。这条与第 17 条是同一个不变量
+   （HANDOVER §11 / §15.9 / §17.2）。
+20. **长列表带滚动条覆盖层**：`MiuixPageScaffold` 已内置 `MiuixPageScrollBar`；
+   自带 `Scaffold` 的页面（帖子/版块/提醒，因为要包 `PullToRefresh`）必须把
+   `MiuixPageScrollBar` 作为列表的**兄弟**放进同一个 `Box`，并把列表的 `contentPadding`
+   与 `chrome.scrollBehavior` 一起传进去（HANDOVER §17.3）。
+21. **分组卡片用 `miuixGroupedItems`**：连续行要画成一张 Miuix 卡片时（首页榜单、设置分组），
+   用 `MiuixGroupedCards.kt`（`MiuixCardSegment` / `LazyListScope.miuixGroupedItems`），
+   圆角取 `CardDefaults.CornerRadius`，不要各自 `clip(RoundedCornerShape(...))`
+   （HANDOVER §17.4）。
