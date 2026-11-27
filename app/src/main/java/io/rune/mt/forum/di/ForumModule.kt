@@ -13,6 +13,8 @@ import io.rune.mt.forum.data.forum.repository.ForumDraftServiceImpl
 import io.rune.mt.forum.data.forum.repository.ForumPasswordAuthenticator
 import io.rune.mt.forum.data.forum.repository.ForumRepositoryImpl
 import io.rune.mt.forum.data.forum.repository.ForumSessionStore
+import io.rune.mt.forum.data.image.ForumImageHostClient
+import io.rune.mt.forum.domain.forum.model.ImageHostGateway
 import io.rune.mt.forum.domain.forum.repository.ForumDraftRepository
 import io.rune.mt.forum.domain.forum.repository.ForumDraftService
 import io.rune.mt.forum.domain.forum.repository.ForumRepository
@@ -31,6 +33,10 @@ val forumModule = module {
     singleOf(::ForumSessionStore)
     singleOf(::ForumPasswordAuthenticator)
     singleOf(::ForumRepositoryImpl) { bind<ForumRepository>() }
+
+    // The MT image host (img.binmt.cc) is a **separate service**: its own host, its own token and
+    // its own cookie jar, so no forum cookie is ever sent there (rules 14 / 33).
+    singleOf(::ForumImageHostClient) { bind<ImageHostGateway>() }
 
     // Drafts live on the site (the 保存草稿 button's `save=1`); this is the read/write surface.
     singleOf(::ForumDraftServiceImpl) { bind<ForumDraftService>() }
