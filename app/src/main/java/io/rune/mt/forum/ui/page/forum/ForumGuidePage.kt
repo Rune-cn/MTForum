@@ -45,6 +45,15 @@ fun ForumGuidePage(
     LaunchedEffect(Unit) { viewModel.loadGuideIfNeeded() }
     // A tab switch starts that view at its own first row instead of inheriting the scroll offset.
     LaunchedEffect(state.selected) { listState.scrollToItem(0) }
+    // This page previously had no scroll trigger at all: page 2 was reachable only by finding and
+    // tapping the footer row. It now appends like the board listing while keeping that row.
+    ForumAppendEffect(
+        listState = listState,
+        enabled = current.canLoadMore,
+        isAppending = current.isAppending,
+        hasError = current.error != null,
+        onLoadMore = viewModel::loadMoreGuide,
+    )
 
     MiuixPageScaffold(
         title = title,

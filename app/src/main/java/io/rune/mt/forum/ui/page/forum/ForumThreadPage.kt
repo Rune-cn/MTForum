@@ -36,7 +36,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -190,18 +189,14 @@ fun ForumThreadPage(
         viewModel.openThread(tid, title)
     }
 
-    val shouldAppend by remember(state.posts.size, state.page, state.totalPages) {
-        derivedStateOf {
-            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            val totalItems = listState.layoutInfo.totalItemsCount
-            totalItems > 0 && lastVisible >= totalItems - 2
-        }
-    }
-    LaunchedEffect(shouldAppend, state.canLoadMore) {
-        if (shouldAppend && state.canLoadMore && !state.isAppending) {
-            viewModel.loadMorePosts()
-        }
-    }
+    // Floor pages chain the same way board pages do; the footer row is the manual path.
+    ForumAppendEffect(
+        listState = listState,
+        enabled = state.canLoadMore,
+        isAppending = state.isAppending,
+        hasError = state.error != null,
+        onLoadMore = viewModel::loadMorePosts,
+    )
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(

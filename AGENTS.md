@@ -93,7 +93,9 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     仓库抛 `ForumLoginRequiredException` 或先用 `ForumHtmlParser.isLoginRequired()` 判，
     UI 显示登录卡片 + 跳 `Route.Login`，**不要**把登录页解析成“空结果”。
     **设置页「论坛」分组只留「我的收藏」+「草稿」两行**（`Route.Favorites` / `Route.Drafts`—
-    两者都是登录账号自己的论坛数据，放在这里最直觉）；消息提醒从首页顶栏铃铛进，
+    两者都是登录账号自己的论坛数据，放在这里最直觉）；**提醒不进顶栏**——系统提醒 / 坛友互动 /
+    我的帖子三个分类在底栏「消息」页里用 `TabRow` 与「私信」并列（`ForumMessagesPage`），首页顶栏
+    只留「搜索放大镜 / 发帖 / 签到」三个动作。
     **每日签到从首页顶栏最右侧的 `Tasks` 图标进**（`ForumSignInSheet` 底部面板，OS4 玻璃/OS3
     窗口；面板内容 `ForumSignInCard`，游客仍是登录卡片），签到**不进**设置页；
     我的主页从账号卡片点头像/昵称进（`AccountSection` 的 `onOpenProfile`），不要再往设置页

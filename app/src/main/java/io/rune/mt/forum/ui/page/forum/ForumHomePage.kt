@@ -21,9 +21,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -70,9 +70,15 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * shortcut block. Both sections come from one `forum.php` request, and the ranking is rendered in
  * the server's order with the server's rank numbers — never re-sorted client-side.
  *
- * The top bar carries two actions: the 消息提醒 bell (site notices) and 每日签到 at the far right.
- * The check-in button opens [`ForumSignInSheet`] rather than signing in on the tap, and the
- * settings page no longer hosts that panel (the user asked for the home entry point twice).
+ * The top bar carries three actions: the search magnifier, 发帖 and 每日签到 at the far right.
+ * The search magnifier opens [`ForumSearchOverlay`] instead of navigating; confirming a keyword
+ * lands on the existing `Route.ForumSearch` result page. 发帖 asks for a board with
+ * [`ForumBoardPickerSheet`] and then pushes `Route.NewThread`; a guest is sent to the login page
+ * first (rule 18). The 消息提醒 bell moved to the bottom bar's 消息 tab, which now splits private
+ * messages and the three site notice categories with a `TabRow`.
+ *
+ * 每日签到 still opens [`ForumSignInSheet`] rather than signing in on the tap, and the settings
+ * page does not host that panel (the user asked for the home entry point twice).
  */
 @Composable
 fun ForumHomePage(
@@ -82,6 +88,7 @@ fun ForumHomePage(
     viewModel: ForumViewModel = koinViewModel(),
 ) {
     val state by viewModel.homeState.collectAsStateWithLifecycle()
+    val session by viewModel.session.collectAsStateWithLifecycle()
     val chrome = rememberMiuixPageChrome(enableBlur)
     val navigator = LocalNavigator.current
     // OS4 frames content with a wider gutter, so the grid matches the rest of the shell.
@@ -89,6 +96,10 @@ fun ForumHomePage(
     val listState = rememberLazyListState()
 
     var showSignIn by rememberSaveable { mutableStateOf(false) }
+    var showBoardPicker by rememberSaveable { mutableStateOf(false) }
+    // The search surface is a page-level overlay, not a route: closing it (Back) returns to the
+    // exact same home scroll position, and submitting pushes the existing result page.
+    var showSearch by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         Timber.tag("ForumHomePage").i("home shown")
@@ -108,12 +119,31 @@ fun ForumHomePage(
             listState = listState,
             verticalPadding = 12.dp,
             actions = {
-                // 消息提醒 opens the site's notice inbox; it is not a pager switch, so the tab the
-                // user was on (论坛) stays behind them when they come back.
-                MiuixTopBarIconButton(onClick = { navigator.push(Route.Notices) }) {
+                // Search lives at the leading edge of the actions (left of 发帖): a magnifier that
+                // opens the overlay surface, following the Miuix example's search interaction
+                // (`GlassPage.kt` opens `GlassSearchOverlay` from a top-bar action) instead of the
+                // old in-list card.
+                MiuixTopBarIconButton(onClick = { showSearch = true }) {
                     Icon(
-                        imageVector = Icons.Rounded.Notifications,
-                        contentDescription = stringResource(R.string.notice_entry_title),
+                        imageVector = Icons.Rounded.Search,
+                        contentDescription = stringResource(R.string.forum_search),
+                    )
+                }
+                // 发帖 needs a board first: the home index has no "current board", so the sheet
+                // offers `state.forums` and the picked board travels to `Route.NewThread`. A guest
+                // is routed to login before the composer can be reached (rule 18).
+                MiuixTopBarIconButton(
+                    onClick = {
+                        if (session.isLoggedIn) {
+                            showBoardPicker = true
+                        } else {
+                            navigator.push(Route.Login)
+                        }
+                    },
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Edit,
+                        contentDescription = stringResource(R.string.forum_new_thread),
                     )
                 }
                 // 每日签到 sits at the screen's top-right edge (last action of the bar). The tap
@@ -128,11 +158,6 @@ fun ForumHomePage(
                 }
             },
         ) {
-            // The search entry sits above the board grid: it is its own entry point, not a board.
-            item(key = "forum_search_entry") {
-                ForumSearchEntryCard(onClick = { navigator.push(Route.ForumSearch()) })
-            }
-
             when {
                 state.isLoading -> item { ForumLoadingCard() }
 
@@ -199,6 +224,32 @@ fun ForumHomePage(
             onDismissRequest = { showSignIn = false },
             onLogin = { navigator.push(Route.Login) },
             backdrop = chrome.backdrop,
+        )
+
+        // Both overlays are siblings of the scaffold in the page root Box (rules 12/23/28): the
+        // OS4 bottom sheet renders inline into the root host's dialog layer, and the search
+        // surface covers the page including its bar.
+        ForumBoardPickerSheet(
+            show = showBoardPicker,
+            boards = state.forums,
+            onDismissRequest = { showBoardPicker = false },
+            onPick = { forum ->
+                showBoardPicker = false
+                navigator.push(Route.NewThread(forum.fid, forum.name))
+            },
+            backdrop = chrome.backdrop,
+        )
+
+        ForumSearchOverlay(
+            expanded = showSearch,
+            enableBlur = enableBlur,
+            onDismissRequest = { showSearch = false },
+            onSubmit = { keyword ->
+                if (keyword.isNotBlank()) {
+                    showSearch = false
+                    navigator.push(Route.ForumSearch(keyword))
+                }
+            },
         )
     }
 }

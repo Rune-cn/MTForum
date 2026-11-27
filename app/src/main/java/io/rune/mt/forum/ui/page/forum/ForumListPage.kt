@@ -23,9 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -100,19 +98,15 @@ fun ForumListPage(
     // old offset (which could leave the user in the middle of a page that just shrank).
     LaunchedEffect(state.typeId) { listState.scrollToItem(0) }
 
-    // Append the next page once the tail of the loaded rows becomes visible.
-    val shouldAppend by remember(state.threads.size, state.page, state.totalPages) {
-        derivedStateOf {
-            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            val totalItems = listState.layoutInfo.totalItemsCount
-            totalItems > 0 && lastVisible >= totalItems - 2
-        }
-    }
-    LaunchedEffect(shouldAppend, state.canLoadMore) {
-        if (shouldAppend && state.canLoadMore && !state.isAppending) {
-            viewModel.loadMoreThreads()
-        }
-    }
+    // Append the next page once the tail of the loaded rows becomes visible; the footer's
+    // explicit "load page N" row remains the manual path (and the retry after a failure).
+    ForumAppendEffect(
+        listState = listState,
+        enabled = state.canLoadMore,
+        isAppending = state.isAppending,
+        hasError = state.error != null,
+        onLoadMore = viewModel::loadMoreThreads,
+    )
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
@@ -271,8 +265,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.ForumListBody(
     }
 }
 /**
- * Tail of a paged list: the "load page N" affordance, an inline spinner while appending, or an
- * end marker once the last page is on screen.
+ * Tail of a paged list: the "load page N" affordance with the current position, an inline spinner
+ * while appending, or an end marker once the last page is on screen.
+ *
+ * The row is always tappable while `page < totalPages`, and it is the one affordance paging may
+ * rely on: the automatic scroll trigger ([ForumAppendEffect]) is a convenience, and after a failed
+ * page it stays off so this row is the retry. Showing `page / totalPages` also tells the user how
+ * much of the listing is already loaded.
  */
 @Composable
 internal fun ForumPagingFooter(
@@ -301,18 +300,31 @@ internal fun ForumPagingFooter(
                 )
             }
 
-            page < totalPages -> Card(onClick = onLoadMore) {
-                Text(
-                    text = stringResource(R.string.forum_load_more_format, page + 1),
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MiuixTheme.colorScheme.primary,
-                )
+            page < totalPages -> Card(onClick = onLoadMore, modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = stringResource(R.string.forum_load_more_format, page + 1),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MiuixTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text = stringResource(R.string.forum_paging_page_format, page, totalPages),
+                        fontSize = 12.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                }
             }
 
             else -> Text(
-                text = stringResource(R.string.forum_last_page),
+                text = stringResource(R.string.forum_paging_page_format, page, totalPages) +
+                    " · " + stringResource(R.string.forum_last_page),
                 fontSize = 12.sp,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )

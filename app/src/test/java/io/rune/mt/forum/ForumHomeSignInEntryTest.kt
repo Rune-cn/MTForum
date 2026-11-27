@@ -129,10 +129,12 @@ class ForumHomeSignInEntryTest {
         composeHome(useOs4 = false)
         compose.waitForIdle()
 
-        // The bar keeps the 消息提醒 bell and gains the 签到 action at the far right; the content
-        // description is the feature's own name, so this is the reachable-by-a11y entry point.
-        compose.onNodeWithContentDescription("Notifications").assertIsDisplayed()
+        // The bar now hosts the 搜索 magnifier, the 发帖 action and the 签到 action, and the 消息提醒
+        // bell is gone on purpose: notices moved into the 消息 tab of the bottom bar.
+        compose.onNodeWithContentDescription("Search").assertIsDisplayed()
+        compose.onNodeWithContentDescription("New thread").assertIsDisplayed()
         compose.onNodeWithContentDescription("Daily check-in").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Notifications").assertDoesNotExist()
 
         capture("os3-home-sign-in-entry.png")
 
