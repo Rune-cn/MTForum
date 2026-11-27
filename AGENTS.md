@@ -140,6 +140,13 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     「图片完全不显示」，样本 `album_images_177269.html`）。文字+图片混排的列表保留文字行，
     图片按文档顺序**跟在列表之后**；只有图片的 `li` 不产生空 bullet。真实列表仍是 `BulletList`。
 
+    **表格列宽必须按内容加权，禁止等宽**：`<table>` 不能给每个单元格同一个 weight——5 列表格里
+    只要有一列是长散文，均分就会把短列压到一字一行、URL 断行（真机反馈「表格方面显示不行」，
+    样本 `rich_156696.html`，见 HANDOVER §3.5）。列宽由 `ForumHtmlText.kt` 的
+    `tableColumnWeights()` 按每列最长单元格字数算（短列有下限、长列取剩余、全列皆长则回退等
+    weight），整表过宽时在卡片内 `horizontalScroll`；表头靠「整行 `<strong>`」识别，单元格
+    `<div align>`/`<td align>`/`text-align` 要生效（文本需 `fillMaxWidth()`）。
+
     **附件必须给「下载 or 浏览器」选择**：附件卡的点击只能弹选择面板
     （`AttachmentChoiceSheet`），不能直接把 `mod=attachment` 丢给浏览器（Cookie 门禁，403 或
     下载到 acw 挑战页）。下载走 `ForumAttachmentDownloader`（复用 `ForumHttpClient.client`

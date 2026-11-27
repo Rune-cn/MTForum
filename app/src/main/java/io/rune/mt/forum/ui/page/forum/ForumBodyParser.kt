@@ -408,7 +408,10 @@ internal object ForumBodyParser {
          * in `rich_156696.html`). That row is marked as a header so it is rendered like one, and a
          * real `<th>`/`<thead>` (other template variants) is honoured as well. `colspan`/`rowspan`
          * are carried as a weight so a merged cell keeps its width and the remaining cells do not
-         * shift; no cell text is ever dropped.
+         * shift; no cell text is ever dropped. Each cell also records its own alignment from
+         * `<td align>`, an inner `<div align>` or a CSS `text-align`, so the site's centred header
+         * and short cells stay centred. Column *widths* are a renderer decision
+         * (`tableColumnWeights` in `ForumHtmlText.kt`), so the model stays pixel-free.
          */
         private fun emitTable(table: Element) {
             flush()
@@ -426,7 +429,7 @@ internal object ForumBodyParser {
                         ForumBodyBlock.TableCell(
                             text = value,
                             header = cell.tagName().equals("th", ignoreCase = true),
-                            align = blockAlignOf(cell) ?: blockAlignOf(cell.selectFirst("div[align]") ?: cell),
+                            align = cellAlignOf(cell),
                             span = cell.attr("colspan").trim().toIntOrNull()?.coerceIn(1, 8) ?: 1,
                         )
                     }
@@ -707,6 +710,33 @@ internal object ForumBodyParser {
             "left" -> ForumBodyBlock.BlockAlign.START
             else -> null
         }
+
+    /**
+     * Per-cell alignment for a table cell.
+     *
+     * Discuz writes alignment in three shapes, all of which appear in real posts: `<td align>`,
+     * an inner `<div align="center">` (the 网盘 table in `rich_156696.html` centres every header and
+     * short cell that way), and occasionally `style="text-align:…"`. The cell's own attribute wins,
+     * then the first aligned descendant, then a CSS `text-align` on either — that ordering keeps the
+     * most specific declaration while still honouring a styled cell cheaply.
+     */
+    private fun cellAlignOf(cell: Element): ForumBodyBlock.BlockAlign? =
+        blockAlignOf(cell)
+            ?: cell.selectFirst("div[align], p[align], [style*=text-align]")
+                ?.let { blockAlignOf(it) ?: styleAlignOf(it) }
+            ?: styleAlignOf(cell)
+
+    /** Cheap `text-align: center|right|left` reader for a `style` attribute. */
+    private fun styleAlignOf(element: Element): ForumBodyBlock.BlockAlign? {
+        val style = element.attr("style").lowercase()
+        if (style.isEmpty()) return null
+        return when {
+            "text-align:center" in style || "text-align: center" in style -> ForumBodyBlock.BlockAlign.CENTER
+            "text-align:right" in style || "text-align: right" in style -> ForumBodyBlock.BlockAlign.END
+            "text-align:left" in style || "text-align: left" in style -> ForumBodyBlock.BlockAlign.START
+            else -> null
+        }
+    }
 
     private fun textAlignOf(align: ForumBodyBlock.BlockAlign?): TextAlign? = when (align) {
         ForumBodyBlock.BlockAlign.CENTER -> TextAlign.Center
