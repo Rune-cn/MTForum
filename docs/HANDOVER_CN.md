@@ -1241,6 +1241,104 @@ htmlon / usesig / save`（另有 `hiddenreplies`、`ordertype` 等可选 checkbo
 - 本机兜底上限 20 条是硬编码常量，被淘汰的兜底副本不可恢复（站点草稿不受影响）。
 - 发表/删除是不可逆操作，客户端只做了二次确认，没有额外撤销。
 
+### 16.6 「App 里看不到站点草稿箱原有的草稿」— 2026-11-27 第二轮修正
+
+用户原话：「怎么是从零写草稿，原本的呢？」，澄清后是**「App 里看不到站点草稿箱原有的草稿」**。
+先说结论：**数据层没问题，问题在草稿页的状态机**。
+
+#### 先排除的嫌疑（有证据）
+
+- **请求地址正确**：`forum.php?mod=guide&view=my&type=thread&filter=save&fid=0&mobile=2`
+  抓到的页面（`app/src/test/resources/forum/drafts_live_list.html`）是 **200 + 2 行草稿**
+  （tid 177381 / 逆向交流 / 22 分钟前；tid 177363 / 综合交流 / 12 小时前）。
+- **解析器正确**：`parseDraftPage` 在同一份抓包上正好解析出 2 行，字段逐个核对
+  （tid/fid/标题/版块/时间，`timeText` 里没有 NBSP）。`ForumDraftParserTest` +
+  新增的 `ForumDraftServiceTest`（真实 `ForumDraftServiceImpl` + 抓包回放）把这条路径钉住了。
+- **登录页判定正确**：`isLoginRequired()` 只看 `form[action*=loginsubmit]` /
+  「登录」标题 + `input[name=username]`；这份登录态抓包里一个都没有，所以不会误判成"未登录"。
+
+#### 真正的原因（两个，都在 UI/VM 状态机里）
+
+1. **拉到的数据被会话标志挡在前面**（`ui/page/forum/ForumDraftsPage.kt` 旧 157 行）：
+
+   ```kotlin
+   !session.isLoggedIn || state.loginRequired -> item { DraftsLoginCard(...) }
+   ```
+
+   这个分支排在**所有数据分支之前**，所以只要 `session.isLoggedIn` 是 false（或
+   `loginRequired` 为 true），站点已经返回的行**永远不会渲染**。
+   `ForumSession.isLoggedIn` 只来自 `*_auth` cookie，而 cookie 恢复是**异步**的：
+   `App.onCreate → restoreForumSession()`（`App.kt:83`）→ `appScope.launch { forumSessionStore.load() }`
+   （`App.kt:104`）。首帧 `isLoggedIn=false` 不代表用户没登录——它只代表恢复还没跑完。
+
+2. **「要登录」的判定是粘住的**（`ui/page/forum/ForumDraftsViewModel.kt` 旧 61-64 行）：
+
+   ```kotlin
+   fun loadIfNeeded() {
+       if (_state.value.loaded) return
+       ...
+   ```
+
+   而 `loginRequired = true` 的那条分支同时把 `loaded` 置成了 true（旧 168 行）。于是：
+   第一次请求撞上登录表单（cookie 尚未恢复，或用户当时确实未登录）→ 登录卡片；
+   用户从卡片点「登录」登录成功、返回草稿页 → `LaunchedEffect(Unit)` 会重跑，但
+   `loadIfNeeded()` 因为 `loaded == true` 直接返回 → **登录卡片永远不再刷新**，
+   站点明明有草稿，页面永远看不到。这是最符合用户描述的路径。
+
+   > 页面并没有"崩溃"或"空列表"，而是停在错误的状态上：要么登录卡片，要么（当
+   > `loginRequired` 被刷新清掉但会话仍 false 时）连数据都不请求。
+
+#### 修法
+
+- **UI 由「加载结果」驱动**：`ForumDraftsViewModel.kt` 新增 `ForumDraftsPhase`
+  （`Rows / Loading / LoginRequired / Error / Empty`）与 `ForumDraftsState.phase(signedIn)`。
+  `drafts.isNotEmpty()` **永远优先**——站点返回的行不受任何会话标志影响；
+  `signedIn` 只在"还没请求过"时决定显示登录卡片。
+- **登录卡片只在站点真的回了登录表单时出现**（`loginRequired`），
+  或"明确未登录 + 还没请求过"；不再用 `!session.isLoggedIn` 无条件盖住列表。
+- **会话一恢复就重问**：页面的 `LaunchedEffect(Unit)` 改成 `LaunchedEffect(session.isLoggedIn)`；
+  `loadIfNeeded()` 现在允许在「上次结果是 `loginRequired` 且当前会话已登录」时再取一次。
+  新的请求会取消旧的（`job?.cancel()`），所以首帧的匿名请求即使晚回来也不会覆盖已登录的结果。
+- **空 ≠ 错误（三个状态必须长得不一样）**：
+  - 加载中 → `ForumLoadingCard`
+  - 已加载、0 行 → `ForumEmptyCard`（文案改成明确的「站点草稿箱是空的」）
+  - 失败（网络 / HTTP / 站点文案）→ `ForumErrorCard`（站点原文 + 点击重试）
+  - 站点回登录表单 → 登录卡片
+  失败**绝不**再显示成"没有草稿"。
+- **诊断日志**（`ForumDraftService` tag，每次加载一条，不含 Cookie）：
+
+  ```
+  drafts page=1 url=forum.php?mod=guide&view=my&type=thread&filter=save&fid=0&mobile=2
+    http=200 finalUrl=https://… bytes=37062 rows=2 parsed=2 loginRequired=false
+  ```
+
+  `rows` = `li.forumlist_li` 原始行数，`parsed` = 真正解析出的行数，`finalUrl` 是重定向后的地址。
+  这三个数正好区分真机上的三种可能：「根本没发出去 / 200 但 rows=0（站点没有草稿或方向不对）/
+  rows>0 但 parsed=0（选择器失配）」。`finalUrl` 若是 `member.php?mod=logging…` 就说明被弹回登录页了。
+- **可测试性**：新增 `ForumHttpGateway` 接口（唯一实现仍是 `ForumHttpClient`，`AcwInterceptor`
+  与 Cookie 只有一处），使 `ForumDraftServiceTest` 能把抓包喂给**真实** Service，而不需要联网。
+
+#### 没解决的（如实）
+
+- **回复草稿仍不在这个列表里**：本轮抓的 `type=thread&filter=save` 页面里没有任何指向
+  `type=reply` 的 tab 或链接，仓库里也没有回复草稿列表的抓包，所以**没有**按猜测加第二个列表
+  （见 `docs/REVERSE_SPEC.md` §16.1 末尾）。如果用户的「原有的草稿」其实是回复草稿，
+  真机日志会先显示 `rows=0`——那时再抓一张回复草稿列表页补上。
+- **没有真机/模拟器**：本机跑不了，也没有再对 `bbs.binmt.cc` 发请求。所以**无法在本机复现
+  用户看到的空列表**；能证明的是「抓包 → 解析 → Service → VM 状态」这条链路是对的，
+  以及旧 UI/VM 的两个缺陷确实会把结果藏起来。真机日志（上面的 `drafts …` 行）会给出下一步。
+- 设置页入口没有加「草稿数」角标：那需要一次额外请求（或把请求提前到设置页），
+  本轮不做，避免为了一个可选提示引入每次组合都请求的风险。
+
+#### 本轮验证
+
+- `:app:compileStableDebugKotlin` → **BUILD SUCCESSFUL**
+- `:app:testStableDebugUnitTest` → **BUILD SUCCESSFUL，50 suites / 291 tests / 0 failures /
+  0 errors / 0 skipped**（基线 48/278；新增 `ForumDraftServiceTest` 4 例、
+  `ForumDraftsViewModelTest` 8 例，`ForumDraftParserTest` +1 例）。
+- `:app:lintVitalStableRelease` → **BUILD SUCCESSFUL**（`Lint found no new issues`，
+  1 个既有错误由 `lint-baseline.xml` 过滤）；三语字符串各 **274** 键，数量一致。
+
 ---
 
 ## 17. 每日签到（2026-11-27）
