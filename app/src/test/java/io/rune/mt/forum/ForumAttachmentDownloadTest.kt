@@ -276,6 +276,36 @@ class ForumAttachmentDownloadTest {
     }
 
     @Test
+    fun `an attachcredit page that refuses with 金币不足 fails without following its link`() = runBlocking {
+        // Some Discuz variants render the refusal on the handshake page itself. Following the
+        // continue link there would be pointless (and could charge again), so the server message
+        // must be surfaced immediately.
+        val refusalOnCreditPage = """
+            <html><head><title>提示信息 - MT论坛</title></head><body>
+            <div class="comiis_msgbox"><div id="messagetext" class="alert_info">
+            <p>抱歉，您的 金币不足 ，无法下载该附件</p></div>
+            <div class="alert_continue">
+            <a href="http://127.0.0.1:$port/forum.php?mod=attachment&amp;aid=x&amp;ck=y&amp;mobile=2">点击此链接进行跳转</a>
+            </div></div></body></html>
+        """.trimIndent()
+        val hits = AtomicInteger()
+        server.createContext("/credit-refused.bin") { exchange ->
+            hits.incrementAndGet()
+            htmlResponse(exchange, refusalOnCreditPage)
+        }
+        val target = File(dir, "credit-refused.bin")
+
+        val error = runCatching {
+            downloader().download("http://127.0.0.1:$port/credit-refused.bin", target)
+        }.exceptionOrNull()
+
+        assertTrue("a refusal on the handshake page must fail, got $error", error is IOException)
+        assertTrue("the message must be carried, got ${error?.message}", error?.message?.contains("金币不足") == true)
+        assertEquals("a refusal must not follow the continue link", 1, hits.get())
+        assertFalse(target.exists())
+    }
+
+    @Test
     fun `a second html response fails instead of looping`() = runBlocking {
         val hits = AtomicInteger()
         server.createContext("/loop.bin") { exchange ->
