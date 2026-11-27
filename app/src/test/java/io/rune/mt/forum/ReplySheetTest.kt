@@ -69,6 +69,7 @@ import io.rune.mt.forum.ui.navigation.Route
 import io.rune.mt.forum.ui.page.forum.ForumThreadPage
 import io.rune.mt.forum.ui.page.forum.ForumViewModel
 import io.rune.mt.forum.ui.page.forum.REPLY_SHEET_TAG
+import io.rune.mt.forum.ui.page.forum.ReplyComposer
 import io.rune.mt.forum.ui.page.forum.ReplyComposerBody
 import io.rune.mt.forum.ui.page.forum.ReplyState
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBottomSheetCloseAction
@@ -190,6 +191,50 @@ class ReplySheetTest {
         compose.waitForIdle()
         compose.onNodeWithText("Send").assertDoesNotExist()
         compose.onNodeWithContentDescription("Reply").assertIsDisplayed()
+    }
+
+    /**
+     * The quoted-floor path must survive the container change: the sheet's own title carries
+     * 「回复 @author」 and the quote excerpt is still the chip above the field.
+     */
+    @Test
+    fun `quoted floor shows the quote chip and the addressed title`() {
+        compose.setContent {
+            CompositionLocalProvider(LocalSquircleEnabled provides false) {
+                AppTheme(
+                    useMiuix = true,
+                    themeMode = ThemeMode.LIGHT,
+                    paletteStyle = PaletteStyle.TonalSpot,
+                    colorSpec = ThemeColorSpec.SPEC_2021,
+                    useDynamicColor = false,
+                    useMiuixMonet = false,
+                    seedColor = Color(0xFF2E9E5B),
+                    useMiuixOs4 = false,
+                ) {
+                    MiuixComponentHost(useOs4 = false, useBlur = false) {
+                        ReplyComposer(
+                            state = ReplyState(
+                                visible = true,
+                                quoteAuthor = "wuti",
+                                quoteText = "有佬友知道目前靠谱的刷课软件吗？",
+                            ),
+                            onTextChange = {},
+                            onSubmit = {},
+                            onDismiss = {},
+                        )
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+
+        compose.onNodeWithText("Reply to @wuti").assertIsDisplayed()
+        compose.onNodeWithText("有佬友知道目前靠谱的刷课软件吗？").assertIsDisplayed()
+        // The quote alone is not a reply body: the field is still empty, so send stays disabled.
+        compose.onNodeWithText("Send").assertIsNotEnabled()
+        compose.onNodeWithText("Save draft").assertDoesNotExist()
     }
 
     /**

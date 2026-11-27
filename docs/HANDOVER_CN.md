@@ -1812,8 +1812,8 @@ BUILD SUCCESSFUL（`Lint found no new issues`）。
 ### 21.3 验证
 
 - `:app:compileStableDebugKotlin` → BUILD SUCCESSFUL。
-- `:app:testStableDebugUnitTest` → **55 suites / 324 tests / 0 failures / 0 errors / 0 skipped**
-  （基线 54 / 321；新增 `ReplySheetTest` 3 例）。
+- `:app:testStableDebugUnitTest` → **55 suites / 325 tests / 0 failures / 0 errors / 0 skipped**
+  （基线 54 / 321；新增 `ReplySheetTest` 4 例）。
 - `:app:lintVitalStableRelease` → BUILD SUCCESSFUL（`Lint found no new issues`）。
 - 字符串：**未新增/删除**任何键，三语仍各 **312** 键。
 - 截图：`docs/screenshots/reply-sheet.png`（OS3 面板 + 已输入文字 + 键盘焦点框；见下方限制）。
