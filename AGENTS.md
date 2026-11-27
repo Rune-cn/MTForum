@@ -190,6 +190,11 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     - **诊断日志**：`ForumDraftService` 每次加载打一行 `url / http / finalUrl / bytes / rows /
       parsed`（不含 Cookie）。`rows` 是 `li.forumlist_li` 原始行数、`parsed` 是解析出的行数，
       用来区分「站点没有草稿」和「选择器失配」；`finalUrl` 便于发现被 302 回登录页。
+    - **草稿只属于发帖，回复没有草稿**：回复框（`ReplyComposer`）**不得**出现「保存草稿」/
+      「恢复草稿」/「丢弃草稿」，`ReplyState` 也不再持有 `pendingDraft`/`draftSaved`/`draftError`/
+      `isDraftBusy`。关闭回复框就是丢弃输入，`dismissReply()` 不写任何本机副本。
+      `ForumDraftRepository`/`ForumDraftService` 的 reply 方法保留在数据层（历史与测试），但
+      生产路径**不再调用**——机主要求「帖子和评论要分开」。
 27. **签到只有一条 GET，结果在 CDATA 里**：`plugin.php?id=k_misign:sign&operation=qiandao&format=text&formhash=…`
     返回 `<?xml version="1.0"?>\r\n<root><![CDATA[已签到]]></root>`；`formhash` 只能从签到页
     `k_misign-sign.html` 的**退出链接**取（`parseFormhash` 的 `formhash=` 兜底）。

@@ -283,118 +283,50 @@ class ForumDraftViewModelTest {
         assertEquals("delete must send the harvested form, not a publish", 0, draftsService.publishCalls)
     }
 
-    // ---- 回复 (reply) --------------------------------------------------------
+    // ---- 回复 (reply): deliberately has NO draft feature ---------------------
 
+    /**
+     * Replies are not draftable any more (the user asked for 帖子 and 评论 to be separate).
+     *
+     * The behaviour that replaced the old flow is negative and therefore asserted from the outside:
+     * closing the composer must not write any device copy, must not call the site's reply-draft
+     * save, and reopening the same thread must not prompt anything. The compile-time absence of
+     * `saveReplyDraft`/`restoreReplyDraft` on `ForumViewModel` and of the draft fields on
+     * `ReplyState` is itself part of the contract — this test pins the runtime side.
+     */
     @Test
-    fun `saving a reply draft posts it to the site with the quote included`() {
-        val draftsService = FakeDraftService()
+    fun `the reply composer never stores a draft`() {
         val repository = DraftTestRepository()
-        val viewModel = ForumViewModel(repository, FakeDraftRepository(), draftsService)
-        viewModel.openThread(177_093, "帖子")
-        eventually("the thread should load") { viewModel.threadState.value.formhash != null }
-        viewModel.requestReply()
-        viewModel.updateReplyText("回复正文")
-
-        viewModel.saveReplyDraft()
-        eventually("the reply draft must be posted to the site") { draftsService.saveReplyCalls == 1 }
-
-        assertEquals(177_093, draftsService.lastReplyDraftTid)
-        assertEquals("回复正文", draftsService.lastReplyDraftMessage)
-        assertTrue(viewModel.replyState.value.draftSaved)
-        assertEquals("saving a draft must not send a reply", 0, repository.replyCalls)
-    }
-
-    @Test
-    fun `a failed reply draft save keeps the text and stores a device copy`() {
         val drafts = FakeDraftRepository()
         val draftsService = FakeDraftService()
-        draftsService.replyDraftResult = DraftActionResult.Failure("抱歉，您的请求来路不正确")
-        val viewModel = ForumViewModel(DraftTestRepository(), drafts, draftsService)
-        viewModel.openThread(177_093, "帖子")
-        eventually("the thread should load") { viewModel.threadState.value.formhash != null }
-        viewModel.requestReply()
-        viewModel.updateReplyText("回复正文")
-
-        viewModel.saveReplyDraft()
-        eventually("the device copy should be written") { drafts.replies[177_093] != null }
-
-        assertEquals("the text must stay in the composer", "回复正文", viewModel.replyState.value.text)
-        assertEquals("抱歉，您的请求来路不正确", viewModel.replyState.value.draftError)
-        assertTrue("a failed save must not claim success", !viewModel.replyState.value.draftSaved)
-    }
-
-    @Test
-    fun `reply composer offers the stored draft of the same thread only`() {
-        val drafts = FakeDraftRepository()
-        drafts.replies[177_093] = ForumReplyDraft(tid = 177_093, text = "上次的回复")
-        val viewModel = ForumViewModel(DraftTestRepository(), drafts, FakeDraftService())
-        viewModel.openThread(177_093, "帖子")
+        val viewModel = ForumViewModel(repository, drafts, draftsService)
+        viewModel.openThread(177_093, "主题")
         eventually("the thread should load") { viewModel.threadState.value.formhash != null }
 
         viewModel.requestReply()
-
-        assertTrue(viewModel.replyState.value.visible)
-        assertEquals(177_093, viewModel.replyState.value.tid)
-        assertEquals("上次的回复", viewModel.replyState.value.pendingDraft?.text)
-        assertEquals("text is not applied until 恢复草稿", "", viewModel.replyState.value.text)
-
+        viewModel.updateReplyText("半截回复")
         viewModel.dismissReply()
-        assertEquals(177_093, drafts.replies.keys.single())
-    }
 
-    @Test
-    fun `restoring the reply draft fills the text and quoted floor`() {
-        val drafts = FakeDraftRepository()
-        drafts.replies[177_093] = ForumReplyDraft(
-            tid = 177_093,
-            quoteAuthor = "Rune",
-            quoteText = "引用内容",
-            text = "上次的回复",
-        )
-        val viewModel = ForumViewModel(DraftTestRepository(), drafts, FakeDraftService())
-        viewModel.openThread(177_093, "帖子")
-        eventually("the thread should load") { viewModel.threadState.value.formhash != null }
+        assertEquals("reopening must not offer a restore prompt", true, viewModel.replyState.value.visible.not())
+        assertTrue("no device reply draft may be written", drafts.replies.isEmpty())
+        assertEquals("no site reply draft may be posted", 0, draftsService.saveReplyCalls)
+
         viewModel.requestReply()
-
-        viewModel.restoreReplyDraft()
-
-        val state = viewModel.replyState.value
-        assertEquals("上次的回复", state.text)
-        assertEquals("Rune", state.quoteAuthor)
-        assertEquals("引用内容", state.quoteText)
-        assertNull(state.pendingDraft)
+        assertEquals("the composer reopens empty", "", viewModel.replyState.value.text)
+        assertEquals(0, repository.replyCalls)
     }
 
     @Test
-    fun `discarding the reply draft deletes it`() {
-        val drafts = FakeDraftRepository()
-        drafts.replies[177_093] = ForumReplyDraft(tid = 177_093, text = "上次的回复")
-        val viewModel = ForumViewModel(DraftTestRepository(), drafts, FakeDraftService())
-        viewModel.openThread(177_093, "帖子")
-        eventually("the thread should load") { viewModel.threadState.value.formhash != null }
-        viewModel.requestReply()
-
-        viewModel.discardReplyDraft()
-        eventually("the stored reply draft should be deleted") { drafts.replies.isEmpty() }
-
-        assertEquals("", viewModel.replyState.value.text)
-        assertNull(viewModel.replyState.value.pendingDraft)
-    }
-
-    @Test
-    fun `a successful reply deletes the device draft`() {
+    fun `sending a reply still works without any draft plumbing`() {
         val repository = DraftTestRepository()
-        val drafts = FakeDraftRepository()
-        drafts.replies[177_093] = ForumReplyDraft(tid = 177_093, text = "上次的回复")
-        val viewModel = ForumViewModel(repository, drafts, FakeDraftService())
-        viewModel.openThread(177_093, "帖子")
+        val viewModel = ForumViewModel(repository, FakeDraftRepository(), FakeDraftService())
+        viewModel.openThread(177_093, "主题")
         eventually("the thread should load") { viewModel.threadState.value.formhash != null }
         viewModel.requestReply()
-        viewModel.restoreReplyDraft()
+        viewModel.updateReplyText("正常回复")
 
         viewModel.submitReply()
         eventually("the reply should be sent") { repository.replyCalls == 1 }
-        eventually("the draft must be dropped after replying") { drafts.replies[177_093] == null }
 
         assertTrue("the composer closes after a successful send", !viewModel.replyState.value.visible)
     }

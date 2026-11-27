@@ -339,12 +339,7 @@ if (state.posts.isEmpty()) {
     ReplyComposer(
         state = replyState,
         onTextChange = viewModel::updateReplyText,
-        onSaveDraft = viewModel::saveReplyDraft,
         onSubmit = viewModel::submitReply,
-        onRestoreDraft = viewModel::restoreReplyDraft,
-        onDiscardDraft = viewModel::discardReplyDraft,
-        onDismissRestorePrompt = viewModel::dismissReplyRestorePrompt,
-        onDraftSavedShown = viewModel::consumeReplyDraftSaved,
         onDismiss = viewModel::dismissReply,
     )
 
