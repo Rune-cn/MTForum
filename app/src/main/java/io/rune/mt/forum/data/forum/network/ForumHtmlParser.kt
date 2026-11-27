@@ -796,9 +796,17 @@ object ForumHtmlParser {
     fun extractNotice(html: String): String? {
         val doc = Jsoup.parse(html)
         val el = doc.selectFirst(
-            "div#messagetext, div.messagetext, div.comiis_msgbox div.msg_mes, p.alert, div.alert_info",
+            "div#messagetext, div.messagetext, div.comiis_msgbox div.msg_mes, p.alert, div.alert_info, " +
+                // The Comiis mobile 提示信息 page (the attachcredit handshake) prints its one line in
+                // `div.comiis_password_top > p`. Selecting the parent `div` instead would also pick
+                // up the icon-font glyph of `div.comiis_password_ico`, which then leaks into the
+                // user-facing error text. Captured sample: `attach_paid_credit.html`.
+                "div.comiis_password_top p",
         )
-        return el?.text()?.trim()?.takeIf { it.isNotBlank() }
+        // The template indents the sentence with runs of spaces (and glues a NBSP before ，
+        // on some pages), which would otherwise leak into the user-facing error string.
+        return el?.text()?.cleanTitle()?.replace('\u00A0', ' ')?.replace(NOTICE_WHITESPACE, " ")?.trim()
+            ?.takeIf { it.isNotBlank() }
     }
 
     // ---- Paid-attachment handshake (attachcredit) --------------------------
