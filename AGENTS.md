@@ -117,6 +117,16 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     `&nbsp;` 缩进，必须整块取出行并保持等宽与对齐；标题（`font[size]`）、引用、表格、附件、
     `hr`、`i.pstatus`、`div.comiis_modact` 同理各自成块。真实正文是 HTML，切勿对其跑 BBCode
     正则转换（代码里合法含 `[b]` 等字面量）。
+
+    **行内链接必须可点**：`<a href>` 不能只上色，必须挂 `LinkAnnotation.Url`。注意
+    `normalize()`/引用截断会重建 AnnotatedString，**重建时必须重映射 link 注解**，否则链接
+    静默退回不可点（正文段落全走 `normalize()`，漏一次就全站失效）。
+
+    **附件必须给「下载 or 浏览器」选择**：附件卡的点击只能弹选择面板
+    （`AttachmentChoiceSheet`），不能直接把 `mod=attachment` 丢给浏览器（Cookie 门禁，403 或
+    下载到 acw 挑战页）。下载走 `ForumAttachmentDownloader`（复用 `ForumHttpClient.client`
+    的 Cookie+acw、流式写 `cacheDir`、可取消、失败要有原因），**禁止**绕过鉴权或静默无响应。
+    文件名可来自他人帖子，落盘前必须 `sanitiseAttachmentFileName()`。
 26. **草稿只能是本地草稿**：站点发帖表单的 `save=1` **不是**保存草稿——2026-11-27 实测
     `save=1` + `topicsubmit=yes` 会直接发布主题，去掉 `topicsubmit` 也不会落任何草稿
     （`home.php?mod=space&do=thread&view=me&type=draft` 等地址均为 0 条）。发帖/回复草稿一律

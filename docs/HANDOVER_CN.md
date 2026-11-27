@@ -167,14 +167,15 @@ HTML，任务是**忠实渲染这段 HTML**——不引 WebView、不引第三�
 | `Paragraph` | `div/p/br` + 行内标签 | 15sp 正文，`AnnotatedString` 带 SpanStyle（可选 `textAlign`） |
 | `Heading(level)` | `<font size="6\|5\|4\|2">`（常包 `<strong>`） | 20 / 17 / 15.5 / 12.5 sp，Semibold，紧贴上边距 |
 | `CodeBlock` | `div.comiis_blockcode > .b_l > ol > li` | 独立面板、等宽、横向滚动、Copy 按钮，**逐行原样保留** |
-| `Quote(text, author)` | `div.comiis_quote > blockquote` / 裸 `<blockquote>` | 左侧竖线；作者行（`font color=#999999` 的「…发表于…」）作暗色页眉 |
+| `Quote(text, author, truncated, children)` | `div.comiis_quote > blockquote` / 裸 `<blockquote>` | 左侧竖线；作者行（`font color=#999999` 的「…发表于…」）作暗色页眉；**体内列表/表格/代码/分隔线/图片按原顺序成为 `children`** |
 | `Divider` | `<hr class="l">` | 1dp 分隔线 |
 | `BulletList(items)` | `ul/ol > li`（支持 2–3 层嵌套） | 圆点 / 序号 + 缩进 |
-| `Table(rows)` | `table/tr/td` | weight 网格 + 细边框 |
-| `Attachment` | `div.comiis_attach`（`span.f_ok`、`p.attach_size`、`a[href*=mod=attachment]`） | 附件卡片，点击 `ForumUrls.absolute` 后的下载地址 |
+| `Table(rows)` | `table/tr/th\|td`（含 `colspan`） | weight 网格 + 细边框；**表头加粗+底色，`colspan` 变 weight** |
+| `Attachment(name, caption, url, iconUrl, previewUrl, isImage)` | `div.comiis_attach`（`span.f_ok`、`p.attach_size`、`a[href*=mod=attachment]`、`img[src*=filetype]`） | 附件卡片，**尾随下载图标 + 文件类型角标；点击弹出"下载/浏览器/复制"选择**（见 §3.9） |
 | `ModeratorNote` | `div.comiis_modact` | 蓝色信息 chip |
 | `EditNote` | `i.pstatus`（「本帖最后由…编辑」） | 12sp 暗色说明，非斜体 |
-| `Picture` / `EmojiRow` | `<img>`（懒加载属性）/ `[#xxx]` token | 全宽图片 / 小表情行 |
+| `Picture` / `EmojiRow` | `<img>`（懒加载属性）/ `[#xxx]` token | 全宽图片 / 小表情行（引用内降为 96dp 缩略图） |
+| `Aligned(align, blocks)` | `<div align>` / `<p align>` / BBCode `[align=…]` | **块级对齐容器**：内部段落按容器对齐，列表/表格/图片整体按容器对齐 |
 
 服务端实测事实（Comiis 模板对单个 BBCode 标签的输出）：
 
@@ -202,7 +203,7 @@ HTML，任务是**忠实渲染这段 HTML**——不引 WebView、不引第三�
 | `em`/`i` | `FontStyle.Italic` |
 | `u`/`ins` | `Underline` |
 | `s`/`del` | `LineThrough` |
-| `a` | `primary` 色 + 下划线 |
+| `a` | `primary` 色 + 下划线 + **`LinkAnnotation.Url`（可点击）** |
 | `font color` | 解析 hex / 少量颜色名 |
 
 **为什么代码块必须独立成块**：`comiis_blockcode` 的每个 `<li>` 是一行代码，单行里还可能
@@ -218,9 +219,26 @@ jsoup；只有纯 BBCode（客户端外发回复 / 预览响应）才走 `bbcode
 颜色解析**没有**用 `android.graphics.Color.parseColor`——它在 JVM 单测里是 stub 会抛异常，
 被 `runCatching` 吞掉后样式静默消失。已改为自己解析。
 
-**已知限制**：`[align]` 只映射到段落 `textAlign`（无块级对齐容器）；表格不做合并单元格/
-表头语义；嵌套表格降级为文本行（可读即可）；服务端已丢弃的 `font size` 无法还原；超长引用
-不做额外截断（站点已在 HTML 里截好并带 `…`）。
+本轮（bbcode2）补齐的保真度缺口，每条都能指到一个 fixture：
+
+| 缺口 | 修复 | 证据样本 |
+|---|---|---|
+| 行内 `<a>` 只有颜色、点不动 | 解析期挂 `LinkAnnotation.Url`（`normalize()` 会重映射注解，否则折叠空白时把链接丢掉）；宿主 `onLinkClick` 可覆盖 | `rich_166223.html`（正文多外链） |
+| 表格无表头语义 / 合并列挤成等宽 | 站点「首行整行加粗」视为表头（加粗+底色）；真实 `<th>`/`<thead>` 同样识别；`colspan` 变 weight | `rich_156696.html`（网盘对比表，首行 `<td><div align=center><strong>`） |
+| `[align]` 只管段落 | 改为块级 `Aligned` 容器，内部段落与嵌套块都随容器对齐 | `rich_bbcode_reply.html` / `sample_bbcode_reply_page2.html`（`<div align="center">居中</div>`） |
+| 列表只到 2 层、`li` 内嵌列表后文字丢失 | 递归收集，深度不设上限；`ul/ol` 之后的文字仍留在父行；纯容器不产生空 bullet | 站点各列表页（`board_44.html` 等每行都有 `li>ul`）；逻辑用合成用例钉住 |
+| 引用的截断 `...` 原样显示 | 识别并剥掉服务端 ` ...`，置 `Quote.truncated`，渲染成独立的「站点已截断」行 | `rich_166223.html` 两条长引用 |
+| 引用里的 `<img>` 被丢掉 | 图片按**原位置**成为 `Quote.children` 的 `Picture`，渲染为 96dp 缩略图 | 合成用例（站点引用体内暂无图；见下方「诚实缺口」） |
+| 引用里的列表/表格/分隔线被拍平 | 引用体走独立 walker，`children` 保留结构 | `sample_bbcode_thread.html` 引用 + 合成 `[quote]` 用例 |
+
+**已知限制（更新）**：嵌套表格仍降级为文本行（可读即可，fixture 里无真实嵌套表格）；
+`rowspan` 不参与布局（只保证不丢单元格文字，Discuz `[table]` 本身不产生 `rowspan`）；
+服务端已丢弃的 `font size` 无法还原；引用截断按「行尾 ` ...`」判别，站点若改文案需同步调整。
+
+**诚实缺口**：`app/src/test/resources/forum/` 下所有真实线程样本的 `blockquote` 里都没有 `<img>`
+（只出现在列表缩略图与楼层正文中）。引用内图片的修复因此由**合成用例**（按站点真实 `<img>`
+属性形状构造）+ 站点确实渲染引用图片的行为共同支撑，没有一条真实 fixture 能直接证明它。
+
 
 用 `ForumRichBodyScreenshotTest` 在 JVM 上渲出的合成样例（标题 / 代码块 / 表格 / 附件卡 /
 精华 chip / 带作者引用 / 列表 / 分隔线 / 编辑说明），以及真实回复 `rich_bbcode_reply.html`
@@ -229,6 +247,16 @@ jsoup；只有纯 BBCode（客户端外发回复 / 预览响应）才走 `bbcode
 ![富文本正文块](screenshots/rich-body-constructs.png)
 
 ![真实 BBCode 回复渲染](screenshots/rich-bbcode-reply.png)
+
+本轮新增的构造（块级对齐 / 表头与合并列 / 三级嵌套列表 / 引用内结构 / 可点击链接 / 图片附件卡）
+都进了同一张 `06_rich_body_constructs.png`；真实 `div.comiis_attach` 卡片（尾随下载图标）单独出一张：
+
+![真实附件卡片（可下载）](screenshots/attachment-card.png)
+
+**下载选择面板本身没有截图**：`WindowBottomSheet` 是独立 Dialog 窗口，Robolectric 下
+`decorView.draw()` 与 `captureToImage()` 都取不到它的像素（两者都是空白）。面板的可见性由
+`ForumRichBodyScreenshotTest` 的断言（「Download to device」「Open in browser」「Copy link」
+三个节点均可见）保证，而不是靠一张假截图。
 
 ### 3.6 表情
 
@@ -267,6 +295,51 @@ URL 规范化统一走 `data/forum/network/ForumUrls.kt`：`//cdn…`、`/data/a
 GIF 由 `coil-gif`（API 28+ 用 `AnimatedImageDecoder`，以下用 `GifDecoder`）处理：没有它时
 Coil 走 `BitmapFactoryDecoder` 只出首帧，首帧透明的 GIF 看起来就是空白——这是「部分图/头像
 像没加载」的次要原因之一，不是主因。
+
+### 3.9 附件下载（2026-11-27 新增）
+
+用户反馈「附件可以选择下载」。旧行为是附件卡只把 `forum.php?mod=attachment&aid=…` 丢给浏览器，
+而该地址**是 Cookie 门禁的**：浏览器没登录态就是 403，或者拿到 acw JS 挑战页当文件下载。
+
+**选择面板**：点附件卡弹 `AttachmentChoiceSheet`（`WindowBottomSheet`，真 Dialog 窗口，
+不被 `LazyColumn` item 或正文 `SelectionContainer` 裁剪），三行：
+
+| 行 | 行为 |
+|---|---|
+| 下载到本机 | 走 `ForumAttachmentDownloader`（下面详述），sheet 内显示进度/结果 |
+| 在浏览器打开 | `ACTION_VIEW`，`runCatching` 包住（设备可能没有 http(s) 处理者） |
+| 复制链接 | `LocalClipboardManager`，行文案切到「已复制」 |
+
+OS4/OS3 分支按铁律 8：OS3 用经典 `WindowBottomSheet`；OS4 的玻璃版本同理可换
+`GlassBottomSheet`（同一套 content，`useMiuixOs4` 决定）。
+
+**下载路径**（`data/forum/network/ForumAttachmentDownloader.kt`）：
+
+1. 请求走 `ForumHttpClient.client`（= `ForumCookieJar` + `AcwInterceptor`），
+   UA/Referer 与其它请求一致——**绝不**用系统下载器直连；
+2. `body.byteStream()` **流式**写盘（64 KB buffer），不整文件进内存；
+3. 进度按整数百分比节流回调；`Content-Length` 缺失时回调 `null` → UI 显示不确定进度条；
+4. 每轮读取 `ensureActive()`，协程取消能真正中断（`CancellationException` 按「用户取消」处理，
+   不显示错误）；
+5. 校验：非 2xx 抛 `IOException("HTTP xxx")`；`Content-Type: text/html` 直接判定为挑战页并失败；
+   实际字节数 ≠ `Content-Length` 判定为截断并失败。失败时删掉半成品文件，**不留假成功**。
+
+**落盘位置**：`context.cacheDir/attachments/<sanitised name>`——所有受支持 API 级别都无需存储权限，
+缓存清扫器（`AutoCacheSweeper`）负责回收。下载完成后 sheet 行变为「已保存到应用缓存」，
+并提供「保存 / 分享」：把文件复制到 `getExternalFilesDir()/attachments/` 再走系统分享
+（`ACTION_SEND` + `EXTRA_STREAM`）。**没有**新增 `FileProvider`：那会扩大导出面，而
+`Android/data/<pkg>/files/` 本身可被分享接收方与 USB 读取。
+
+**文件名安全**：`sanitiseAttachmentFileName()` 替换 `\ / : * ? " < > |` 与控制字符、拆掉 `..`、
+去掉前导 `.`（防止生成隐藏文件）、截断到 120 字符、空名回退 `attachment`。
+`?key=value` 形状按 URL query 处理，普通文件名里的 `?` 只当保留字符，扩展名不会丢。
+
+**诚实边界**（未在真机验证的部分）：`ACTION_SEND` 是否会因缺少 `FileProvider` 而在某些接收方
+失败，只能在真机确认；失败时 `Timber.w` 记录并静默返回，不会崩。
+没有加 MediaStore 写公共 Downloads：那需要额外权限/分区存储分支，当前实现用「缓存 + 分享」覆盖
+「下载到本机」的诉求，且不需要任何运行时权限。
+
+`ForumThreadPage` 通过 `koinInject()` 取 `ForumHttpClient` 传给下载器（构造参数可注入，方便测试）。
 
 ### 3.8 线程模型
 

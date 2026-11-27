@@ -256,6 +256,10 @@ GET home.php?mod=space&uid={uid}&do=thread&view=me&from=space&mobile=2  # 最近
 | `[hr]` | `<hr class="l" />` |
 | 表情 | `<img src="…/static/image/smiley/…" smilieid="…">` |
 | 附件 | `div.comiis_attach`：`a[href*=mod=attachment]` + `p.attach_tit > span.f_ok`（名）+ `p.attach_size`（大小/下载次数） |
+| `[align=center]`（块级） | `<div align="center">…</div>`，内部可含列表/表格/图片 |
+| `[table]` 首行做表头 | `<tr><td><div align="center"><strong>标题</strong></div></td>…`（**无 `<th>`**，靠整行加粗） |
+| `colspan` | `<td colspan="2">`（Discuz `[td=2]` 或富文本表格）；`rowspan` 在 `[table]` 里不出现 |
+| 引用被服务端截断 | `blockquote` 体末尾追加字面量 ` ...`（ASCII 三点） |
 
 模板自身还输出两类注释块：`div.comiis_modact`（「本主题由 X 于 … 加入精华」）与
 `i.pstatus`（「本帖最后由 X 于 … 编辑」）。正文图片 `span.comiis_postimg img` 的真实地址在
@@ -269,7 +273,10 @@ GET home.php?mod=space&uid={uid}&do=thread&view=me&from=space&mobile=2  # 最近
 - 引用：`div.comiis_quote > blockquote`，作者取含「发表于」的 `font[color=#999999]`。
 - 附件：`div.comiis_attach`；文件名 `span.f_ok`，说明 `p.attach_size`，链接 `a[href*=mod=attachment]`。
 - 分隔线：`hr.l`。
-- 表格：`table/tr/td`。
+- 表格：`table/tr/th|td`；表头 = 真实 `<th>`/`<thead>` **或**「首行每格整体加粗」；`colspan` 参与列宽。
+- 块级对齐：`div[align]` / `p[align]`（`[align=…]` 的服务端输出）。
+- 行内链接：`a[href]` → `LinkAnnotation.Url`；`javascript:`/`file:`/`data:` 不产生注解。
+- 附件文件类型角标：`div.comiis_attach img[src*=static/image/filetype]`（**是图标，不是正文图片**）。
 
 上述选择器的解析/归块逻辑集中在 `ui/page/forum/ForumBodyParser.kt`（不进 `ForumHtmlParser`，
 因为它是对已解析正文的二次渲染，不是页面抓取）。
@@ -282,4 +289,15 @@ GET home.php?mod=space&uid={uid}&do=thread&view=me&from=space&mobile=2  # 最近
 - `app/src/test/resources/forum/rich_bbcode_reply.html` —— 一个回复里几乎放全了行内标签：
   `strong/i/u/strike`、`font color`、`align=center`、`comiis_blockcode`、`a`、`ul`、`table`、
   `hr`、表情。
+- `app/src/test/resources/forum/sample_bbcode_thread.html` —— 与 `rich_166223.html` 同帖的
+  社区研究样本（`mobile=2` 变体），正文外链、引用、代码块、附件齐备。
+- `app/src/test/resources/forum/sample_bbcode_reply_page2.html` —— 同 `rich_bbcode_reply.html`
+  的第 2 页变体，钉住「一个回复放全标签」。
+- `app/src/test/resources/forum/sample_attach_thread.html` —— 同帖的附件变体，
+  `div.comiis_attach` 里是真实 `.mtp` 附件 + `static/image/filetype/unknown.gif` 角标。
+- `app/src/test/resources/forum/rich_156696.html` —— 网盘对比帖：**首行整行加粗当表头**的
+  五列表格（`<td><div align="center"><strong>`），块级对齐的唯一真实证据。
+
+**诚实说明**：上述真实样本的 `blockquote` 内都没有 `<img>`；引用内图片的修复由合成用例
+（按站点真实 `<img>` 属性形状）支撑，不是某条 fixture 直接证明的。
 
