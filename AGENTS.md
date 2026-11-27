@@ -129,6 +129,16 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     的 Cookie+acw、流式写 `cacheDir`、可取消、失败要有原因），**禁止**绕过鉴权或静默无响应。
     文件名可来自他人帖子，落盘前必须 `sanitiseAttachmentFileName()`。
 
+    **付费附件必须走 attachcredit 握手**：卡片的 `p.attach_size` 有 `下载积分: 金币 -N` 时，
+    `mod=attachment` 首跳只会 302 到 `action=attachcredit` 的「提示信息」页，**不会**直接给文件。
+    该页要识别为握手页（URL 含 `action=attachcredit`，或正文含 `attachcredit` /
+    `点击此链接进行跳转`），提取**唯一**的继续链接（`aid` 哈希会重新生成、并多一个 `ck` 令牌，
+    `&amp;` 要还原成 `&` 且按原字符串请求），**只再跳一次**；第二跳仍是 HTML 就按失败处理，
+    绝不循环。**绝不能把这张握手页当成 acw 挑战页**（那会报「challenge page」并把付费附件判死）；
+    也不要自己再写第二套 acw 求解器。命中 `金币不足/抱歉/无法下载/请先登录/权限` 等失败通知时，
+    把服务端文案原样作为错误抛出，不要盲目重试。付费价格要在用户点「下载」**之前**显示
+    （`Attachment.costCoins` → `forum_attach_cost_hint`），不得自动确认付费下载。
+
 26. **草稿由站点保存（服务器草稿），本机只做离线兜底**：发帖/回复表单里的隐藏域
     `<input type="hidden" id="postsave" name="save" value="">` 就是「保存草稿」——那个按钮只是
     `document.getElementById('postsave').value=1` 后提交**同一个表单**。
