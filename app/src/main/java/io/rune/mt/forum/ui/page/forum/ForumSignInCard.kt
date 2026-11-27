@@ -21,12 +21,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.rune.mt.forum.R
 import io.rune.mt.forum.domain.forum.model.ForumSignInState
-import io.rune.mt.forum.ui.navigation.LocalNavigator
-import io.rune.mt.forum.ui.navigation.Route
-import io.rune.mt.forum.ui.theme.AppTheme
 import org.koin.androidx.compose.koinViewModel
 import top.yukonga.miuix.kmp.basic.Button
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
@@ -34,28 +30,32 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 每日签到 card on the account/settings surface.
+ * 每日签到 panel: the counters, the button, and the guest prompt.
  *
  * The site's 签到 page is a single screen of three numbers and one button, so it is rendered as a
- * card next to the account block instead of a dedicated page: the numbers are the whole feature,
- * and a page would add a navigation hop for one tap. Everything visible comes from
- * [ForumSignInViewModel] (one page fetch), and the sign-in GET's CDATA answer is shown verbatim in
- * the enclosing page's [SnackbarHostState] — the site's own wording is the only honest one.
+ * compact panel instead of a dedicated page. It is hosted by [`ForumSignInSheet`] behind the home
+ * top bar's check-in button; the panel itself draws **no** surround, because the sheet already is
+ * the surface (a card inside a sheet would be a frame inside a frame). Everything visible comes
+ * from [ForumSignInViewModel] (one page fetch), and the sign-in GET's CDATA answer is shown
+ * verbatim in the enclosing [SnackbarHostState] — the site's own wording is the only honest one.
  *
  * Guests (and an expired cookie) get a sign-in prompt instead of the numbers: the page is
  * member-only and the repository reports that as a login requirement, never as "no data".
  *
- * @param snackbarHostState Host owned by the settings page; the server's result text is shown there.
+ * @param snackbarHostState Host owned by the hosting sheet; the server's result text is shown there.
+ * @param onLogin Guest action. Passed in rather than read from `LocalNavigator`: the OS4 glass
+ *   sheet's content is composed by the root scaffold's dialog layer, which sits **above** the
+ *   shell's `LocalNavigator` provider, so a composition-local read here would crash on OS4.
  */
 @Composable
 fun ForumSignInCard(
     snackbarHostState: SnackbarHostState,
+    onLogin: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ForumSignInViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val session by viewModel.session.collectAsStateWithLifecycle()
-    val navigator = LocalNavigator.current
     val guest = !session.isLoggedIn || state.loginRequired
 
     LaunchedEffect(Unit) { viewModel.loadIfNeeded() }
@@ -69,47 +69,40 @@ fun ForumSignInCard(
         viewModel.clearMessage()
     }
 
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = if (AppTheme.useMiuixOs4) 16.dp else 12.dp)
-            .padding(bottom = 12.dp),
-    ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-            if (guest) {
-                GuestRow(onLogin = { navigator.push(Route.Login) })
-            } else {
-                HeaderRow(
-                    alreadySigned = state.alreadySignedToday,
-                    level = state.signIn.signInLevel,
+    Column(modifier = modifier.fillMaxWidth()) {
+        if (guest) {
+            GuestRow(onLogin = onLogin)
+        } else {
+            HeaderRow(
+                alreadySigned = state.alreadySignedToday,
+                level = state.signIn.signInLevel,
+            )
+            Spacer(Modifier.height(12.dp))
+            when {
+                state.isLoading && !state.loaded -> LoadingRow()
+                state.error != null && !state.loaded -> ErrorRow(
+                    message = state.error.orEmpty(),
+                    onRetry = viewModel::refresh,
                 )
-                Spacer(Modifier.height(12.dp))
-                when {
-                    state.isLoading && !state.loaded -> LoadingRow()
-                    state.error != null && !state.loaded -> ErrorRow(
-                        message = state.error.orEmpty(),
-                        onRetry = viewModel::refresh,
-                    )
 
-                    else -> {
-                        StatsRow(signIn = state.signIn)
-                        state.error?.let { error ->
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                text = error,
-                                fontSize = 12.sp,
-                                color = MiuixTheme.colorScheme.error,
-                            )
-                        }
-                        Spacer(Modifier.height(12.dp))
-                        ActionRow(
-                            alreadySigned = state.alreadySignedToday,
-                            isSigningIn = state.isSigningIn,
-                            canRefresh = state.loaded,
-                            onSignIn = viewModel::signIn,
-                            onRefresh = viewModel::refresh,
+                else -> {
+                    StatsRow(signIn = state.signIn)
+                    state.error?.let { error ->
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = error,
+                            fontSize = 12.sp,
+                            color = MiuixTheme.colorScheme.error,
                         )
                     }
+                    Spacer(Modifier.height(12.dp))
+                    ActionRow(
+                        alreadySigned = state.alreadySignedToday,
+                        isSigningIn = state.isSigningIn,
+                        canRefresh = state.loaded,
+                        onSignIn = viewModel::signIn,
+                        onRefresh = viewModel::refresh,
+                    )
                 }
             }
         }
@@ -119,8 +112,8 @@ fun ForumSignInCard(
 /**
  * Status line plus 签到等级.
  *
- * The card sits under the page's 「每日签到」section title, so it does not repeat the title: this
- * row answers the one question the section title cannot — is today done.
+ * The sheet's title already says 每日签到, so this row does not repeat it: it answers the one
+ * question the title cannot — is today done.
  */
 @Composable
 private fun HeaderRow(alreadySigned: Boolean, level: String?) {

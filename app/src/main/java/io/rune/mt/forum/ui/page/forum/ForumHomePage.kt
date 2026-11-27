@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
@@ -26,6 +27,9 @@ import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,6 +46,7 @@ import io.rune.mt.forum.R
 import io.rune.mt.forum.domain.forum.model.Forum
 import io.rune.mt.forum.domain.forum.model.ForumHotEntry
 import io.rune.mt.forum.domain.forum.model.ForumThread
+import io.rune.mt.forum.ui.icons.AppMiuixIcons
 import io.rune.mt.forum.ui.navigation.LocalNavigator
 import io.rune.mt.forum.ui.navigation.Route
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixPageScaffold
@@ -64,6 +69,10 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * The grid is a three-column layout of icon tiles, mirroring the mobile site's own board
  * shortcut block. Both sections come from one `forum.php` request, and the ranking is rendered in
  * the server's order with the server's rank numbers — never re-sorted client-side.
+ *
+ * The top bar carries two actions: the 消息提醒 bell (site notices) and 每日签到 at the far right.
+ * The check-in button opens [`ForumSignInSheet`] rather than signing in on the tap, and the
+ * settings page no longer hosts that panel (the user asked for the home entry point twice).
  */
 @Composable
 fun ForumHomePage(
@@ -79,88 +88,118 @@ fun ForumHomePage(
     val useMiuixOs4 = AppTheme.useMiuixOs4
     val listState = rememberLazyListState()
 
+    var showSignIn by rememberSaveable { mutableStateOf(false) }
+
     LaunchedEffect(Unit) {
         Timber.tag("ForumHomePage").i("home shown")
         viewModel.loadHomeIfNeeded()
     }
 
-    MiuixPageScaffold(
-        title = title,
-        chrome = chrome,
-        outerPadding = outerPadding,
-        horizontalPadding = if (useMiuixOs4) 16.dp else 12.dp,
-        listState = listState,
-        verticalPadding = 12.dp,
-        actions = {
-            // 消息提醒 opens the site's notice inbox; it is not a pager switch, so the tab the
-            // user was on (论坛) stays behind them when they come back.
-            MiuixTopBarIconButton(onClick = { navigator.push(Route.Notices) }) {
-                Icon(
-                    imageVector = Icons.Rounded.Notifications,
-                    contentDescription = stringResource(R.string.notice_entry_title),
-                )
+    // The page root Box exists for the 签到 sheet: it must be a sibling of the scaffold when it is
+    // the OS4 inline overlay, so it is measured against the page and stays outside the content
+    // subtree `chrome.backdrop` records (the placement and sampling rules of the thread overflow
+    // menu, rules 12 / 23).
+    Box(modifier = Modifier.fillMaxSize()) {
+        MiuixPageScaffold(
+            title = title,
+            chrome = chrome,
+            outerPadding = outerPadding,
+            horizontalPadding = if (useMiuixOs4) 16.dp else 12.dp,
+            listState = listState,
+            verticalPadding = 12.dp,
+            actions = {
+                // 消息提醒 opens the site's notice inbox; it is not a pager switch, so the tab the
+                // user was on (论坛) stays behind them when they come back.
+                MiuixTopBarIconButton(onClick = { navigator.push(Route.Notices) }) {
+                    Icon(
+                        imageVector = Icons.Rounded.Notifications,
+                        contentDescription = stringResource(R.string.notice_entry_title),
+                    )
+                }
+                // 每日签到 sits at the screen's top-right edge (last action of the bar). The tap
+                // opens the sign-in sheet instead of signing in: the counters and the site's own
+                // result wording are what make the action legible, and a silent GET behind an icon
+                // would report its outcome in a snackbar the user is not looking at.
+                MiuixTopBarIconButton(onClick = { showSignIn = true }) {
+                    Icon(
+                        imageVector = AppMiuixIcons.Tasks,
+                        contentDescription = stringResource(R.string.sign_in_section_title),
+                    )
+                }
+            },
+        ) {
+            // The search entry sits above the board grid: it is its own entry point, not a board.
+            item(key = "forum_search_entry") {
+                ForumSearchEntryCard(onClick = { navigator.push(Route.ForumSearch()) })
             }
-        },
-    ) {
-        // The search entry sits above the board grid: it is its own entry point, not a board.
-        item(key = "forum_search_entry") {
-            ForumSearchEntryCard(onClick = { navigator.push(Route.ForumSearch()) })
+
+            when {
+                state.isLoading -> item { ForumLoadingCard() }
+
+                state.error != null -> item {
+                    ForumErrorCard(
+                        message = state.error.orEmpty(),
+                        onRetry = { viewModel.loadHome(refresh = true) },
+                    )
+                }
+
+                else -> {
+                    if (state.forums.isNotEmpty()) {
+                        item { SmallTitle(stringResource(R.string.forum_boards)) }
+                        items(
+                            items = state.forums.chunked(FORUM_GRID_COLUMNS),
+                            key = { row -> "board_row_${row.first().fid}" },
+                        ) { row ->
+                            ForumBoardRow(
+                                forums = row,
+                                onBoardClick = { forum ->
+                                    navigator.push(Route.ForumList(forum.fid, forum.name))
+                                },
+                            )
+                        }
+                    }
+
+                    if (state.hotRanking.isNotEmpty()) {
+                        item { SmallTitle(stringResource(R.string.forum_hot_ranking)) }
+                        // The site prints 热帖排行 as one contiguous block, and the example renders
+                        // consecutive rows of a section as a single grouped card
+                        // (`component/GroupedCardItems.kt` + `MainPage.kt`). Grouping the ranking the
+                        // same way replaces the stack of ten separate cards with one card whose rows
+                        // are square between the first and last.
+                        miuixGroupedItems(
+                            items = state.hotRanking,
+                            keyPrefix = "hot",
+                            key = { entry -> "hot_${entry.tid}" },
+                            outerBottomPadding = 12.dp,
+                            insidePadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                        ) { entry, _ ->
+                            ForumRankRow(
+                                entry = entry,
+                                onClick = { navigator.push(Route.ForumThread(entry.tid, entry.title)) },
+                            )
+                        }
+                    }
+
+                    if (state.forums.isEmpty() && state.hotRanking.isEmpty()) {
+                        item { ForumEmptyCard(stringResource(R.string.forum_empty_threads)) }
+                    }
+
+                    item { Spacer(Modifier.height(12.dp)) }
+                }
+            }
         }
 
-        when {
-            state.isLoading -> item { ForumLoadingCard() }
-
-            state.error != null -> item {
-                ForumErrorCard(
-                    message = state.error.orEmpty(),
-                    onRetry = { viewModel.loadHome(refresh = true) },
-                )
-            }
-
-            else -> {
-                if (state.forums.isNotEmpty()) {
-                    item { SmallTitle(stringResource(R.string.forum_boards)) }
-                    items(
-                        items = state.forums.chunked(FORUM_GRID_COLUMNS),
-                        key = { row -> "board_row_${row.first().fid}" },
-                    ) { row ->
-                        ForumBoardRow(
-                            forums = row,
-                            onBoardClick = { forum ->
-                                navigator.push(Route.ForumList(forum.fid, forum.name))
-                            },
-                        )
-                    }
-                }
-
-                if (state.hotRanking.isNotEmpty()) {
-                    item { SmallTitle(stringResource(R.string.forum_hot_ranking)) }
-                    // The site prints 热帖排行 as one contiguous block, and the example renders
-                    // consecutive rows of a section as a single grouped card
-                    // (`component/GroupedCardItems.kt` + `MainPage.kt`). Grouping the ranking the
-                    // same way replaces the stack of ten separate cards with one card whose rows
-                    // are square between the first and last.
-                    miuixGroupedItems(
-                        items = state.hotRanking,
-                        keyPrefix = "hot",
-                        key = { entry -> "hot_${entry.tid}" },
-                        outerBottomPadding = 12.dp,
-                        insidePadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
-                    ) { entry, _ ->
-                        ForumRankRow(
-                            entry = entry,
-                            onClick = { navigator.push(Route.ForumThread(entry.tid, entry.title)) },
-                        )
-                    }
-                }
-
-                if (state.forums.isEmpty() && state.hotRanking.isEmpty()) {
-                    item { ForumEmptyCard(stringResource(R.string.forum_empty_threads)) }
-                }
-
-                item { Spacer(Modifier.height(12.dp)) }
-            }
-        }
+        // No proactive fetch and therefore no 未签到 badge on the button: knowing the day's state
+        // before the user opens the sheet would cost a `k_misign-sign.html` request on every home
+        // entry, and polling is out of the question (rule 27). The first open loads the page once;
+        // `ForumSignInViewModel` is activity-scoped, so later opens reuse it. The flag is saved so
+        // the sheet comes back after the login page it may have sent the user to.
+        ForumSignInSheet(
+            show = showSignIn,
+            onDismissRequest = { showSignIn = false },
+            onLogin = { navigator.push(Route.Login) },
+            backdrop = chrome.backdrop,
+        )
     }
 }
 /** The grid stays three columns wide on phones, matching the site's shortcut block. */

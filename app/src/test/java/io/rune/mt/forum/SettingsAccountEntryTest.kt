@@ -128,6 +128,42 @@ class SettingsAccountEntryTest {
         assertEquals("My profile", context.getString(R.string.profile_entry_title))
     }
 
+    /**
+     * 签到 moved from the settings card to the home top bar (user request), so the settings page
+     * must not host it any more while the component itself stays in the codebase for its new
+     * home. Both sides are pinned: absence in the settings source, presence in the home source.
+     *
+     * The settings section is built inline in a `LazyListScope` and the home page needs the whole
+     * Koin graph, so this is the same static contract check the forum-section test above uses;
+     * `ForumHomeSignInEntryTest` drives the real widgets for the behaviour.
+     */
+    @Test
+    fun `sign-in is reached from the home top bar not the settings page`() {
+        val settings = File("src/main/java/io/rune/mt/forum/ui/page/miuix/settings/preferred/MiuixPreferredPage.kt")
+            .also { assertTrue(it.isFile, "settings page source not found at ${it.absolutePath}") }
+            .readText()
+        val home = File("src/main/java/io/rune/mt/forum/ui/page/forum/ForumHomePage.kt")
+            .also { assertTrue(it.isFile, "home page source not found at ${it.absolutePath}") }
+            .readText()
+
+        assertTrue(
+            !settings.contains("ForumSignInCard"),
+            "the 签到 panel must be gone from the settings page",
+        )
+        assertTrue(
+            !settings.contains("R.string.sign_in_section_title"),
+            "the settings page must not keep the 每日签到 section title",
+        )
+        assertTrue(
+            home.contains("ForumSignInSheet(") && home.contains("R.string.sign_in_section_title"),
+            "the home page must open the sign-in sheet from the top bar",
+        )
+        assertTrue(
+            home.contains("MiuixTopBarIconButton"),
+            "the entry point must stay a Miuix top-bar icon button (rule 7)",
+        )
+    }
+
     private fun composeSection(
         session: ForumSession,
         onOpenProfile: (ForumUser) -> Unit,

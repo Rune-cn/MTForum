@@ -15,6 +15,7 @@ import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.Settings
+import top.yukonga.miuix.kmp.icon.extended.Tasks
 import top.yukonga.miuix.kmp.icon.extended.Tune
 
 object AppMiuixIcons {
@@ -25,6 +26,10 @@ object AppMiuixIcons {
     val Ok = MiuixIcons.Regular.Ok
     val Delete = MiuixIcons.Regular.Delete
     val Tune = MiuixIcons.Regular.Tune
+    // 每日签到: the library's checklist glyph. Miuix has no dedicated check-in/calendar-with-tick
+    // icon in this release (`Tasks` and `Months` are the closest); a checklist reads as "today's
+    // task" and stays legible at top-bar size.
+    val Tasks = MiuixIcons.Regular.Tasks
 
     // --- Navigation Icons ---
     val Back = MiuixIcons.Regular.Back

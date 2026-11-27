@@ -1394,7 +1394,7 @@ htmlon / usesig / save`（另有 `hiddenreplies`、`ordertype` 等可选 checkbo
 
 ### 17.1 站点事实（详见 REVERSE_SPEC §22）
 
-- 入口：首页「每日签到」卡片 → `k_misign-sign.html`（插件 `k_misign`）。
+- 入口：**首页顶栏右上角**（`Tasks` 图标）→ 签到面板 → `k_misign-sign.html`（插件 `k_misign`）。
 - 页面一屏给全：头像 `div.user_img img`、昵称 `h2.fyy`、`p.fyy.comiis_tm`（`签到等级 Lv.8`）、
   三行统计 `div.comiis_qdinfo ul li`（今日排名 / 连续签到 / 累计签到）、
   `a#signresult`（签到按钮）、补签链接、`div#ranklist`（排行榜，AJAX 填充）。
@@ -1412,17 +1412,42 @@ htmlon / usesig / save`（另有 `hiddenreplies`、`ordertype` 等可选 checkbo
 | 解析 | `ForumHtmlParser.parseSignInState` / `parseSignInOutcome` / `parseCdataMessage` | DOM 选择器仍只在 parser；CDATA 抽取一处实现 |
 | 仓库 | `ForumRepository.getSignInState()` / `signIn(formhash)` | 均 `withContext(Dispatchers.IO)`；游客抛 `ForumLoginRequiredException`；签到结果按文案分类 |
 | VM | `ui/page/forum/ForumSignInViewModel.kt` | 一次取页 + 签到后**再取一次页**刷新数字；`message` 是服务器原文（一次性 snackbar） |
-| UI | `ui/page/forum/ForumSignInCard.kt`，挂在 `MiuixPreferredPage` 账号区块下方 | 已签到/未签到标题、三格统计、`签到` 按钮（已签到则禁用并显示「今日已签到」）、刷新、错误行；游客显示登录卡片 → `Route.Login` |
+| UI | `ui/page/forum/ForumSignInSheet.kt`（底部面板，首页顶栏打开）+ `ForumSignInCard.kt`（面板内容） | 已签到/未签到标题、三格统计、`签到` 按钮（已签到则禁用并显示「今日已签到」）、刷新、错误行；游客显示登录卡片 → `Route.Login` |
 
-**形状选择（为什么是卡片而非独立页）**：整个功能就是三个数字加一个按钮，设置页本来就有账号
-区块；做成独立页会为一次点击多一次导航，而且要多注册一条 route。卡片挂在账号区块下，
-「我的」页一进来就能看到状态。VM 仍注册在 `di/ViewModelModule`。
+**入口位置（2026-11-27 调整，用户请求「签到放在主页右上角」）**：签到不再挂在设置页账号区块
+下，而是在首页顶栏铃铛右边的第二个 `MiuixTopBarIconButton`（`AppMiuixIcons.Tasks`，rule 7）。
+点它**不会**直接签到，而是打开底部面板——签到按钮、三个数字与服务器原文提示都在面板里，
+一次误触不会静默发 GET。设置页「论坛」分组因此只剩「我的收藏」+「草稿」，实现与规则 18 一致。
 
-**已经签到不是错误**：`已签到` 映射成 `AlreadySigned`（卡片标记完成 + 原样 snackbar），
+**为什么是底部面板，不是独立页、也不是回到设置页**：功能本体仍是三个数字加一个按钮。
+独立路由要为一次点击多一次导航、多注册一条 route，还会把首页整个推走；底部面板从首页一触即达、
+下滑即关，和附件选择器（`AttachmentChoiceSheet`）是同一个形状。设置页卡片在第一轮已经
+被用户要求删掉两次（§15.8 又删了 Notices / UserProfile 两行），这里按用户明确要求换位置，
+组件本身保留（`ForumSignInCard` 供面板复用）。
+
+**面板按风格分支（rule 8）**：OS4 → `GlassBottomSheet`（内联，compose 进根 `Miuix Scaffold`
+的 dialog 层，所以 `MiuixComponentHost` 必须在——rule 9 要求它常驻）；OS3 →
+`WindowBottomSheet`（真实窗口）。OS4 面板的内容由**根 Scaffold** 组合，位置在
+`AppNavContainer` 的 `LocalNavigator` provider 之上，因此面板里的 `ForumSignInCard` 不读
+`LocalNavigator`，游客登录动作由 `ForumHomePage` 以 `onLogin` 参数传入（否则 OS4 下会抛
+`LocalNavigator not provided`，Robolectric 测试已实测到）。
+
+**玻璃采样**：面板 `backdrop` 传 `chrome.backdrop`（页面内容层），面板 compose 在录制子树之外，
+不会形成 rule 23 / 28 的自环；`enableBlur=false` 或 SafeMode 时为 `null`，走不透明兜底。
+
+**状态从哪来（不新增启动请求）**：首页**不**预取签到页，因此顶栏图标上没有「未签到」角标——
+那需要在每次进首页（=每次冷启动）多打一次 `k_misign-sign.html`，轮询更不可能（rule 27）。
+第一次打开面板时 `loadIfNeeded()` 取一次页，`ForumSignInViewModel` 是 activity 作用域，之后
+再打开直接复用；签到成功后按原逻辑再取一次页刷新数字。
+
+**已经签到不是错误**：`已签到` 映射成 `AlreadySigned`（面板标记完成 + 原样 snackbar），
 只有权限/登录/限流等文案才是 `Failure`（红字 + snackbar）。
 
 **成功文案是宽容映射**：实测账号当天已签到，只观测到 `已签到`。因此「非错误、非已签到」一律
 按 `Success` 处理，并把服务器原文原样给用户——不臆造「签到成功」这种客户端文案。
+
+**Snackbar 在面板里**：壳层 Scaffold 的 snackbar 位于面板遮罩之后（OS4）或面板窗口之后（OS3），
+用户看不到，所以面板自带 `SnackbarHostState`，服务器文案显示在面板底部（面板不因它改变高度）。
 
 ### 17.3 验证
 
