@@ -19,6 +19,10 @@ import timber.log.Timber
  * [ForumDraftRepository] backed by its own Preferences DataStore (`files/datastore/forum_drafts`)
  * so drafts survive process death and app restarts without mixing with the settings schema.
  *
+ * This is the **offline safety net**, not the primary draft store: drafts live on the site now
+ * ([ForumDraftService]). The composer writes here only when a site save failed, or when the page is
+ * left before any save — text the server never accepted must not be lost with the process.
+ *
  * The whole draft index is one JSON string under [KEY]: a save is a single atomic `edit`, and the
  * total-length cap can be applied across both composers. The cap is [MAX_DRAFTS]; when it is
  * exceeded the drafts with the oldest `savedAt` are evicted, so recently touched boards/threads

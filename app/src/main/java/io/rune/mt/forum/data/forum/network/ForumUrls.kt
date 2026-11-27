@@ -64,6 +64,27 @@ internal object ForumUrls {
         "home.php?mod=space&do=notice&view=${tab.value}&page=$page&mobile=2"
 
     /**
+     * One page of the signed-in user's 草稿 list.
+     *
+     * `filter=save` is the draft filter of the 我的帖子 guide view; the list is a normal guide list
+     * (same rows as a board), paginated with `page=`. Guests get the login form, not an empty list.
+     */
+    fun draftListPath(page: Int): String =
+        "forum.php?mod=guide&view=my&type=thread&filter=save&fid=0&mobile=2" +
+            if (page > 1) "&page=$page" else ""
+
+    /**
+     * The edit page of a draft — the only place that prints the draft's `pid` and the full hidden
+     * field set the edit POST needs.
+     */
+    fun draftEditPath(fid: Int, tid: Int, pid: Long?): String = buildString {
+        append("forum.php?mod=post&action=edit&fid=").append(fid)
+        append("&tid=").append(tid)
+        if (pid != null && pid > 0) append("&pid=").append(pid)
+        append("&page=1&mobile=2")
+    }
+
+    /**
      * Retry candidate for a CDN image that failed to load.
      *
      * Discuz keeps the same file under the forum host (`/data/attachment/...`, `/uc_server/...`),
