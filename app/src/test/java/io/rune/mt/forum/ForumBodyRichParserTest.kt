@@ -6,6 +6,7 @@ import io.rune.mt.forum.ui.page.forum.ForumBodyBlock
 import io.rune.mt.forum.ui.page.forum.ForumBodyParser
 import java.io.File
 import org.jsoup.Jsoup
+import androidx.compose.ui.text.LinkAnnotation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -138,6 +139,85 @@ class ForumBodyRichParserTest {
         val texts = table.rows.flatten().map { it.text.text }
         assertTrue("expected 网盘名称, got $texts", texts.any { it.contains("网盘名称") })
         assertTrue("expected 蓝奏云, got $texts", texts.any { it.contains("蓝奏云") })
+    }
+
+    /**
+     * The full 网盘 thread (`rich_156696.html`) is the regression fixture for 「表格方面显示不行」.
+     * Its OP holds **two** five-column tables — 4 and 11 `<tr>` (15 total), 75 `<td>`, no
+     * `colspan`/`rowspan`/`<th>`. The parser must emit one [ForumBodyBlock.Table] per table with
+     * the exact grid, promote the all-bold first row to a header, keep every cell's text (the
+     * `❌ 否` emoji and the long 备注 prose included), preserve the URL cell's
+     * [LinkAnnotation.Url], and record the `<div align="center">` inside a cell as centred.
+     */
+    @Test
+    fun `netdisk thread parses into two exact tables with header align and links`() {
+        val posts = posts("rich_156696.html")
+        val opHtml = posts.first { it.contentHtml.contains("<table") }.contentHtml
+
+        // Counts are measured from the DOM, never invented.
+        assertEquals("the OP carries two tables", 2, domCount(opHtml, "table"))
+        assertEquals("15 <tr> in total", 15, domCount(opHtml, "tr"))
+        assertEquals("75 <td>, none merged", 75, domCount(opHtml, "td"))
+        assertEquals("no <th> in this fixture", 0, domCount(opHtml, "th"))
+        assertEquals("no merged cells in this fixture", 0, domCount(opHtml, "[colspan], [rowspan]"))
+
+        val tables = ForumBodyParser.parse(opHtml).filterIsInstance<ForumBodyBlock.Table>()
+        assertEquals("one Table block per <table>", 2, tables.size)
+        assertEquals("first table has 4 rows", 4, tables[0].rows.size)
+        assertEquals("second table has 11 rows", 11, tables[1].rows.size)
+        assertTrue(
+            "every row is five columns, got ${tables.map { t -> t.rows.map { it.size } }}",
+            tables.all { table -> table.rows.all { it.size == 5 } },
+        )
+
+        // Header: row 0 of each table is the all-bold row; no data row is promoted by accident.
+        tables.forEachIndexed { index, table ->
+            val header = table.rows.first()
+            assertTrue(
+                "the all-bold first row of table $index must be a header, got ${header.map { it.header }}",
+                header.all { it.header },
+            )
+            assertTrue(
+                "data rows of table $index must not be headers",
+                table.rows.drop(1).none { row -> row.all { it.header } },
+            )
+            assertTrue(
+                "header cells must be centred as the site intends, got ${header.map { it.align }}",
+                header.all { it.align == ForumBodyBlock.BlockAlign.CENTER },
+            )
+        }
+
+        val cells = tables.flatMap { it.rows }.flatten()
+        val texts = cells.map { it.text.text }
+        assertTrue("header label 网盘名称 must survive, got $texts", texts.any { it.contains("网盘名称") })
+        assertTrue("header label 备注说明 must survive, got $texts", texts.any { it.contains("备注说明") })
+        assertTrue(
+            "the emoji status cell must survive intact, got $texts",
+            texts.any { it.contains("❌ 否") },
+        )
+        // The long 备注 prose must survive in full, not be truncated to fit a cell budget.
+        assertTrue(
+            "the long 备注 prose must survive, got $texts",
+            texts.any { it.contains("论坛签约合作网盘") && it.contains("支持大文件稳定传输") },
+        )
+
+        // A `<div align="center">` inside a data cell is recorded as centred alignment.
+        val nameCell = tables[0].rows[1].first()
+        assertEquals(
+            "the short data cell is centred by its inner div, got ${nameCell.align}",
+            ForumBodyBlock.BlockAlign.CENTER,
+            nameCell.align,
+        )
+
+        // The URL cell keeps a real, tappable link annotation covering its text.
+        val urlCell = cells.firstOrNull { it.text.text.contains("feejii.com") }
+        assertTrue("a URL cell is expected, got none", urlCell != null)
+        val links = urlCell!!.text.getLinkAnnotations(0, urlCell.text.length)
+        assertTrue("the URL cell must keep a LinkAnnotation, got $links", links.isNotEmpty())
+        assertTrue(
+            "the link must point at the URL, got $links",
+            links.any { (it.item as? LinkAnnotation.Url)?.url?.contains("feejii.com") == true },
+        )
     }
 
     /**
