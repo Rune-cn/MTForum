@@ -231,6 +231,16 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
 32. **解析器只出“能渲染的信息”**：站点模板里纯 JS 的动作行（如 `a.profile_ewmbox` 的 二维码
     浮层）在 `ForumHtmlParser` 就丢弃并写明原因（HANDOVER §17.1）；不要留到 UI 端靠“空值”判断，
     否则会连带吞掉真正空值的字段。
+33. **加载态必须是「状态」，不是一对 Show/Hide 事件**：阻塞对话框/进度条只能由
+    `StateFlow`（如 `UpdateRepository.checkState` 的 `Idle/Checking/Settled`）派生，且由**持有者**
+    在 `try/finally` 里把 `Checking` 收尾（成功、跳过、超时、异常、取消都要收）。
+    曾经的 `PreferredViewEvent.ShowUpdateLoading` / `AboutEvent.HideUpdateLoading` 只要有一条
+    路径没发出 `Hide`，「一直显示检查更新」就会永远转圈。
+    - 可挂起的检查要有两层封顶：整段 `withTimeout`（等锁/取偏好）+ 阻塞 HTTP 的 `callTimeout`
+      （`connectTimeout` **不覆盖 DNS**，协程取消也**打断不了** `execute()`）。
+    - 无结果的返回类型（`UpdateInfo?`）不足以表达“跳过 / 失败 / 已最新”：用
+      `sealed interface UpdateCheckResult { Checked | Skipped | Failed(reason) }`，失败必须带原因。
+    - 成功后要**重新问站点**（草稿删除），本地移除行只是断言，不是事实。
 
 ## Miuix 双风格（OS3 / OS4）
 

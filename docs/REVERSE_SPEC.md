@@ -205,6 +205,42 @@ subject, message, htmlon(=0), usesig(=1), save(=空)
 
 删除不可逆；发表不可逆（无法退回草稿）。两者在客户端都必须走显式二次确认。
 
+#### 编辑页**必须带 pid**（2026-11-27 修正，§16.7）
+
+Discuz 的 `source/include/post/post_editpost.php` 开头就是：
+
+```php
+$orig = get_post_by_tid_pid($_G['tid'], $pid);   // $pid = intval(getgpc('pid'))
+if(empty($orig)) { showmessage('post_nonexistence'); }   // lang_message.php: '帖子不存在'
+```
+
+`get_post_by_tid_pid($tid, 0)` 永远为空，所以**不带 `pid` 的编辑页请求必然回「帖子不存在」**。
+草稿列表行没有 pid，必须先取草稿自己的线程页（`thread-{tid}-1-1.html`，作者可见）里的
+`div.comiis_postli[id^=pid]`，再去 GET 编辑页：
+
+```
+GET thread-{tid}-1-1.html                              → div.comiis_postli#pid…
+GET forum.php?mod=post&action=edit&fid=…&tid=…&pid=…&page=1&mobile=2
+```
+
+判据（客户端实现）：`ForumDraftsViewModel.deleteDraft` → `ForumDraftServiceImpl.loadDraft`
+（pid 缺省时先补）→ `deleteDraft`（整份回放 + `delete=1`）。
+
+#### 删除 / 发表的响应判定
+
+| 响应 | 含义 |
+|---|---|
+| `主题删除成功`（`post_edit_delete_succeed`） | 删除已生效 |
+| `帖子编辑成功…`（`post_edit_succeed`） | 发表/再存已生效 |
+| `帖子不存在`（`post_nonexistence`） | 编辑请求缺 pid（见上），**不是**权限问题 |
+| `抱歉，指定的主题不存在或已被删除或正在被审核`（`thread_nonexistence`） | 线程真的没了 |
+| 302 到 `thread-<tid>-1-1.html` | 成功（Discuz 的常规跳转） |
+
+**成功文案优先于错误词**：comiis 提示页的 chrome 里可能同时出现「不存在」之类模板文字，
+客户端必须先把 `成功 / 已删除` 当作成功，再判错误词；`extractNotice` 也要主消息容器优先
+（`div#messagetext` / `div.messagetext` / `div.comiis_msgbox div.msg_mes` /
+`div.comiis_password_top p`），通用 `p.alert` / `div.alert_info` 只作兜底。
+
 #### 回复草稿
 
 回复表单（`form#fastpostform`）带同样的隐藏 `postsave`/`save` 对，所以回复也能存草稿：
@@ -554,4 +590,32 @@ isAttachmentFailureNotice / extractNotice`、`ForumBodyParser` 的 `ATTACH_COST`
   （`div#messagetext` + 唯一的 `点击此链接进行跳转` 继续链接，含 `&amp;` 与 `ck`）。
 - 下载器测试只把该页的站内 host 换成本机回环地址，其余字段（aid 哈希 / `ck` / `&amp;`）保持
   原样，所以全程无外网。
+
+---
+
+## 24. 检查更新 — GitHub Releases（2026-11-27 实测）
+
+**源**：客户端自己的仓库 `Rune-cn/MTForum`，不是站点接口。
+
+```
+稳定渠道   GET https://api.github.com/repos/Rune-cn/MTForum/releases/latest      （单个对象）
+预览渠道   GET https://api.github.com/repos/Rune-cn/MTForum/releases             （数组，取第一个 prerelease）
+```
+
+2026-11-27 实测（`gh api repos/Rune-cn/MTForum/releases/latest`）：`tag_name = 26.11.9`，
+唯一 asset `mtforum-stable-26.11.9.apk`（`browser_download_url` 指向 release 下载地址），
+`body = null`（无更新日志）。样本已提交：
+`app/src/test/resources/updater/github_latest_release.json`。
+
+| 规则 | 说明 |
+|---|---|
+| 版本来源 | asset 名尾部的 `-<version>`（`mtforum-stable-26.11.3.apk`）优先，否则回退 `tag_name`；`v` 前缀两边都去掉 |
+| 比较 | 逐段**数值**比较（`26.11.10 > 26.11.9`），末段 ≥7 位十六进制当 hash 后缀（预览版），hash 不同视为更新 |
+| asset 选择 | 只认 `.apk`，排除 `sha256/sha512/.sha/.md5/checksum/.sig`；`mtforum-stable-` 前缀优先，否则第一个 apk |
+| 下载 URL | OFFICIAL 直连；PROXY_7ED 前缀 `https://gh.sevencdn.com/`；CUSTOM 用设置里的前缀 |
+| 无 asset | 仍按 tag 比较出结论，`downloadUrl` 为空 → 更新面板回退 `htmlUrl` |
+
+**客户端约定**（`OnlineUpdatePolicy` / `UpdateCheckEngine`）：每次检查都必须落到
+`Checked` / `Skipped` / `Failed` 之一；`releases/latest` 在只有预发布时返回 404，这是
+`Failed`（有原因），不是「已是最新」。
 
