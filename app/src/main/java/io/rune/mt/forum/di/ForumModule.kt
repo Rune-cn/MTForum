@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
 import io.rune.mt.forum.data.forum.network.ForumCookieJar
 import io.rune.mt.forum.data.forum.network.ForumHttpClient
+import io.rune.mt.forum.data.forum.network.ForumHttpGateway
 import io.rune.mt.forum.data.forum.repository.ForumDraftRepositoryImpl
 import io.rune.mt.forum.data.forum.repository.ForumDraftServiceImpl
 import io.rune.mt.forum.data.forum.repository.ForumPasswordAuthenticator
@@ -26,7 +27,7 @@ private val DRAFT_DATA_STORE = named("ForumDraftDataStore")
 
 val forumModule = module {
     singleOf(::ForumCookieJar)
-    singleOf(::ForumHttpClient)
+    singleOf(::ForumHttpClient) { bind<ForumHttpGateway>() }
     singleOf(::ForumSessionStore)
     singleOf(::ForumPasswordAuthenticator)
     singleOf(::ForumRepositoryImpl) { bind<ForumRepository>() }

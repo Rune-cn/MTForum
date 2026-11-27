@@ -21,6 +21,41 @@ class MultipartPart(
 )
 
 /**
+ * One fetched page: the HTTP status, the URL the body actually came from and the decoded body.
+ *
+ * [url] is the **final** URL, so a silent redirect (e.g. a stale cookie being bounced to
+ * `logging.php?action=login`) is visible in a device log instead of being guessed at.
+ */
+data class ForumHttpResult(
+    val code: Int,
+    val url: String,
+    val body: String,
+) {
+    val isSuccessful: Boolean get() = code in 200..299
+}
+
+/**
+ * The forum HTTP surface the services talk to.
+ *
+ * [ForumHttpClient] is its only implementation, so the cookie jar and [AcwInterceptor] stay in one
+ * place (rule 1). The interface exists so a service that must be exercised against a captured page
+ * can be handed a fixture-backed source in a unit test without opening a socket.
+ */
+interface ForumHttpGateway {
+    /** Fetches [path] and throws when the status is not 2xx. */
+    suspend fun getHtml(path: String): String
+
+    /** Same GET as [getHtml] but returns the status/URL too, for diagnostics. */
+    suspend fun getHtmlResult(path: String): ForumHttpResult
+
+    /** Form POST (`application/x-www-form-urlencoded`). */
+    suspend fun postForm(path: String, fields: Map<String, String>): String
+
+    /** Multipart POST, used for the composer's form (attachments ride along as parts). */
+    suspend fun postMultipart(path: String, fields: Map<String, String>, parts: List<MultipartPart>): String
+}
+
+/**
  * Thin HTTP facade for bbs.binmt.cc.
  *
  * Every call goes through [AcwInterceptor] so the anti-bot challenger is transparently solved.
@@ -34,7 +69,7 @@ class MultipartPart(
  */
 class ForumHttpClient(
     private val cookieJar: ForumCookieJar,
-) {
+) : ForumHttpGateway {
 
     companion object {
         const val BASE_URL = "https://bbs.binmt.cc/"
@@ -54,7 +89,20 @@ class ForumHttpClient(
         .followSslRedirects(true)
         .build()
 
-    suspend fun getHtml(path: String): String = withContext(Dispatchers.IO) {
+    override suspend fun getHtml(path: String): String {
+        val result = getHtmlResult(path)
+        if (!result.isSuccessful) error("HTTP ${result.code} for $path")
+        return result.body
+    }
+
+    /**
+     * The same GET as [getHtml], with the status code and the final URL kept.
+     *
+     * A screen that must explain *why* it shows nothing ("never requested" vs "200 but the parser
+     * found no rows" vs "bounced to the login form") cannot do that from a bare body string, so
+     * the draft list reads this variant and logs the three facts.
+     */
+    override suspend fun getHtmlResult(path: String): ForumHttpResult = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(if (path.startsWith("http")) path else BASE_URL + path.removePrefix("/"))
             .header("User-Agent", MOBILE_UA)
@@ -63,14 +111,15 @@ class ForumHttpClient(
             .get()
             .build()
         client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                error("HTTP ${response.code} for $path")
-            }
-            response.body?.string().orEmpty()
+            ForumHttpResult(
+                code = response.code,
+                url = response.request.url.toString(),
+                body = response.body?.string().orEmpty(),
+            )
         }
     }
 
-    suspend fun postForm(path: String, fields: Map<String, String>): String = withContext(Dispatchers.IO) {
+    override suspend fun postForm(path: String, fields: Map<String, String>): String = withContext(Dispatchers.IO) {
         val body = FormBody.Builder()
             .apply { fields.forEach { (k, v) -> add(k, v) } }
             .build()
@@ -94,7 +143,7 @@ class ForumHttpClient(
      * `Filedata` parts, so file upload is not a separate hop. Wrapped in [Dispatchers.IO] like the
      * other entry points — the request body can be several megabytes of images.
      */
-    suspend fun postMultipart(
+    override suspend fun postMultipart(
         path: String,
         fields: Map<String, String>,
         parts: List<MultipartPart>,
