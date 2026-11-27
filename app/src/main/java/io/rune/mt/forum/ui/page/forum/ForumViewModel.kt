@@ -447,137 +447,21 @@ class ForumViewModel(
             quoteAuthor = quote?.authorName,
             quoteText = quote?.contentHtml?.let { ForumBodyParser.plainText(it).take(120) },
         )
-        // The composer offers the stored draft of this thread instead of silently filling the
-        // field. Only prompt while nothing was typed yet.
-        viewModelScope.launch {
-            val draft = runCatching { drafts.replyDraft(tid) }.getOrNull()
-            if (draft == null || draft.text.isBlank()) return@launch
-            _replyState.update { current ->
-                if (current.visible && current.tid == tid && current.text.isBlank() &&
-                    current.pendingDraft == null
-                ) {
-                    current.copy(pendingDraft = draft)
-                } else {
-                    current
-                }
-            }
-        }
-    }
-
-    /** Applies the local draft the restore prompt offered. */
-    fun restoreReplyDraft() {
-        val draft = _replyState.value.pendingDraft ?: return
-        _replyState.update {
-            it.copy(
-                text = draft.text,
-                quoteAuthor = draft.quoteAuthor ?: it.quoteAuthor,
-                quoteText = draft.quoteText ?: it.quoteText,
-                pendingDraft = null,
-                error = null,
-                errorRes = null,
-            )
-        }
-    }
-
-    /** Hides the restore prompt without deleting the stored draft (accidental dismissal). */
-    fun dismissReplyRestorePrompt() = _replyState.update { it.copy(pendingDraft = null) }
-
-    /** Deletes the stored draft of the open thread; the composer stays empty. */
-    fun discardReplyDraft() {
-        val tid = _replyState.value.tid
-        _replyState.update { it.copy(pendingDraft = null) }
-        if (tid == 0) return
-        viewModelScope.launch { runCatching { drafts.deleteReplyDraft(tid) } }
     }
 
     /**
-     * Explicit 保存草稿 of the reply composer.
+     * Closes the reply composer.
      *
-     * The reply form carries the same hidden `postsave`/`save` pair as the new-thread form, so this
-     * POSTs the reply with `save=1` and the **site** keeps the draft (author-only, listed under
-     * 草稿 like a new-thread draft). The device copy is written too: it is the only restore path
-     * for a reply whose site save failed, and the failure line is surfaced instead of pretending
-     * the draft was stored.
+     * Replies deliberately have **no** draft of any kind (the user asked for 帖子 and 评论 to be
+     * separate): dismissing discards whatever was typed instead of persisting it, and the footer
+     * offers no 保存草稿 action. Drafts belong to the new-thread composer only — see
+     * `docs/HANDOVER_CN.md`.
      */
-    fun saveReplyDraft() {
-        val composer = _replyState.value
-        val thread = _threadState.value
-        if (composer.tid == 0 || composer.text.isBlank() || composer.isSubmitting) return
-        val formhash = thread.formhash
-        if (formhash == null) {
-            _replyState.update {
-                it.copy(errorRes = R.string.reply_error_thread_not_ready)
-            }
-            return
-        }
-        val message = replyBody(composer)
-        _replyState.update { it.copy(isDraftBusy = true, error = null, errorRes = null, draftSaved = false) }
-        viewModelScope.launch {
-            val result = runCatching {
-                draftService.saveReplyDraft(
-                    tid = composer.tid,
-                    fid = thread.fid ?: 0,
-                    message = message,
-                    formhash = formhash,
-                    noticeAuthor = thread.noticeAuthor,
-                )
-            }.getOrElse { DraftActionResult.Failure(it.message ?: "保存草稿失败") }
-            when (result) {
-                is DraftActionResult.Success -> {
-                    Timber.tag(TAG).i("reply draft saved on the site tid=%d", composer.tid)
-                    runCatching { drafts.deleteReplyDraft(composer.tid) }
-                    _replyState.update {
-                        if (it.tid == composer.tid) {
-                            it.copy(isDraftBusy = false, draftSaved = true, draftError = null)
-                        } else {
-                            it
-                        }
-                    }
-                }
-
-                is DraftActionResult.Failure -> {
-                    Timber.tag(TAG).w("reply draft save tid=%d failed: %s", composer.tid, result.reason)
-                    // Keep the text; the device copy is the safety net for exactly this case.
-                    runCatching {
-                        drafts.saveReplyDraft(
-                            ForumReplyDraft(
-                                tid = composer.tid,
-                                quoteAuthor = composer.quoteAuthor,
-                                quoteText = composer.quoteText,
-                                text = composer.text,
-                            ),
-                        )
-                    }
-                    _replyState.update {
-                        if (it.tid == composer.tid) {
-                            it.copy(isDraftBusy = false, draftSaved = false, draftError = result.reason)
-                        } else {
-                            it
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    fun consumeReplyDraftSaved() = _replyState.update {
-        it.copy(draftSaved = false, draftError = null)
-    }
-
     fun dismissReply() {
-        val current = _replyState.value
-        // Dismissing keeps a non-blank composer on the device, but never overwrites an older saved
-        // draft the user did not restore (that would silently lose it). A dismiss is explicitly
-        // *not* a site save: leaving a composer must not create drafts behind the user's back.
-        if (current.visible && current.pendingDraft == null) {
-            persistReplyDraft(current, manual = false)
-        }
-        _replyState.value = current.copy(
+        _replyState.value = _replyState.value.copy(
             visible = false,
             error = null,
             errorRes = null,
-            draftSaved = false,
-            draftError = null,
         )
     }
 
@@ -588,23 +472,6 @@ class ForumViewModel(
             append(state.quoteText.orEmpty()).append("[/quote]\n")
         }
         append(state.text.trim())
-    }
-
-    private fun persistReplyDraft(state: ReplyState, manual: Boolean) {
-        if (state.tid == 0 || state.text.isBlank()) return
-        val draft = ForumReplyDraft(
-            tid = state.tid,
-            quoteAuthor = state.quoteAuthor,
-            quoteText = state.quoteText,
-            text = state.text,
-        )
-        viewModelScope.launch {
-            runCatching { drafts.saveReplyDraft(draft) }
-                .onFailure { Timber.tag(TAG).e(it, "save reply draft tid=%d failed", draft.tid) }
-            if (manual) {
-                _replyState.update { if (it.tid == draft.tid) it.copy(draftSaved = true) else it }
-            }
-        }
     }
 
     fun updateReplyText(text: String) {
@@ -629,9 +496,6 @@ class ForumViewModel(
             }
             result.onSuccess {
                 Timber.tag(TAG).i("reply sent tid=%d", thread.tid)
-                // The reply is on the server now; the local draft is stale.
-                runCatching { drafts.deleteReplyDraft(thread.tid) }
-                    .onFailure { Timber.tag(TAG).e(it, "delete reply draft tid=%d failed", thread.tid) }
                 _replyState.value = ReplyState()
                 refreshThread()
             }.onFailure { error ->

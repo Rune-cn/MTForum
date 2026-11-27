@@ -1633,3 +1633,19 @@ internal fun barBackdrop(contentBackdrop: LayerBackdrop?, hostBackdrop: LayerBac
 **仍未验证**：OS4 玻璃签到面板在 Robolectric 下无法渲染（AGSL 着色器 `cannot swizzle value of
 type 'shader'`，与三点菜单同一限制），装机体感未测；付费附件的 `ck` 时效/一次性、再次 acw 挑战、
 扣费次数均只能在真机确认。
+
+### 19.1 回复不再有草稿（2026-11-27）
+
+机主反馈「评论怎么也有保存草稿选项，帖子和评论要分开」。处理：
+
+- `ReplyComposer` 底部只留「取消 / 发送」，删除「保存草稿」按钮与 `DraftRestoreDialog`
+  恢复提示；`ReplyState` 移除 `pendingDraft` / `draftSaved` / `draftError` / `isDraftBusy`。
+- `ForumViewModel` 删除 `saveReplyDraft` / `restoreReplyDraft` / `dismissReplyRestorePrompt` /
+  `discardReplyDraft` / `consumeReplyDraftSaved` / `persistReplyDraft`；`dismissReply()` 只关闭，
+  **不再**落任何本机副本；回复成功后也不再删除「回复草稿」。
+- 数据层 `ForumDraftRepository` / `ForumDraftService` 的 reply 方法保留（历史 + 测试用），
+  生产路径不再调用。发帖草稿（`NewThreadPage`）不受影响。
+- 测试：删掉 5 个回复草稿用例，改为 2 个反向用例——「回复框从不存草稿」（关闭后本机无副本、
+  站点无 save 调用、重开为空）与「无草稿链路下回复仍可发送」。
+- 验证：`:app:testStableDebugUnitTest` → **52 suites / 313 tests / 0 failures**；
+  `:app:lintVitalStableRelease` → BUILD SUCCESSFUL。

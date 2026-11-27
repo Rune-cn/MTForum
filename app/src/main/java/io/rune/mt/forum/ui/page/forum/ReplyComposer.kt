@@ -60,36 +60,21 @@ import top.yukonga.miuix.kmp.window.WindowDialog
  * internally, the smiley picker, the error line, and a prominent send button that shows progress.
  * `imePadding()` keeps the field and buttons above the keyboard.
  *
- * Drafts are stored by the **site** (`save=1` on the same reply form, see docs/REVERSE_SPEC.md
- * §16.1); the footer's 保存草稿 posts that. A draft found for the thread is offered as a
- * 恢复草稿/丢弃 prompt instead of silently filling the field, and a failed save keeps the text plus
- * a device copy so nothing is lost.
+ * Replies carry **no draft feature**: 保存草稿 / 恢复草稿 belong to the new-thread composer only,
+ * because the user asked for 帖子 and 评论 to stay separate. Closing the sheet drops whatever was
+ * typed, so the footer is just 取消 / 发送.
  */
 @Composable
 internal fun ReplyComposer(
     state: ReplyState,
     onTextChange: (String) -> Unit,
-    onSaveDraft: () -> Unit,
     onSubmit: () -> Unit,
-    onRestoreDraft: () -> Unit,
-    onDiscardDraft: () -> Unit,
-    onDismissRestorePrompt: () -> Unit,
-    onDraftSavedShown: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     var pickerOpen by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val context = LocalContext.current
-    val draftSavedText = stringResource(R.string.draft_saved_toast)
-
-    LaunchedEffect(state.draftSaved) {
-        if (state.draftSaved) {
-            android.widget.Toast.makeText(context, draftSavedText, android.widget.Toast.LENGTH_SHORT).show()
-            onDraftSavedShown()
-        }
-    }
-
     // Focus after the dialog window is attached; requesting it in the same frame as `show` is
     // dropped by the dialog's own focus reset. Closing resets the smiley panel so the next open
     // starts at the field.
@@ -103,7 +88,7 @@ internal fun ReplyComposer(
         }
     }
 
-    val errorText = state.draftError ?: state.errorRes?.let { stringResource(it) } ?: state.error
+    val errorText = state.errorRes?.let { stringResource(it) } ?: state.error
 
     WindowDialog(show = state.visible, onDismissRequest = onDismiss) {
         Column(
@@ -213,12 +198,6 @@ internal fun ReplyComposer(
                     enabled = !state.isSubmitting,
                 )
                 Spacer(Modifier.width(8.dp))
-                TextButton(
-                    text = stringResource(R.string.draft_save),
-                    onClick = onSaveDraft,
-                    enabled = state.text.isNotBlank() && !state.isSubmitting && !state.isDraftBusy,
-                )
-                Spacer(Modifier.width(8.dp))
                 Button(
                     onClick = onSubmit,
                     modifier = Modifier.weight(1f),
@@ -240,16 +219,4 @@ internal fun ReplyComposer(
         }
     }
 
-    // Second window on top of the sheet: a stored draft for this thread is offered, never
-    // silently applied. A back/outside dismissal keeps the draft for the next open.
-    DraftRestoreDialog(
-        visible = state.visible && state.pendingDraft != null,
-        title = stringResource(R.string.draft_restore_title),
-        message = stringResource(R.string.draft_restore_message_local),
-        confirmText = stringResource(R.string.draft_restore_confirm),
-        discardText = stringResource(R.string.draft_restore_discard),
-        onConfirm = onRestoreDraft,
-        onDiscard = onDiscardDraft,
-        onDismiss = onDismissRestorePrompt,
-    )
 }
