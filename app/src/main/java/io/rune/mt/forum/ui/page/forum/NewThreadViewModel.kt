@@ -11,6 +11,8 @@ import io.rune.mt.forum.domain.forum.model.ForumDraft
 import io.rune.mt.forum.domain.forum.model.ForumEditForm
 import io.rune.mt.forum.domain.forum.model.ForumNewThreadDraft
 import io.rune.mt.forum.domain.forum.model.ForumNewThreadForm
+import io.rune.mt.forum.domain.forum.model.ImageHostGateway
+import io.rune.mt.forum.domain.forum.model.ImageHostResult
 import io.rune.mt.forum.domain.forum.model.NewThreadImage
 import io.rune.mt.forum.domain.forum.model.NewThreadResult
 import io.rune.mt.forum.domain.forum.repository.ForumDraftRepository
@@ -67,12 +69,27 @@ data class NewThreadState(
     val forumName: String = "",
     val title: String = "",
     val message: String = "",
+    /**
+     * Where the caret sits in [message], as a UTF-16 index.
+     *
+     * The page mirrors its `TextFieldValue.selection.end` here and reads it back after a
+     * programmatic edit (image-host upload, emoji, BBCode tag), so an inserted `[img]` lands where
+     * the user was typing instead of at the bottom of the post.
+     */
+    val messageCaret: Int = 0,
     val images: List<PickedImage> = emptyList(),
     /**
      * Feedback of the last image pick (accepted files with their size, rejected ones with the
      * reason). Never empty after a pick: a tap that attaches nothing must still say why.
      */
     val imageFeedback: List<ImagePickFeedback> = emptyList(),
+    /** True while one picked picture is being uploaded to the MT image host. */
+    val isUploadingImage: Boolean = false,
+    /**
+     * Last image-host failure, with the reason. The message text is never touched by a failure —
+     * the user's typing is the only copy of it.
+     */
+    val hostUploadError: String? = null,
     /**
      * Boards the composer may post into, read from the same index the home screen uses
      * ([ForumRepository.getHome], never a hard-coded list). Empty until the first load finishes.
@@ -135,10 +152,19 @@ data class NewThreadState(
  * deletes a **site-side draft** (`action=edit`).
  *
  * Discuz's mobile form is multipart and takes the pictures inline as `Filedata`, so there is no
- * separate upload round-trip — and **no separate image-host API**: an "MT 图床" upload is just the
- * site's attachment upload, which stores the file on the MT CDN (`oos.binmt.cc`). Images are
- * therefore prepared here ([AndroidImagePreparer]) and ride along with the post. Every pick is
- * reported to the user in [NewThreadState.imageFeedback]; a rejection always carries its reason.
+ * separate upload round-trip for the **attachment** path — images are prepared here
+ * ([AndroidImagePreparer]) and ride along with the post. Every pick is reported to the user in
+ * [NewThreadState.imageFeedback]; a rejection always carries its reason.
+ *
+ * ## Two image destinations (docs/REVERSE_SPEC.md §24)
+ *
+ * The forum's attachment path is not the only one: the MT image host (`https://img.binmt.cc/`,
+ * announced in thread 98890) is a **separate service** whose purpose is publishing a picture
+ * without the forum's 1 MB re-compression. Choosing it here ([uploadImageToHost]) uploads the
+ * original bytes and inserts the host's own `[img]…[/img]` line **at the caret**, so the post
+ * shows the full-resolution picture instead of an attachment thumbnail. The attachment path stays
+ * exactly as it was; neither is silent — the page asks which one on every pick, and
+ * `docs/HANDOVER_CN.md` §21 records that the image host is the default and why.
  *
  * The hidden `formhash`/`posttime` must be fetched from the form page first; they are **per board**,
  * which is why [selectBoard] re-fetches the form and why submitting is blocked while that fetch is
@@ -155,6 +181,8 @@ class NewThreadViewModel(
     private val repository: ForumRepository,
     private val drafts: ForumDraftRepository,
     private val draftService: ForumDraftService,
+    /** The MT image host (a separate service from the forum; see the class docs). */
+    private val imageHost: ImageHostGateway,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(NewThreadState())
@@ -340,6 +368,7 @@ class NewThreadViewModel(
                             fid = edit.fid.takeIf { value -> value > 0 } ?: fid,
                             title = edit.subject,
                             message = edit.message,
+                            messageCaret = edit.message.length,
                             form = null,
                             isLoadingForm = false,
                             mode = ComposerMode.DraftEdit(
@@ -362,7 +391,26 @@ class NewThreadViewModel(
 
     fun updateTitle(value: String) = _state.update { it.copy(title = value, error = null, draftError = null) }
 
-    fun updateMessage(value: String) = _state.update { it.copy(message = value, error = null, draftError = null) }
+    /** Mirrors the whole field; the caret goes to the end, which is where a plain edit leaves it. */
+    fun updateMessage(value: String) = updateMessage(value, value.length)
+
+    /**
+     * Mirrors the field **and** the caret. The page passes `TextFieldValue.selection.end` (or the
+     * selection's end, so a selection insert lands at its right edge) on every keystroke.
+     */
+    fun updateMessage(value: String, caret: Int) = _state.update {
+        it.copy(message = value, messageCaret = caret, error = null, draftError = null, hostUploadError = null)
+    }
+
+    /** Inserts [snippet] at the caret (image-host `[img]`, an emoji code, …). */
+    fun insertText(snippet: String) = insertEdit(ComposerText.insert(_state.value.message, _state.value.messageCaret, snippet))
+
+    /** Inserts an empty BBCode pair at the caret, leaving the caret between the tags. */
+    fun insertTag(name: String) = insertEdit(ComposerText.wrapTag(_state.value.message, _state.value.messageCaret, name))
+
+    private fun insertEdit(edit: ComposerEdit) = _state.update {
+        it.copy(message = edit.text, messageCaret = edit.caret, hostUploadError = null)
+    }
 
     /**
      * Prepares picked content URIs for the multipart `Filedata` upload.
@@ -428,6 +476,85 @@ class NewThreadViewModel(
     fun removeImage(uri: Uri) = _state.update {
         it.copy(images = it.images.filterNot { image -> image.uri == uri })
     }
+
+    // ---- MT image host (separate service; docs/REVERSE_SPEC.md §24) ----------
+
+    /**
+     * Uploads one picked picture to the MT image host and inserts its `[img]…[/img]` line **at the
+     * caret**.
+     *
+     * This is the "clear picture" path: the host keeps the original bytes, while the forum's
+     * attachment path re-compresses anything over 1 MB. The upload never touches the forum session
+     * (the host has its own cookie jar), and it runs entirely off the main thread
+     * ([ForumImageHostClient.upload] switches to `Dispatchers.IO`).
+     *
+     * On failure the message is left **exactly** as the user typed it ([NewThreadState.hostUploadError]
+     * carries the reason) — losing typed text on a failed upload is the bug this must not have.
+     */
+    fun uploadImageToHost(context: Context, uri: Uri) {
+        if (_state.value.isUploadingImage) return
+        viewModelScope.launch {
+            _state.update { it.copy(isUploadingImage = true, hostUploadError = null) }
+            when (val prepared = imagePreparer.prepareForHost(context, uri)) {
+                is ImagePrepResult.Rejected -> _state.update {
+                    it.copy(
+                        isUploadingImage = false,
+                        imageFeedback = listOf(
+                            ImagePickFeedback(
+                                fileName = prepared.fileName,
+                                byteCount = prepared.byteCount,
+                                reason = prepared.reason,
+                            ),
+                        ),
+                    )
+                }
+
+                is ImagePrepResult.Ready -> {
+                    val image = prepared.image
+                    when (val result = imageHost.upload(image.bytes, image.fileName, image.contentType)) {
+                        is ImageHostResult.Success -> {
+                            Timber.tag(TAG).i(
+                                "image host ok bytes=%d name=%s host=%s",
+                                image.bytes.size,
+                                image.fileName,
+                                result.url.substringBefore('/', result.url),
+                            )
+                            val edit = ComposerText.insert(
+                                _state.value.message,
+                                _state.value.messageCaret,
+                                result.bbcode,
+                            )
+                            _state.update {
+                                it.copy(
+                                    message = edit.text,
+                                    messageCaret = edit.caret,
+                                    isUploadingImage = false,
+                                    hostUploadError = null,
+                                    imageFeedback = listOf(
+                                        ImagePickFeedback(
+                                            fileName = image.fileName,
+                                            byteCount = image.bytes.size.toLong(),
+                                            hostUrl = result.url,
+                                        ),
+                                    ),
+                                )
+                            }
+                        }
+
+                        is ImageHostResult.Failure -> {
+                            Timber.tag(TAG).w("image host failed: %s", result.reason)
+                            _state.update {
+                                it.copy(isUploadingImage = false, hostUploadError = result.reason)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** Clears the last image-host failure once the user has read it. */
+    fun clearHostUploadError() = _state.update { it.copy(hostUploadError = null) }
 
     /** Clears the last pick's feedback lines once the user has read them. */
     fun clearImageFeedback() = _state.update { it.copy(imageFeedback = emptyList()) }
@@ -630,6 +757,7 @@ class NewThreadViewModel(
             it.copy(
                 title = draft.subject,
                 message = draft.message,
+                messageCaret = draft.message.length,
                 pendingDraft = null,
                 restoreImageUris = draft.imageUris,
                 skippedRestoredImages = 0,

@@ -33,6 +33,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -66,11 +68,15 @@ internal const val COMPOSER_IMAGE_ROW_TAG = "composer_image_row"
  * draft** (`action=edit`).
  *
  * The body is BBCode, exactly like the reply composer, because that is what the site's own editor
- * posts. Images are attached inline (multipart `Filedata` parts on the same POST), which is how
- * the mobile form works — there is no separate image-host upload: an "MT 图床" link is just the
- * forum attachment stored on the MT CDN (`oos.binmt.cc`). Every pick therefore ends with visible
- * feedback (accepted with name/size, or rejected with the reason), because the previous build
- * dropped files over 1 MB without a word and the button looked dead.
+ * posts. 添加图片 asks **where** a picture goes
+ * (`ComposerImageSourceSheet`): the MT image host (`img.binmt.cc`, its own service — the returned
+ * `[img]…[/img]` is inserted at the caret and the picture keeps its original quality) or the forum's
+ * attachment path (multipart `Filedata` parts on the same POST, re-compressed to fit 1 MB). The
+ * image host is the default because the reason it exists — bbs.binmt.cc thread 98890 — is exactly
+ * avoiding that re-compression; see docs/REVERSE_SPEC.md §24 and docs/HANDOVER_CN.md §21. Every
+ * pick therefore ends with visible feedback (accepted with name/size or the inserted link, or
+ * rejected with the reason), because an earlier build dropped files over 1 MB without a word and
+ * the button looked dead.
  *
  * The target board is changeable **inside** the composer: the 发布到 row opens a board sheet fed by
  * the site index, and choosing a board re-fetches its form (`formhash`/`posttime` are per board)
@@ -102,17 +108,30 @@ fun NewThreadPage(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var pickerOpen by remember { mutableStateOf(false) }
     var boardPickerOpen by remember { mutableStateOf(false) }
+    var imageSheetOpen by remember { mutableStateOf(false) }
+    // Which destination the next pick uses: the image host (default) or a forum attachment.
+    var imageTarget by remember { mutableStateOf(ComposerImageTarget.ImageHost) }
     var publishConfirm by remember { mutableStateOf(false) }
     var deleteConfirm by remember { mutableStateOf(false) }
     val draftSavedText = stringResource(R.string.draft_saved_toast)
     val publishedText = stringResource(R.string.composer_published_toast)
     val draftDeletedText = stringResource(R.string.composer_draft_deleted_toast)
 
+    // The field owns the caret; the view model owns the text (so a programmatic insert — image-host
+    // `[img]`, emoji, BBCode tag — can land at the user's caret and hand the new caret back).
+    var field by remember { mutableStateOf(TextFieldValue("")) }
+
     val pickImages = rememberLauncherForActivityResult(
         // OpenMultipleDocuments (not GetMultipleContents) so the read permission is persistable
         // and a draft restored after process death can still read its images.
         contract = ActivityResultContracts.OpenMultipleDocuments(),
-    ) { uris -> viewModel.attachImages(context, uris) }
+    ) { uris ->
+        when (imageTarget) {
+            // One upload per picked file; each `[img]…[/img]` is inserted at the caret.
+            ComposerImageTarget.ImageHost -> uris.forEach { uri -> viewModel.uploadImageToHost(context, uri) }
+            ComposerImageTarget.Attachment -> viewModel.attachImages(context, uris)
+        }
+    }
 
     LaunchedEffect(fid, draftTid) { viewModel.open(fid, forumName, draftTid, draftPid) }
     LaunchedEffect(state.successTid, state.successMessage) {
@@ -136,6 +155,17 @@ fun NewThreadPage(
     }
     LaunchedEffect(state.restoreImageUris) {
         if (state.restoreImageUris.isNotEmpty()) viewModel.resolveRestoredImages(context)
+    }
+    // A programmatic edit (image-host insert, emoji, BBCode tag) changes the view model's text;
+    // pull it back into the field together with the caret that edit left behind. Nothing happens
+    // on a normal keystroke: the field was updated first, so `field.text == state.message`.
+    LaunchedEffect(state.message, state.messageCaret) {
+        if (field.text != state.message) {
+            field = TextFieldValue(
+                text = state.message,
+                selection = TextRange(state.messageCaret.coerceIn(0, state.message.length)),
+            )
+        }
     }
     // Save-on-leave: covers the back button and a predictive-back dismissal of this entry. It only
     // writes the offline copy — never a network save, never a publish — and the VM skips it when
@@ -212,8 +242,11 @@ fun NewThreadPage(
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         )
                         TextField(
-                            value = state.message,
-                            onValueChange = viewModel::updateMessage,
+                            value = field,
+                            onValueChange = { value ->
+                                field = value
+                                viewModel.updateMessage(value.text, value.selection.end)
+                            },
                             modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp),
                             singleLine = false,
                             minLines = 8,
@@ -296,13 +329,33 @@ fun NewThreadPage(
                             )
                             TextButton(
                                 text = stringResource(R.string.composer_add_images),
-                                onClick = { pickImages.launch(arrayOf("image/*")) },
+                                // Asks where the picture goes (image host vs attachment) instead of
+                                // silently picking one; see ComposerImageSourceSheet.
+                                onClick = { imageSheetOpen = true },
                                 modifier = Modifier.testTag(COMPOSER_ADD_IMAGE_TAG),
                                 minHeight = 48.dp,
                             )
                         }
+                        // Its own line: the host upload takes a moment and the label is a sentence,
+                        // which would squeeze the two buttons on a narrow screen.
+                        if (state.isUploadingImage) {
+                            Spacer(Modifier.height(6.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                InfiniteProgressIndicator(modifier = Modifier.size(16.dp))
+                                Text(
+                                    text = stringResource(R.string.composer_image_host_uploading),
+                                    fontSize = 11.sp,
+                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                )
+                            }
+                        }
                         if (pickerOpen) {
-                            SmileyPicker(onPick = { smiley -> viewModel.updateMessage(state.message + smiley.code) })
+                            // Insert at the caret, not at the end: the emoji belongs where the user
+                            // is typing (the same rule the image-host insert follows).
+                            SmileyPicker(onPick = { smiley -> viewModel.insertText(smiley.code) })
                         }
 
                         state.error?.let {
@@ -312,6 +365,14 @@ fun NewThreadPage(
                         state.draftError?.let {
                             Spacer(Modifier.height(8.dp))
                             Text(text = it, fontSize = 12.sp, color = MiuixTheme.colorScheme.error)
+                        }
+                        state.hostUploadError?.let { reason ->
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = stringResource(R.string.composer_image_host_failed_format, reason),
+                                fontSize = 12.sp,
+                                color = MiuixTheme.colorScheme.error,
+                            )
                         }
 
                         Spacer(Modifier.height(12.dp))
@@ -361,6 +422,18 @@ fun NewThreadPage(
                 }
             }
         }
+
+        ComposerImageSourceSheet(
+            show = imageSheetOpen,
+            onDismissRequest = { imageSheetOpen = false },
+            onChoose = { target ->
+                imageSheetOpen = false
+                imageTarget = target
+                pickImages.launch(arrayOf("image/*"))
+            },
+            // Page-chrome content layer, never the app-wide page backdrop (rules 23/29).
+            backdrop = chrome.backdrop,
+        )
 
         ComposerBoardPickerSheet(
             show = boardPickerOpen,
@@ -429,16 +502,22 @@ fun NewThreadPage(
 private fun imageFeedbackText(feedback: ImagePickFeedback): String {
     val name = feedback.fileName
     val size = ComposerImagePolicy.formatBytes(feedback.byteCount)
-    return when (feedback.reason) {
-        null -> if (feedback.downscaled) {
+    return when {
+        // The image host keeps the original bytes; the line says the link went in, not "attached".
+        feedback.hostUrl != null -> stringResource(R.string.composer_image_host_added_format, name)
+        feedback.reason == null && feedback.downscaled ->
             stringResource(R.string.composer_image_added_scaled_format, name, size)
-        } else {
-            stringResource(R.string.composer_image_added_format, name, size)
-        }
 
-        ImageRejectReason.TooLarge -> stringResource(R.string.composer_image_too_large_format, name, size)
-        ImageRejectReason.Unreadable -> stringResource(R.string.composer_image_unreadable_format, name)
-        ImageRejectReason.OverCap ->
-            stringResource(R.string.composer_image_over_cap_format, name, ComposerImagePolicy.MAX_IMAGES)
+        feedback.reason == null -> stringResource(R.string.composer_image_added_format, name, size)
+        feedback.reason == ImageRejectReason.TooLarge ->
+            stringResource(R.string.composer_image_too_large_format, name, size)
+
+        feedback.reason == ImageRejectReason.Unreadable ->
+            stringResource(R.string.composer_image_unreadable_format, name)
+
+        feedback.reason == ImageRejectReason.UnsupportedFormat ->
+            stringResource(R.string.composer_image_unsupported_format, name)
+
+        else -> stringResource(R.string.composer_image_over_cap_format, name, ComposerImagePolicy.MAX_IMAGES)
     }
 }

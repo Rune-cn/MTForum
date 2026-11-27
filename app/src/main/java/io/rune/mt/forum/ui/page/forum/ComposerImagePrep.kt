@@ -12,6 +12,7 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.net.Uri
 import android.provider.OpenableColumns
+import io.rune.mt.forum.domain.forum.model.ForumImageHostPolicy
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import kotlin.math.max
@@ -36,6 +37,12 @@ enum class ImageRejectReason {
 
     /** The composer already holds [ComposerImagePolicy.MAX_IMAGES] images. */
     OverCap,
+
+    /**
+     * Readable, but not in a format the MT image host accepts (`jpg/png/gif/webp`; HEIC is out).
+     * Only the [ImagePreparer.prepareForHost] path reports it — the attachment path re-encodes.
+     */
+    UnsupportedFormat,
 }
 
 /**
@@ -51,6 +58,12 @@ data class ImagePickFeedback(
     val reason: ImageRejectReason? = null,
     /** True when the bytes were re-encoded to fit the site's cap (see [ComposerImagePolicy]). */
     val downscaled: Boolean = false,
+    /**
+     * Set when the picture went to the **MT image host** instead of the forum's attachment path:
+     * the CDN URL that was inserted as `[img]…[/img]`. `accepted` stays true either way; the screen
+     * uses this to say "inserted the image-host link" rather than "attached".
+     */
+    val hostUrl: String? = null,
 ) {
     val accepted: Boolean get() = reason == null
 }
@@ -91,6 +104,17 @@ sealed interface ImagePrepResult {
  */
 interface ImagePreparer {
     suspend fun prepare(context: Context, uri: Uri): ImagePrepResult
+
+    /**
+     * Reads a picked URI for the **MT image host** (`img.binmt.cc`), which takes the original bytes:
+     * no 1 MB cap, no re-encode, so the picture keeps its full resolution (the whole reason the
+     * host exists — the forum's attachment path re-compresses over 1 MB).
+     *
+     * Only the host's own format list is enforced ([ForumImageHostPolicy]) and HEIC is refused with
+     * a visible reason instead of being uploaded as a file the host would reject. The name follows
+     * the sniffed MIME type so the host stores it with an extension it accepts.
+     */
+    suspend fun prepareForHost(context: Context, uri: Uri): ImagePrepResult
 }
 
 /**
@@ -101,8 +125,14 @@ interface ImagePreparer {
  * The old composer read the picked file and **dropped it if it was over 1 MB** (`return null`),
  * which is nearly every photo taken by a phone (2–5 MB). Nothing was shown, so the button looked
  * dead. The site's own attachment box says 大小限制 1MB, and the mobile form uploads images inline
- * as multipart `Filedata` parts — there is no separate image-host API (see
- * docs/REVERSE_SPEC.md §16). So the fix is to bring the bytes under the cap rather than drop them.
+ * as multipart `Filedata` parts (see docs/REVERSE_SPEC.md §16). So the fix is to bring the bytes
+ * under the cap rather than drop them.
+ *
+ * ## Two destinations (docs/REVERSE_SPEC.md §24)
+ *
+ * - [prepare] keeps the site's attachment contract: ≤ 1 MB after re-encoding.
+ * - [prepareForHost] serves the **MT image host** (`img.binmt.cc`), a separate service whose whole
+ *   point is publishing a picture without the forum's re-compression — it takes the original bytes.
  *
  * ## Size / scale policy (also documented in docs/HANDOVER_CN.md §16.7)
  *
@@ -182,6 +212,60 @@ class AndroidImagePreparer : ImagePreparer {
             ),
         )
     }
+
+    /**
+     * The image-host path: the **original** bytes, untouched.
+     *
+     * The host exists precisely to keep the picture's resolution, so nothing here re-encodes,
+     * downsamples or flattens. Only three things can reject a file: it cannot be read, it is above
+     * the same read ceiling the attachment path uses (so a broken picker cannot OOM the app), or
+     * its sniffed type is not one the host accepts.
+     */
+    override suspend fun prepareForHost(context: Context, uri: Uri): ImagePrepResult =
+        withContext(Dispatchers.IO) {
+            val source = try {
+                context.contentResolver.openInputStream(uri)?.use { readCapped(it) }
+            } catch (tooLarge: SourceTooLarge) {
+                return@withContext ImagePrepResult.Rejected(
+                    fileName = ComposerImagePolicy.FALLBACK_NAME,
+                    byteCount = ComposerImagePolicy.MAX_SOURCE_BYTES.toLong(),
+                    reason = ImageRejectReason.TooLarge,
+                )
+            } catch (unreadable: Exception) {
+                Timber.tag(TAG).w(unreadable, "image host path cannot open the pick")
+                null
+            }
+            if (source == null || source.isEmpty()) {
+                return@withContext ImagePrepResult.Rejected(
+                    fileName = ComposerImagePolicy.FALLBACK_NAME,
+                    byteCount = 0,
+                    reason = ImageRejectReason.Unreadable,
+                )
+            }
+            val name = displayName(context.contentResolver, uri)
+            val mime = ComposerImagePolicy.sniffMime(source)
+                ?: return@withContext ImagePrepResult.Rejected(
+                    fileName = name,
+                    byteCount = source.size.toLong(),
+                    reason = ImageRejectReason.Unreadable,
+                )
+            if (!ForumImageHostPolicy.isSupported(mime)) {
+                return@withContext ImagePrepResult.Rejected(
+                    fileName = name,
+                    byteCount = source.size.toLong(),
+                    reason = ImageRejectReason.UnsupportedFormat,
+                )
+            }
+            ImagePrepResult.Ready(
+                PreparedImage(
+                    uri = uri,
+                    fileName = ForumImageHostPolicy.uploadFileName(name, mime) ?: name,
+                    contentType = mime,
+                    bytes = source,
+                    downscaled = false,
+                ),
+            )
+        }
 
     /** The picked file's display name, falling back to the URI's last segment, then a constant. */
     private fun displayName(resolver: ContentResolver, uri: Uri): String {

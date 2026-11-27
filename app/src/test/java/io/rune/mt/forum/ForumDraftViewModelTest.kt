@@ -7,6 +7,8 @@ import io.rune.mt.forum.domain.forum.model.ForumDraft
 import io.rune.mt.forum.domain.forum.model.ForumDraftEdit
 import io.rune.mt.forum.domain.forum.model.ForumDraftPage
 import io.rune.mt.forum.domain.forum.model.ForumEditForm
+import io.rune.mt.forum.domain.forum.model.ImageHostGateway
+import io.rune.mt.forum.domain.forum.model.ImageHostResult
 import io.rune.mt.forum.domain.forum.model.ForumFavorite
 import io.rune.mt.forum.domain.forum.model.ForumFavoritesPage
 import io.rune.mt.forum.domain.forum.model.ForumGuideView
@@ -88,7 +90,7 @@ class ForumDraftViewModelTest {
         val repository = DraftTestRepository()
         val drafts = FakeDraftRepository()
         val draftsService = FakeDraftService()
-        val viewModel = NewThreadViewModel(repository, drafts, draftsService)
+        val viewModel = NewThreadViewModel(repository, drafts, draftsService, UnusedImageHost)
         viewModel.open(44, "综合交流")
         viewModel.updateTitle("新标题")
         viewModel.updateMessage("新正文")
@@ -118,7 +120,7 @@ class ForumDraftViewModelTest {
             message = "新正文",
             form = editForm(),
         )
-        val viewModel = NewThreadViewModel(DraftTestRepository(), FakeDraftRepository(), draftsService)
+        val viewModel = NewThreadViewModel(DraftTestRepository(), FakeDraftRepository(), draftsService, UnusedImageHost)
         viewModel.open(44, "综合交流")
         viewModel.updateTitle("新标题")
         viewModel.updateMessage("新正文")
@@ -141,7 +143,7 @@ class ForumDraftViewModelTest {
         val drafts = FakeDraftRepository()
         val draftsService = FakeDraftService()
         draftsService.saveNewThreadResult = DraftActionResult.Failure("抱歉，您的请求来路不正确")
-        val viewModel = NewThreadViewModel(DraftTestRepository(), drafts, draftsService)
+        val viewModel = NewThreadViewModel(DraftTestRepository(), drafts, draftsService, UnusedImageHost)
         viewModel.open(44, "综合交流")
         viewModel.updateTitle("新标题")
         viewModel.updateMessage("新正文")
@@ -166,7 +168,7 @@ class ForumDraftViewModelTest {
         draftsService.drafts = mutableListOf(
             ForumDraft(tid = 7001, fid = 38, title = "站点草稿", forumName = "建议反馈"),
         )
-        val viewModel = NewThreadViewModel(DraftTestRepository(), drafts, draftsService)
+        val viewModel = NewThreadViewModel(DraftTestRepository(), drafts, draftsService, UnusedImageHost)
 
         viewModel.open(38, "建议反馈")
         eventually("the site draft must replace the local prompt") {
@@ -190,7 +192,7 @@ class ForumDraftViewModelTest {
             message = "站点正文",
             form = editForm(),
         )
-        val viewModel = NewThreadViewModel(DraftTestRepository(), FakeDraftRepository(), draftsService)
+        val viewModel = NewThreadViewModel(DraftTestRepository(), FakeDraftRepository(), draftsService, UnusedImageHost)
         viewModel.open(38, "建议反馈")
         eventually("the site draft should be offered") {
             viewModel.state.value.pendingServerDraft != null
@@ -209,7 +211,7 @@ class ForumDraftViewModelTest {
     fun `leaving the page only writes the device copy and never posts`() {
         val drafts = FakeDraftRepository()
         val draftsService = FakeDraftService()
-        val viewModel = NewThreadViewModel(DraftTestRepository(), drafts, draftsService)
+        val viewModel = NewThreadViewModel(DraftTestRepository(), drafts, draftsService, UnusedImageHost)
         viewModel.open(44, "综合交流")
         viewModel.updateTitle("未保存的标题")
         viewModel.updateMessage("未保存的正文")
@@ -225,7 +227,7 @@ class ForumDraftViewModelTest {
     fun `leaving the page never overwrites an un-actioned draft`() {
         val drafts = FakeDraftRepository()
         drafts.newThreads[38] = ForumNewThreadDraft(fid = 38, subject = "旧标题", message = "旧正文")
-        val viewModel = NewThreadViewModel(DraftTestRepository(), drafts, FakeDraftService())
+        val viewModel = NewThreadViewModel(DraftTestRepository(), drafts, FakeDraftService(), UnusedImageHost)
         viewModel.open(38, "建议反馈")
         // The user ignores the prompt and starts typing something else.
         viewModel.updateTitle("新标题")
@@ -241,7 +243,7 @@ class ForumDraftViewModelTest {
     fun `publishing an open draft is its own confirmed action`() {
         val draftsService = FakeDraftService()
         val repository = DraftTestRepository()
-        val viewModel = NewThreadViewModel(repository, FakeDraftRepository(), draftsService)
+        val viewModel = NewThreadViewModel(repository, FakeDraftRepository(), draftsService, UnusedImageHost)
         draftsService.edit = ForumDraftEdit(
             tid = 5001,
             fid = 44,
@@ -272,7 +274,7 @@ class ForumDraftViewModelTest {
             message = "草稿正文",
             form = editForm(),
         )
-        val viewModel = NewThreadViewModel(DraftTestRepository(), FakeDraftRepository(), draftsService)
+        val viewModel = NewThreadViewModel(DraftTestRepository(), FakeDraftRepository(), draftsService, UnusedImageHost)
         viewModel.open(44, "综合交流", draftTid = 5001)
         eventually("the draft should open") { viewModel.state.value.isDraftEdit }
 
@@ -565,4 +567,13 @@ private class DraftTestRepository : ForumRepository {
     override suspend fun getNotices(tab: ForumNoticeTab, page: Int): ForumNoticePage = notWired()
 
     private fun <T> notWired(): T = error("not wired in this fake")
+}
+
+/**
+ * The image host is a *different* code path from the drafts these cases exercise; every call here
+ * would fail loudly, which is exactly what "these tests never touch the image host" means.
+ */
+private object UnusedImageHost : ImageHostGateway {
+    override suspend fun upload(bytes: ByteArray, fileName: String, mimeType: String): ImageHostResult =
+        error("the draft tests must not upload to the image host")
 }
