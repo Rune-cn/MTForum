@@ -2,6 +2,7 @@
 package io.rune.mt.forum.di
 
 import io.rune.mt.forum.data.updater.repository.OnlineUpdateRepositoryImpl
+import io.rune.mt.forum.data.updater.repository.UpdateEnvironment
 import io.rune.mt.forum.domain.updater.repository.UpdateRepository
 import java.util.concurrent.TimeUnit
 import okhttp3.ConnectionSpec
@@ -30,5 +31,7 @@ val networkModule = module {
 }
 
 val updateModule = module {
+    // The build facts the checker policies over (debug flag, channel, installed version).
+    single { UpdateEnvironment.fromBuild() }
     singleOf(::OnlineUpdateRepositoryImpl) { bind<UpdateRepository>() }
 }

@@ -94,6 +94,12 @@
     <string name="auto_check_update_on_start">Check for updates on startup</string>
     <string name="auto_check_update_on_start_desc">Only checks once per app process start</string>
     <string name="check_update_latest_shell">You are already on the latest version</string>
+    <string name="update_up_to_date_format">You are on the latest version (checked %1$s)</string>
+    <string name="update_last_checked_format">Last checked %1$s · version %2$s</string>
+    <string name="update_check_failed_format">Update check failed: %1$s</string>
+    <string name="update_check_skip_offline">Update check skipped: internet access is off</string>
+    <string name="update_check_skip_debug">Update check skipped: debug build</string>
+    <string name="update_check_skip_channel">Update check skipped: this channel has no releases</string>
     <string name="settings_update">Update</string>
     <string name="update_sheet_title">Update</string>
     <string name="update_sheet_installed_version">Installed version</string>

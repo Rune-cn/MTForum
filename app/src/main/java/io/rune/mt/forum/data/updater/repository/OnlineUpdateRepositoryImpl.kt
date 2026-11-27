@@ -1,158 +1,166 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package io.rune.mt.forum.data.updater.repository
 
-import android.content.Context
-import io.rune.mt.forum.core.device.model.Level
-import io.rune.mt.forum.core.env.AppConfig
-import io.rune.mt.forum.data.updater.model.GithubRelease
 import io.rune.mt.forum.domain.settings.repository.AppSettingsRepository
+import io.rune.mt.forum.domain.updater.model.UpdateCheckResult
+import io.rune.mt.forum.domain.updater.model.UpdateCheckState
 import io.rune.mt.forum.domain.updater.model.UpdateInfo
 import io.rune.mt.forum.domain.updater.repository.UpdateRepository
+import java.io.IOException
 import java.io.InputStream
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import timber.log.Timber
 
-class OnlineUpdateRepositoryImpl(
-    private val context: Context,
+/**
+ * The GitHub-backed update checker.
+ *
+ * The check itself lives in [UpdateCheckEngine] (pure decision pipeline); this class owns the
+ * HTTP hop, the cache, the serialisation of concurrent checks and — most importantly — the
+ * lifecycle of [checkState]. The loading UI is derived from that state, so it cannot outlive the
+ * check: every exit path (cache hit, policy skip, transport error, timeout, cancellation, missing
+ * asset, parse error) ends in [UpdateCheckState.Settled] or [UpdateCheckState.Idle].
+ *
+ * Two hang guards, because the device report was 「一直显示检查更新」:
+ *  - `callTimeout` on the check client bounds DNS + connect + read + redirects. `connectTimeout`
+ *    alone does not cover DNS, and a blocking `execute()` cannot be cancelled by a coroutine.
+ *  - `withTimeout` around the mutex + pipeline bounds the *suspending* parts (waiting for a
+ *    previous check's lock, reading preferences), so a manual check does not wait forever behind
+ *    a startup check that got stuck.
+ */
+class OnlineUpdateRepositoryImpl internal constructor(
     private val client: OkHttpClient,
     private val json: Json,
     private val appSettingsRepository: AppSettingsRepository,
+    private val environment: UpdateEnvironment = UpdateEnvironment.fromBuild(),
 ) : UpdateRepository {
-    companion object {
-        // This client tracks its own repository as the update source.
-        private const val REPO_OWNER = "Rune-cn"
-        private const val REPO_NAME = "MTForum"
+    private companion object {
+        /** Extra slack on top of the engine deadline, for the mutex wait and the preference read. */
+        const val DEADLINE_GRACE_MILLIS = 2_000L
     }
+
+    private val engine = UpdateCheckEngine(json, environment)
+
+    /** The JSON hop needs a whole-call bound; the download stream must not share it. */
+    private val checkClient: OkHttpClient = client.newBuilder()
+        .callTimeout(environment.deadlineMillis, TimeUnit.MILLISECONDS)
+        .build()
 
     private val _updateInfoFlow = MutableStateFlow<UpdateInfo?>(null)
     override val updateInfoFlow: StateFlow<UpdateInfo?> = _updateInfoFlow.asStateFlow()
 
-    private var hasChecked = false
+    private val _checkState = MutableStateFlow<UpdateCheckState>(UpdateCheckState.Idle)
+    override val checkState: StateFlow<UpdateCheckState> = _checkState.asStateFlow()
+
     private val updateMutex = Mutex()
 
-    override suspend fun checkUpdate(force: Boolean): UpdateInfo? = withContext(Dispatchers.IO) {
-        // If force check not required, and has checked, return cached value
-        if (!force && hasChecked) {
-            Timber.d("checkUpdate: Returning cached UpdateInfo")
-            return@withContext _updateInfoFlow.value
-        }
+    override suspend fun checkUpdate(force: Boolean): UpdateCheckResult = withContext(Dispatchers.IO) {
+        // A cached answer only exists for a real comparison; failures/skips are retried next time.
+        if (!force) cachedResult()?.let { return@withContext it }
+        Timber.d("checkUpdate: force=%s", force)
 
-        // Use mutex lock to prevent concurrent execution
-        updateMutex.withLock {
-            // Check again after acquiring lock
-            if (!force && hasChecked) {
-                return@withContext _updateInfoFlow.value
+        val result: UpdateCheckResult = try {
+            withTimeout(environment.deadlineMillis + DEADLINE_GRACE_MILLIS) {
+                updateMutex.withLock { runCheck(force) }
             }
+        } catch (timeout: TimeoutCancellationException) {
+            // Either the lock wait or a cooperative suspend outlived the deadline. The blocking
+            // socket is bounded separately by callTimeout.
+            UpdateCheckResult.Failed(
+                reason = "timeout after ${environment.deadlineMillis + DEADLINE_GRACE_MILLIS} ms",
+                checkedAt = System.currentTimeMillis(),
+            )
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            Timber.e(error, "checkUpdate: unexpected failure")
+            UpdateCheckResult.Failed(
+                reason = error.message ?: error.javaClass.simpleName,
+                checkedAt = System.currentTimeMillis(),
+            )
+        }
+        publish(result)
+        result
+    }
 
-            try {
-                val prefs = appSettingsRepository.preferencesFlow.first()
-                if (!OnlineUpdatePolicy.canCheckUpdates(
-                        allowInternetAccess = prefs.allowInternetAccess,
-                        isDebug = AppConfig.isDebug,
-                        level = AppConfig.LEVEL,
-                    )
-                ) {
-                    Timber.d(
-                        "checkUpdate: Skipped. allowInternetAccess=${prefs.allowInternetAccess}, " +
-                            "isDebug=${AppConfig.isDebug}, LEVEL=${AppConfig.LEVEL}, " +
-                            "package=${context.packageName}",
-                    )
-                    _updateInfoFlow.value = null
-                    hasChecked = false
-                    return@withLock null
-                }
-
-                val remoteRelease = fetchRemoteRelease()
-                if (remoteRelease == null) {
-                    // Log if network request or parsing failed
-                    Timber.e("checkUpdate: fetchRemoteRelease() returned null")
-                    return@withContext null
-                }
-                // Log successful fetch
-                Timber.d("checkUpdate: Successfully fetched release. TagName=${remoteRelease.tagName}")
-
-                val apkAsset = OnlineUpdatePolicy.selectOnlineApkAsset(remoteRelease)
-
-                if (apkAsset == null) {
-                    // Log if no matching asset was found
-                    Timber.e("checkUpdate: No matching online APK asset found in release")
-                } else {
-                    // Log the found asset name
-                    Timber.d("checkUpdate: Found APK asset: ${apkAsset.name}")
-                }
-
-                val downloadUrl = OnlineUpdatePolicy.resolveDownloadUrl(
-                    asset = apkAsset,
-                    channel = prefs.githubUpdateChannel,
-                    customProxyUrl = prefs.customGithubProxyUrl,
-                )
-                val remoteVersion = OnlineUpdatePolicy.resolveRemoteVersion(remoteRelease, apkAsset)
-
-                val currentVersion = AppConfig.VERSION_NAME
-
-                // Log versions before comparison to catch potential parsing issues
-                Timber.d("checkUpdate: Preparing to compare. Local=$currentVersion, Remote=$remoteVersion")
-
-                val hasUpdate = OnlineUpdatePolicy.compareVersions(remoteVersion, currentVersion) > 0
-
-                Timber.i("Update check: Local=$currentVersion, Remote=$remoteVersion, HasUpdate=$hasUpdate")
-
-                val updateInfo = UpdateInfo(
-                    hasUpdate = hasUpdate,
-                    remoteVersion = remoteVersion,
-                    releaseUrl = remoteRelease.htmlUrl ?: "",
-                    downloadUrl = downloadUrl,
-                    updateLog = remoteRelease.body,
-                )
-
-                // Cache result and mark as checked
-                _updateInfoFlow.value = updateInfo
-                hasChecked = true
-
-                return@withContext updateInfo
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // Log the stacktrace to identify crashes like NullPointerException or Regex errors
-                Timber.e(e, "checkUpdate: Exception caught during execution")
-                null
+    /**
+     * One check, with [UpdateCheckState.Checking] published while it runs.
+     *
+     * The `finally` clears [UpdateCheckState.Checking] when the body was cancelled or threw: a
+     * cancelled check must not leave the spinner up, even though the caller rethrows.
+     */
+    private suspend fun runCheck(force: Boolean): UpdateCheckResult {
+        if (!force) cachedResult()?.let { return it }
+        _checkState.value = UpdateCheckState.Checking
+        var settled = false
+        try {
+            val prefs = appSettingsRepository.preferencesFlow.first()
+            val result = engine.check(prefs) { url -> fetchBody(url) }
+            settled = true
+            return result
+        } finally {
+            if (!settled && _checkState.value is UpdateCheckState.Checking) {
+                _checkState.value = UpdateCheckState.Idle
             }
         }
     }
 
-    private fun fetchRemoteRelease(): GithubRelease? {
-        val url = if (AppConfig.LEVEL == Level.STABLE) {
-            "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest"
-        } else {
-            "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases"
+    /** Stores [result] as the cached answer and as the settled state the UI renders. */
+    private fun publish(result: UpdateCheckResult) {
+        when (result) {
+            is UpdateCheckResult.Checked -> _updateInfoFlow.value = result.info
+            // Internet access was switched off: the previous answer is no longer meaningful.
+            is UpdateCheckResult.Skipped -> _updateInfoFlow.value = null
+            // A transient failure keeps the last known answer (an older "update available" is
+            // still true); the failure itself is reported through checkState.
+            is UpdateCheckResult.Failed -> Unit
         }
+        _checkState.value = UpdateCheckState.Settled(result)
+    }
 
+    /**
+     * The last comparison, or null.
+     *
+     * Only [UpdateCheckResult.Checked] is cacheable: a skip or a failure must be retried on the
+     * next (non-forced) check instead of being replayed forever.
+     */
+    private fun cachedResult(): UpdateCheckResult? =
+        (checkState.value as? UpdateCheckState.Settled)?.result
+            ?.takeIf { it is UpdateCheckResult.Checked }
+
+    /**
+     * GETs [url] and returns the JSON body, throwing a technical reason otherwise.
+     *
+     * The body is never logged (it is a release payload, not credentials, but the rule is "no
+     * response dumps in logs"), and the error names the status code only.
+     */
+    private fun fetchBody(url: String): String {
         val request = Request.Builder()
             .url(url)
             .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "MTForum-updater")
             .build()
-
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return null
-            val bodyString = response.body.string()
-
-            return if (AppConfig.LEVEL == Level.STABLE) {
-                json.decodeFromString<GithubRelease>(bodyString)
-            } else {
-                val releases = json.decodeFromString<List<GithubRelease>>(bodyString)
-                OnlineUpdatePolicy.selectPreviewRelease(releases)
+        checkClient.newCall(request).execute().use { response ->
+            val body = response.body.string()
+            if (!response.isSuccessful) {
+                throw IOException("GitHub HTTP ${response.code} for $url")
             }
+            // Decoding happens outside (the engine owns the JSON schema); returning the raw body
+            // keeps this hop a plain fetch.
+            return body
         }
     }
 

@@ -2,6 +2,8 @@
 package io.rune.mt.forum.ui.page.main.settings.preferred.about
 
 import androidx.compose.ui.graphics.ImageBitmap
+import io.rune.mt.forum.domain.updater.model.UpdateCheckResult
+import io.rune.mt.forum.domain.updater.model.UpdateCheckState
 import io.rune.mt.forum.domain.updater.model.UpdateInfo
 
 data class AboutState(
@@ -10,4 +12,12 @@ data class AboutState(
     val autoCheckUpdateOnStart: Boolean = false,
     val appIcon: ImageBitmap? = null,
     val updateInfo: UpdateInfo? = null,
-)
+    /** Live checker phase; the loading UI is derived from it (never from loose events). */
+    val checkState: UpdateCheckState = UpdateCheckState.Idle,
+) {
+    /** True while a check is running; the row is disabled and the dialog is up. */
+    val isChecking: Boolean get() = checkState is UpdateCheckState.Checking
+
+    /** The last settled outcome, if any. */
+    val lastCheck: UpdateCheckResult? get() = (checkState as? UpdateCheckState.Settled)?.result
+}

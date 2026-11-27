@@ -252,6 +252,16 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     host/状态/字节数，令牌与 Cookie 一律不打（规则 10）。接口事实见
     `docs/REVERSE_SPEC.md` §24，产品决策见 `docs/HANDOVER_CN.md` §21。
     **两个编辑器共用**插入逻辑 `ComposerText`（插入到**光标处**，不是末尾）。
+34. **加载态必须是「状态」，不是一对 Show/Hide 事件**：阻塞对话框/进度条只能由
+    `StateFlow`（如 `UpdateRepository.checkState` 的 `Idle/Checking/Settled`）派生，且由**持有者**
+    在 `try/finally` 里把 `Checking` 收尾（成功、跳过、超时、异常、取消都要收）。
+    曾经的 `PreferredViewEvent.ShowUpdateLoading` / `AboutEvent.HideUpdateLoading` 只要有一条
+    路径没发出 `Hide`，「一直显示检查更新」就会永远转圈。
+    - 可挂起的检查要有两层封顶：整段 `withTimeout`（等锁/取偏好）+ 阻塞 HTTP 的 `callTimeout`
+      （`connectTimeout` **不覆盖 DNS**，协程取消也**打断不了** `execute()`）。
+    - 无结果的返回类型（`UpdateInfo?`）不足以表达“跳过 / 失败 / 已最新”：用
+      `sealed interface UpdateCheckResult { Checked | Skipped | Failed(reason) }`，失败必须带原因。
+    - 成功后要**重新问站点**（草稿删除），本地移除行只是断言，不是事实。
 
 ## Miuix 双风格（OS3 / OS4）
 

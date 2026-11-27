@@ -26,6 +26,9 @@ app/src/main/java/io/rune/mt/forum/
 │   │                                  419 刷新重试一次，独立 client + 独立 CookieJar（不发论坛 Cookie）
 │   ├── settings/                     设置项仓库
 │   └── updater/                      更新检查（指向本仓库 Releases）
+│       ├── OnlineUpdateRepositoryImpl.kt   HTTP + 缓存 + `checkState`（Idle/Checking/Settled）生命周期
+│       ├── UpdateCheckEngine.kt            纯决策管线：策略 → feed → 选 asset → 版本比较 → 确定结果
+│       └── UpdateEnvironment.kt            构建事实（debug/渠道/当前版本/deadline/apiBaseUrl）
 ├── domain/
 │   ├── forum/
 │   │   ├── model/                    Forum / ForumThread / ForumPost / ForumUser / ForumSession / ForumDraft

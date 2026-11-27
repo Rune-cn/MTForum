@@ -801,17 +801,27 @@ object ForumHtmlParser {
             (title.contains("登录") && doc.selectFirst("input[name=username]") != null)
     }
 
-    /** Best-effort extraction of a Discuz notice/message body (`提示信息` pages). */
+    /**
+     * Best-effort extraction of a Discuz notice/message body (`提示信息` pages).
+     *
+     * The **primary message containers are searched first, as a group**, and the generic
+     * `p.alert` / `div.alert_info` chrome only afterwards. A single combined selector would
+     * return whichever element appears first in the document, so a page that paints an unrelated
+     * alert above its message would be read as the alert — that is how a success page's chrome
+     * could be mistaken for a failure notice (e.g. a "帖子不存在" template string sitting in a
+     * hidden alert while the real message is 主题删除成功).
+     */
     fun extractNotice(html: String): String? {
         val doc = Jsoup.parse(html)
-        val el = doc.selectFirst(
-            "div#messagetext, div.messagetext, div.comiis_msgbox div.msg_mes, p.alert, div.alert_info, " +
+        val primary = doc.selectFirst(
+            "div#messagetext, div.messagetext, div.comiis_msgbox div.msg_mes, " +
                 // The Comiis mobile 提示信息 page (the attachcredit handshake) prints its one line in
                 // `div.comiis_password_top > p`. Selecting the parent `div` instead would also pick
                 // up the icon-font glyph of `div.comiis_password_ico`, which then leaks into the
                 // user-facing error text. Captured sample: `attach_paid_credit.html`.
                 "div.comiis_password_top p",
         )
+        val el = primary ?: doc.selectFirst("p.alert, div.alert_info")
         // The template indents the sentence with runs of spaces (and glues a NBSP before ，
         // on some pages), which would otherwise leak into the user-facing error string.
         return el?.text()?.cleanTitle()?.replace('\u00A0', ' ')?.replace(NOTICE_WHITESPACE, " ")?.trim()

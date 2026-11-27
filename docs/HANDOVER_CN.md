@@ -1980,3 +1980,148 @@ BUILD SUCCESSFUL（`Lint found no new issues`）。
   一致，只有窗口级动效（进场/退场动画、窗口层级）不在截图里。
 - 输入法在真机上是否让面板整体上移：规则 24 的 union 只保证内容在键盘上方，面板窗口本身
   （`WindowBottomSheet`）的行为需真机确认。
+
+---
+
+## 23. 草稿删除报「帖子不存在」（2026-11-27，第九轮）
+
+机主反馈：「删除草稿却显示"帖子不存在"，但是却存在」。
+
+### 23.1 根因（站点契约）
+
+`帖子不存在` 不是客户端文案，是 Discuz 的 `post_nonexistence`
+（`source/language/lang_message.php`: `'post_nonexistence' => '帖子不存在'`）。它由
+`source/include/post/post_editpost.php` 第 13/31 行渲染：
+
+```php
+$orig = get_post_by_tid_pid($_G['tid'], $pid);
+...
+if(empty($orig)) { showmessage('post_nonexistence'); }
+```
+
+`$pid = intval(getgpc('pid'))`，而 `get_post_by_tid_pid($tid, 0)` 一定为空。所以**编辑页请求
+不带 `pid` 就必然得到「帖子不存在」**——即使草稿确实存在。
+
+客户端原来的删除链路是：
+
+1. `ForumDraftsViewModel.deleteDraft`（`ui/page/forum/ForumDraftsViewModel.kt:148`）先调
+   `draftService.loadDraft(draft.tid, draft.fid, draft.pid)`；
+2. 草稿列表行**没有 pid**（`ForumDraft.pid` 恒为 null，`ForumHtmlParser.parseDraftRow` 不产出它），
+   于是 `ForumUrls.draftEditPath` 省略 `pid=`；
+3. 站点回 `帖子不存在`，`loadDraft` 把它当站点文案抛出
+   （`ForumDraftServiceImpl.kt` 旧行 145-148）；
+4. ViewModel 包成 `DraftActionResult.Failure("帖子不存在")` → 屏幕弹这条错误，
+   **`delete=1` 的 POST 从来没发出去**，所以草稿当然还在。
+
+`ForumHtmlParser.draftThreadPid`（线程页 `div.comiis_postli#pid…`）原本已写好却**没有调用点**，
+这正是缺的那一步。
+
+### 23.2 修复
+
+- `ForumDraftsViewModel.deleteDraft` 不变（仍然先读表单再删）；`loadDraft` 现在自己解决 pid：
+  `ForumDraftServiceImpl.loadDraft`（`ForumDraftServiceImpl.kt:137`，pid 在 148 行补）在 `pid` 缺省时先 GET 草稿自己的线程页
+  （`ForumUrls.draftThreadPath(tid)` = `thread-<tid>-1-1.html`，作者可见），用
+  `ForumHtmlParser.draftThreadPid` 取 pid，再 GET 编辑页。
+  - 线程页也回登录表单 → `ForumLoginRequiredException`（屏幕回到登录卡片）。
+  - 取不到 pid → 本地明确报错，**绝不**再向编辑页发不带 pid 的请求（那正是假错误的来源）。
+  - 编辑页没有表单 / 表单缺 `pid` → 本地明确报错，不拿残缺字段去 POST。
+- `draftOutcome` 改为**成功文案优先**：`SUCCESS_WORDS = 成功|已删除` 先于
+  `ERROR_WORDS`（含 `不存在`）。删除成功的站点文案是 `post_edit_delete_succeed` = 「主题删除成功」；
+  即使成功页的 chrome 里还挂着「主题不存在」之类文字，也不会被误判成失败。
+- `ForumHtmlParser.extractNotice` 改为**主消息容器优先**（`div#messagetext` /
+  `div.messagetext` / `div.comiis_msgbox div.msg_mes` / `div.comiis_password_top p`），
+  只有都没有时才回退到通用 `p.alert` / `div.alert_info`。旧实现是一个合并选择器，按文档顺序取
+  第一个命中——chrome 里的告警条会盖掉真正的消息。
+- 删除被接受后，`ForumDraftsViewModel` **重新读一次列表第 1 页**（`refreshAfterDelete`）：
+  先本地移除该行，再用站点结果覆盖。刷新失败不会让行复活（删除已被站点接受），只会保留当前列表。
+
+### 23.3 证据 / 测试（全部离线）
+
+- 样本：`draft_thread_view.html`（真实草稿线程页，pid 12205913）、`draft_edit_page.html`
+  （真实编辑页，`form#postform` 全字段）、新增
+  `draft_notice_post_nonexistence.html`（`帖子不存在`）、
+  `draft_notice_thread_nonexistence.html`（`抱歉，指定的主题不存在或已被删除或正在被审核`）、
+  `draft_delete_success.html`（comiis 提示页形状的「主题删除成功」，并故意带一条写着
+  「主题不存在」的 `div.alert_info` 当诱饵）。
+- `ForumDraftDeleteTest`（7 例）：pid 先取自线程页（断言请求顺序与原样 URL）、
+  无 pid 时**不请求**编辑页、删除 POST 回放 `formhash/posttime/delete=1/tid/fid/pid/editsubmit`
+  到表单自己的 action、成功页 chrome 不会翻成失败、真「主题不存在」仍是失败、线程页回登录表单
+  走登录卡片。
+- `ForumDraftsViewModelTest` 新增 3 例：删除成功后行消失**且列表被重新读取**；删除被拒时行保留 +
+  站点文案进 `deleteError`；读不到表单时行保留且不进 delete POST。
+- `ForumDraftParserTest`：`draftThreadPath` 与线程页 pid 的断言。
+
+### 23.4 验证
+
+- `:app:testStableDebugUnitTest` → **BUILD SUCCESSFUL，58 suites / 358 tests / 0 failures**
+- `:app:lintVitalStableRelease` → BUILD SUCCESSFUL（`Lint found no new issues`）
+- ⚠️ 未对 `bbs.binmt.cc` 发真实请求（机主禁止）；删除成功页形状来自站点已抓的 comiis 提示页
+  （`attach_paid_credit.html`）裁剪，真实删除响应未抓包。
+
+---
+
+## 24. 检查更新「一直显示检查更新」（2026-11-27，第九轮）
+
+机主反馈：「优化检查更新，运行命令测试」+「一直显示检查更新」。
+
+### 24.1 根因（加载态生命周期）
+
+`MiuixPreferredPage` / `MiuixAboutPage` 各自用本地 `showUpdateLoading`（`remember { mutableStateOf(false) }`），
+由 `PreferredViewEvent/AboutEvent` 的 `ShowUpdateLoading` / `HideUpdateLoading` **一对事件**驱动。
+`Hide` 只要有一条路径没走到，`MiuixBlockingLoadingDialog` 就永远在：
+
+| 路径 | 旧行为 |
+|---|---|
+| `checkUpdate` 卡住（GitHub 在境内不可达；`connectTimeout` 不覆盖 DNS；无 `callTimeout`） | `Hide` 不发出，转圈到永远 |
+| 启动检查（`SettingsActivity.autoCheckUpdateOnStart`）先拿到 `updateMutex` 且卡住 | 手动检查在锁上无限等待，**同样转圈到永远** |
+| `runCatching` 吞掉 `CancellationException`，随后在已取消的协程里 `emit(Hide)` | 取消异常，`Hide` 不送达 |
+| 策略跳过 / 网络失败 / 解析失败 / 无匹配 asset 都 `return null` | 只能显示「已是最新版本」，没有原因 |
+
+### 24.2 修复
+
+- **加载态变成状态，不再是一对事件**：`UpdateRepository.checkState`
+  （`domain/updater/model/UpdateCheckResult.kt`: `Idle / Checking / Settled(result)`）。
+  页面 `visible = uiState.isChecking`，由 `stateIn` 组合出来；`Show/HideUpdateLoading` 两个事件
+  已删除。`Checking` 只可能被 `Settled` 或 `Idle` 取代，且由仓库负责。
+- **每个出口都是确定结果**：`UpdateCheckResult = Checked(UpdateInfo) | Skipped(reason) | Failed(reason)`。
+  策略跳过（无联网 / debug / unstable）、HTTP 错误、超时、JSON 解析失败、preview 无预发布版本
+  全部有结果；无 APK asset 仍算 `Checked`（下载回退到 release 页）。
+- **仓库的生命周期**（`OnlineUpdateRepositoryImpl`）：
+  - `runCheck` 进入时置 `Checking`，`try/finally`：未 `settled` 且仍是 `Checking` → 回到 `Idle`
+    （取消/异常都不会留下转圈）。
+  - `withTimeout(deadline + 2s)` 包住「等锁 + 取偏好 + 流程」：启动检查卡住时，手动检查不会
+    无限等锁。
+  - 检查专用 OkHttp client `callTimeout(deadline)`：DNS + 连接 + 读 + 重定向一次性封顶；
+    **下载**用原 client，不受此限制（大 APK 不会被 15s 掐断）。
+  - 只有 `Checked` 进缓存（非 force 时复用）；`Failed/Skipped` 下次会重试。
+- **反馈**（`updateCheckFeedback` / `updateCheckDescription`）：已是最新（带被检查的版本）、
+  失败（带原因）、跳过（带原因）、检查中；行描述显示**上次检查时间 + 被检查版本**。
+  检查中行点击被 `if (!uiState.isChecking)` 挡住（加上既有的阻塞对话框，双击不会排队）。
+- `Timber` 只打版本号/asset 名/状态码，不打响应体、不打 cookie。
+
+### 24.3 「运行命令测试」的命令与结果
+
+```powershell
+# 真实 GitHub 发布 JSON（允许的联网动作，只走 gh CLI）
+gh api repos/Rune-cn/MTForum/releases/latest
+# → tag_name 26.11.9；assets: mtforum-stable-26.11.9.apk
+# 已提交为样本 app/src/test/resources/updater/github_latest_release.json
+```
+
+`OnlineUpdateRepositoryTest` 用**本地** `com.sun.net.httpserver.HttpServer`（127.0.0.1 随机端口）
+把这个样本喂给真实的 `checkUpdate`（`UpdateEnvironment.apiBaseUrl` 可注入），逐条断言
+`checkState` 落到 `Settled`：成功 / 已最新 / 缓存复用 / force 重取 / 无联网跳过（0 请求）/
+HTTP 403 / 服务器拖 2s + `deadline=400ms`（callTimeout 生效）/ 非法 JSON / 无 APK asset。
+`UpdateCheckEngineTest` 覆盖策略跳过三种原因、超时、preview 选择、代理渠道 URL、
+`26.11.9` vs `26.11.10` 数值比较。`UpdateCheckViewModelTest` 断言页面 `isChecking` 跟仓库状态走，
+且 update-available / up-to-date / failed / skipped / 仓库抛异常 五条路径都只产生一条消息、
+结束时不在 checking。
+
+### 24.4 验证
+
+- `:app:testStableDebugUnitTest` → **BUILD SUCCESSFUL，58 suites / 358 tests / 0 failures**
+- `:app:compileStableDebugKotlin` → BUILD SUCCESSFUL
+- `:app:lintVitalStableRelease` → BUILD SUCCESSFUL（`Lint found no new issues`）
+- 三语字符串各 **318** 键（新增 6 键：`update_up_to_date_format` / `update_last_checked_format` /
+  `update_check_failed_format` / `update_check_skip_offline|debug|channel`）
+- ⚠️ 未在真机连真实 GitHub 网络验证「超时」的体感；超时/取消路径由本地 server + 单测覆盖。

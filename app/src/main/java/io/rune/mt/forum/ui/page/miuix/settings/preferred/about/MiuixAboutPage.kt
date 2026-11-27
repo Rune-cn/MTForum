@@ -84,6 +84,7 @@ import io.rune.mt.forum.ui.page.main.settings.preferred.about.AboutAction
 import io.rune.mt.forum.ui.page.main.settings.preferred.about.AboutEvent
 import io.rune.mt.forum.ui.page.main.settings.preferred.about.AboutState
 import io.rune.mt.forum.ui.page.main.settings.preferred.about.AboutViewModel
+import io.rune.mt.forum.ui.page.main.settings.preferred.about.updateCheckDescription
 import io.rune.mt.forum.ui.page.miuix.widgets.ErrorDisplaySheet
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBackButton
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixNavigationItemWidget
@@ -141,7 +142,6 @@ fun MiuixAboutPage(
     viewModel: AboutViewModel = koinViewModel(),
 ) {
     val uiState by viewModel.state.collectAsStateWithLifecycle()
-    val showLoadingDialog = remember { mutableStateOf(false) }
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     var showUpdateSheet by remember { mutableStateOf(false) }
@@ -151,19 +151,13 @@ fun MiuixAboutPage(
         Timber.i("About page shown")
         viewModel.uiEvents.collect { event ->
             when (event) {
-                is AboutEvent.ShowUpdateLoading -> showLoadingDialog.value = true
-
-                is AboutEvent.HideUpdateLoading -> showLoadingDialog.value = false
-
-                AboutEvent.ShowUpdateSheet -> {
+                is AboutEvent.ShowUpdateSheet -> {
                     showUpdateSheet = true
                 }
 
                 is AboutEvent.ShowMessage -> {
-                    updateMessage = context.getString(event.messageResId)
+                    updateMessage = context.getString(event.messageResId, *event.args.toTypedArray())
                 }
-
-                else -> {}
             }
         }
     }
@@ -195,7 +189,9 @@ fun MiuixAboutPage(
     )
 
     MiuixBlockingLoadingDialog(
-        visible = showLoadingDialog.value,
+        // Derived from the repository's check state: the checker settles it on every path
+        // (skip / timeout / error / cancellation), so 「检查更新」 cannot stay up forever.
+        visible = uiState.isChecking,
         text = stringResource(R.string.checking_update),
     )
 
@@ -679,12 +675,18 @@ private fun AboutContentBody(
                     ) {
                         MiuixNavigationItemWidget(
                             title = stringResource(R.string.get_update),
-                            description = if (uiState.hasUpdate) {
-                                stringResource(R.string.update_available, uiState.remoteVersion)
-                            } else {
-                                stringResource(R.string.get_update_detail)
-                            },
-                            onClick = onCheckUpdate,
+                            // Checking / last-checked time+version / failure reason / skip reason,
+                            // so the row never just says "check for updates" while something is
+                            // stuck. Falls back to the plain explanation when nothing ran yet.
+                            description = updateCheckDescription(uiState.checkState)
+                                ?: if (uiState.hasUpdate) {
+                                    stringResource(R.string.update_available, uiState.remoteVersion)
+                                } else {
+                                    stringResource(R.string.get_update_detail)
+                                },
+                            // The blocking dialog already covers the row while a check runs; the
+                            // guard keeps a second check from queueing behind the first.
+                            onClick = { if (!uiState.isChecking) onCheckUpdate() },
                         )
                         MiuixSwitchWidget(
                             title = stringResource(R.string.auto_check_update_on_start),

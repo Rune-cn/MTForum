@@ -140,6 +140,11 @@ class OnlineUpdatePolicyTest {
         assertEquals(0, OnlineUpdatePolicy.compareVersions("26.11.3", "26.11.3"))
         assertEquals(0, OnlineUpdatePolicy.compareVersions("v26.11.3", "26.11.3"))
         assertTrue(OnlineUpdatePolicy.compareVersions("26.11.2", "26.11.3") < 0)
+        // Two-digit suffixes: numeric, not lexicographic (26.11.10 is newer than 26.11.9).
+        assertTrue(OnlineUpdatePolicy.compareVersions("26.11.10", "26.11.9") > 0)
+        assertTrue(OnlineUpdatePolicy.compareVersions("26.11.9", "26.11.10") < 0)
+        assertEquals(0, OnlineUpdatePolicy.compareVersions("26.11.10", "26.11.10"))
+        assertTrue(OnlineUpdatePolicy.compareVersions("26.12", "26.11.10") > 0)
     }
 
     private fun canCheck(
