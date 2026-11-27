@@ -233,12 +233,25 @@
     <string name="forum_body_code_label">Code</string>
     <string name="forum_body_copy">Copy</string>
     <string name="forum_body_copied">Copied</string>
-    <!-- Local drafts (本地草稿) — stored on the device only; the site cannot save drafts -->
+    <!-- Drafts (草稿) — stored by the forum itself (`save=1`), plus the device safety net -->
     <string name="draft_save">Save draft</string>
-    <string name="draft_saved_toast">Draft saved on this device</string>
+    <string name="draft_saved_toast">Draft saved on the forum</string>
     <string name="draft_restore_title">Restore draft?</string>
-    <string name="draft_restore_message">This draft is stored only on this device; the forum does not keep drafts.</string>
+    <string name="draft_restore_message_server">The forum has a draft for this board; restoring it lets you keep editing it.</string>
+    <string name="draft_restore_message_local">A copy of this draft is stored on this device from a failed save. Restore it? (The forum has no draft for it.)</string>
     <string name="draft_restore_confirm">Restore</string>
     <string name="draft_restore_discard">Discard</string>
     <string name="draft_images_skipped_format">%1$d image(s) could not be restored and were skipped.</string>
+    <string name="draft_edit_hint">Editing a draft stored on the forum</string>
+    <string name="draft_publish_title">Publish this draft?</string>
+    <string name="draft_publish_message">This turns the draft into a public thread that everyone can reply to. It cannot be turned back into a draft.</string>
+    <string name="draft_publish_confirm">Publish</string>
+    <string name="drafts_title">Drafts</string>
+    <string name="drafts_entry_desc">Drafts the forum keeps for you</string>
+    <string name="drafts_empty">No drafts yet. Tapping 保存草稿 in the composer saves one on the forum.</string>
+    <string name="drafts_delete_title">Delete this draft?</string>
+    <string name="drafts_delete_message_format">“%1$s” will be removed from the forum. This cannot be undone.</string>
+    <string name="drafts_delete_action">Delete</string>
+    <string name="drafts_login_required_title">Sign in to see your drafts</string>
+    <string name="drafts_login_required_desc">Drafts are stored by the forum for the signed-in author, so signing in is required.</string>
 </resources>

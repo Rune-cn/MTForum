@@ -41,9 +41,20 @@ sealed interface Route : NavKey {
     @Serializable
     data class PrivateConversation(val uid: Int, val name: String) : Route
 
-    /** Compose a new thread in board [fid] (版块列表页的「发帖」入口). */
+    /**
+     * Compose a new thread in board [fid] (版块列表页的「发帖」入口).
+     *
+     * [draftTid]/[draftPid] open an existing **site** draft for editing instead of a blank
+     * composer; the 草稿 page passes them, and the composer then loads that draft's edit form so
+     * 保存草稿 updates it rather than creating a second draft.
+     */
     @Serializable
-    data class NewThread(val fid: Int, val name: String) : Route
+    data class NewThread(
+        val fid: Int,
+        val name: String,
+        val draftTid: Int = 0,
+        val draftPid: Long? = null,
+    ) : Route
 
     /**
      * In-forum search. [keyword] pre-fills the field so a retry or a "search again" round trip
@@ -64,6 +75,16 @@ sealed interface Route : NavKey {
     /** The signed-in user's favourited threads (`home.php?mod=space&do=favorite`). */
     @Serializable
     data object Favorites : Route
+
+    /**
+     * The signed-in user's **site** drafts
+     * (`forum.php?mod=guide&view=my&type=thread&filter=save&fid=0`).
+     *
+     * These are the drafts the composer's 保存草稿 creates on the server, so the route carries no
+     * arguments; a row opens [NewThread] with its tid.
+     */
+    @Serializable
+    data object Drafts : Route
 
     /**
      * The site's 提醒 inbox (`home.php?mod=space&do=notice`): 系统提醒 / 回复我的 / 我的帖子 are

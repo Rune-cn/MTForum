@@ -116,8 +116,8 @@ fun MiuixPreferredPage(
         item { SmallTitle(stringResource(R.string.forum_section_title)) }
         item {
             // Forum shortcuts. Notifications and the profile page are reached from the home page
-            // bell and the account card avatar instead of duplicated here, so favourites is the
-            // only row this section still needs.
+            // bell and the account card avatar instead of duplicated here; the two rows left are
+            // the signed-in user's own forum data: 我的收藏 and the site's 草稿.
             Card(
                 modifier = Modifier
                     .padding(horizontal = 12.dp)
@@ -127,6 +127,11 @@ fun MiuixPreferredPage(
                     title = stringResource(R.string.favorites_title),
                     description = stringResource(R.string.favorites_entry_desc),
                     onClick = { navigator.push(Route.Favorites) },
+                )
+                MiuixNavigationItemWidget(
+                    title = stringResource(R.string.drafts_title),
+                    description = stringResource(R.string.drafts_entry_desc),
+                    onClick = { navigator.push(Route.Drafts) },
                 )
             }
         }

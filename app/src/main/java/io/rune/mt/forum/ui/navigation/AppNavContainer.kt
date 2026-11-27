@@ -21,6 +21,7 @@ import io.rune.mt.forum.ui.animation.predictiveback.OS4_DIM_AMOUNT
 import io.rune.mt.forum.ui.animation.predictiveback.appNavTransition
 import io.rune.mt.forum.ui.animation.predictiveback.os4CardCornerRadius
 import io.rune.mt.forum.ui.page.forum.ForumConversationPage
+import io.rune.mt.forum.ui.page.forum.ForumDraftsPage
 import io.rune.mt.forum.ui.page.forum.ForumFavoritesPage
 import io.rune.mt.forum.ui.page.forum.ForumHomePage
 import io.rune.mt.forum.ui.page.forum.ForumListPage
@@ -183,6 +184,14 @@ fun AppNavContainer(
                 NewThreadPage(
                     fid = arg.fid,
                     forumName = arg.name,
+                    draftTid = arg.draftTid,
+                    draftPid = arg.draftPid,
+                    enableBlur = useBlur,
+                    outerPadding = PaddingValues(),
+                )
+            }
+            entry<Route.Drafts>(swipeDismiss = swipeBackDirection) {
+                ForumDraftsPage(
                     enableBlur = useBlur,
                     outerPadding = PaddingValues(),
                 )
