@@ -555,3 +555,82 @@ isAttachmentFailureNotice / extractNotice`、`ForumBodyParser` 的 `ATTACH_COST`
 - 下载器测试只把该页的站内 host 换成本机回环地址，其余字段（aid 哈希 / `ck` / `&amp;`）保持
   原样，所以全程无外网。
 
+
+## 24. MT 图床（img.binmt.cc）— 2026-11-27 实测
+
+机主给出公告帖 `https://bbs.binmt.cc/thread-98890-1-1.html`，并随后用 Python 端到端跑通了一次真实上传
+（1×1 PNG → `https://icdn.binmt.cc/2611/6b094ea47a7a2.png` + 对应 `[img]…[/img]`）。本文件记录的是
+**接口事实**；客户端实现见 `ForumImageHostClient`（§24.4）。
+
+### 24.1 这是另一个服务，不是论坛
+
+- host 是 **`https://img.binmt.cc/`**，与 `bbs.binmt.cc` **不同域**。
+- 它有自己的会话：**不要**把论坛 Cookie（`cQWy_2132_auth` 等）发给它；客户端用**独立的 CookieJar**。
+- 令牌是**按会话**签发的，只在图床域名下有效；过期就重新取页（§24.3）。
+- 它的存在意义是**原图直传**：论坛附件通道对超过 1MB 的图会重压缩，图床不会。
+
+### 24.2 两步接口
+
+1. `GET https://img.binmt.cc/` → HTML 内含
+   `<meta name="csrf-token" content="<TOKEN>">`
+2. `POST https://img.binmt.cc/upload`，`multipart/form-data`，**恰好一个**文件字段，名字必须是 **`file`**：
+
+   | 头 | 值 |
+   |---|---|
+   | `X-CSRF-TOKEN` | 第 1 步拿到的令牌 |
+   | `X-Requested-With` | `XMLHttpRequest` |
+   | `Accept` | `application/json` |
+   | `Referer` | `https://img.binmt.cc/` |
+
+3. 成功是 `200` + JSON：
+
+```json
+{"status":true,"message":"上传成功","data":{"id":19515,"pathname":"2611/6b094ea47a7a2.png",
+ "origin_name":"probe.png","size":0.29,"mimetype":"image/png","md5":"…","sha1":"…",
+ "links":{"url":"https://icdn.binmt.cc/2611/6b094ea47a7a2.png",
+          "bbcode":"[img]https://icdn.binmt.cc/2611/6b094ea47a7a2.png[/img]",
+          "html":"<img src=…>","markdown":"…",
+          "thumbnail_url":"https://img.binmt.cc/thumbnails/….png"}}}
+```
+
+**客户端只信任 `data.links`**：`url` 用于展示/日志，`bbcode` 就是插进正文的那一段（服务端给的原文，不要自己拼），
+`thumbnail_url` 是缩略图（当前只留作以后用）。
+
+### 24.3 失败模式（全部实测）
+
+| 响应 | 含义 | 客户端动作 |
+|---|---|---|
+| `419` + `{"message":"CSRF token mismatch."}` | 令牌缺失/过期 | 重新 `GET /` 取新令牌，**只重试一次**；第二次 419 判失败 |
+| `200` + `status:false` | 服务端拒绝（格式/大小/风控） | 把 `message` 原文作为失败原因展示 |
+| `200` 但正文不是上述 JSON | 未知页面（可能被 WAF 拦） | 判失败并给原因，不重试 |
+| 非 2xx | HTTP 错误 | `图床返回 HTTP <code>` |
+
+**接受格式**：`.jpeg .jpg .png .gif .webp`。**HEIC 不接受**——客户端在准备阶段就按 MIME 拒绝并给原因
+（`ImageRejectReason.UnsupportedFormat`），不把会被服务端拒的文件传上去。
+
+### 24.4 代码落点
+
+- `data/image/ForumImageHostClient.kt` —— 唯一实现：`GET /` 取令牌 → `POST /upload` → 解析 JSON；
+  419 刷新令牌重试一次；整段在 `Dispatchers.IO`。
+  - **自有 OkHttp client + 自有 CookieJar**（`ImageHostCookieJar`）：即使调用方传入带论坛 Cookie 的 client，
+    也会被 `newBuilder().cookieJar(…)` 换掉，论坛会话永远到不了图床。
+  - 令牌用**正则**抽 `<meta>`（正反属性顺序都认）。图床页面不属于论坛模板，DOM 选择器仍只留在
+    `ForumHtmlParser`（规则 3）。
+  - 日志只打 host / HTTP 状态 / 字节数，**绝不打令牌或 Cookie**（规则 10）。
+- `domain/forum/model/ForumImageHost.kt` —— `ImageHostResult`（`Success(url, bbcode, thumbnailUrl)` /
+  `Failure(reason)`）、`ImageHostGateway`（UI 只依赖这个接口），以及 `ForumImageHostPolicy`
+  （格式表 + **上传文件名按嗅探出的 MIME 定后缀**：`IMG_0001` → `IMG_0001.png`，`photo.heic` 若被当作
+  JPEG 则改名 `photo.jpg`）。
+- `ui/page/forum/ComposerText.kt` —— 插入到**光标处**的纯逻辑（发帖与私信共用），越界光标一律 clamp。
+- 发帖：`NewThreadViewModel.uploadImageToHost` + 选择面板 `ComposerImageSourceSheet`（图床 / 附件两条路）。
+- 私信：`ForumMessagesViewModel.uploadImageToHost` + 工具栏（b/i/u/quote/url）。
+
+### 24.5 插入位置
+
+图床返回的 `[img]…[/img]` **插入到光标处**（`ComposerText.insert`），不是追加到正文末尾：用户在
+中间写了一半时点「添加图片」，图片应该落在那里。
+
+### 24.6 未验证
+
+真实上传由机主用 Python 验证，**客户端尚未对真实图床跑过**（本仓库测试全部对本机回环 server）：
+真实令牌/Cookie/419 时序、以及图床对单个文件的大小上限，仍待真机确认。
