@@ -56,6 +56,55 @@ class ForumDraftParserTest {
     }
 
     @Test
+    fun `live draft list parses both rows with board and a time free of nbsp`() {
+        // The page was captured from the live 草稿箱 while the account had exactly two drafts:
+        // tid 177381 (逆向交流, empty excerpt) and tid 177363 (综合交流, two-line excerpt).
+        val html = fixture("drafts_live_list.html")
+        assertEquals(
+            "the captured markup holds exactly two draft rows",
+            2,
+            ForumHtmlParser.draftRowCount(html),
+        )
+        val page = ForumHtmlParser.parseDraftPage(html)
+
+        assertEquals("every row candidate must parse", 2, page.drafts.size)
+        assertEquals(1, page.page)
+        assertEquals(1, page.totalPages)
+
+        val fresh = page.drafts[0]
+        assertEquals(177381, fresh.tid)
+        assertEquals(41, fresh.fid)
+        assertEquals("测试草稿", fresh.title)
+        assertEquals("逆向交流", fresh.forumName)
+        assertEquals("22 分钟前", fresh.timeText)
+        assertEquals("https://bbs.binmt.cc/thread-177381-1-1.html", fresh.threadUrl)
+        // The row's `div.list_body a` is printed empty for a body-less draft: no invented excerpt.
+        assertNull("an empty body preview must stay null", fresh.excerpt)
+
+        val older = page.drafts[1]
+        assertEquals(177363, older.tid)
+        assertEquals(44, older.fid)
+        assertEquals("测试草稿-客户端自测-勿回复", older.title)
+        assertEquals("综合交流", older.forumName)
+        assertEquals("12 小时前", older.timeText)
+        assertEquals(
+            "the site's line break inside the excerpt collapses to one space",
+            "这是一条客户端草稿测试 （自动生成，稍后删除）",
+            older.excerpt,
+        )
+
+        // `5&nbsp;分钟前` keeps the NBSP through jsoup; a timestamp carrying an invisible
+        // non-breaking space would render with a gap and never match the site's wording.
+        page.drafts.forEach { draft ->
+            assertTrue(
+                "timeText must be normalised, got '${draft.timeText}'",
+                draft.timeText?.contains('\u00A0') == false,
+            )
+            assertTrue("title must not carry an NBSP", draft.title.contains('\u00A0').not())
+        }
+    }
+
+    @Test
     fun `draft list carries no pager when the site prints none`() {
         val page = ForumHtmlParser.parseDraftPage(fixture("draft_draftlist_mobile.html"))
         // The captured list has no div.pg block, so it is a single page — inventing pages would
