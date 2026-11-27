@@ -422,7 +422,6 @@ private fun SettingsPagerContent(
                 enableBlur = useBlur,
                 title = navigationItems[page].label,
                 outerPadding = outerPadding,
-                snackbarHostState = snackbarHostState,
             )
         }
     }

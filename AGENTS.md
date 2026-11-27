@@ -59,6 +59,9 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
 6. **头像用 `ForumAvatar`**：不要各自判断 `noavatar` 换字母（列表和帖子内曾因此不一致）。
 7. **顶栏图标用 `MiuixTopBarIconButton`**：它按风格分支，直接 `IconButton` 在 OS4 下样式错。
 8. **弹窗按风格分支**：OS4 → `GlassPopup` / `GlassIconDropdownMenu`；OS3 → `WindowListPopup`。
+   **底部面板同理**：OS4 → `GlassBottomSheet`（内联，渲染进根 `Miuix Scaffold` 的 dialog 层，
+   因此宿主 `MiuixComponentHost` 必须在；`backdrop` 传页面内容层或 `null`），
+   OS3 → `WindowBottomSheet`（真实窗口）。实例见 `ForumSignInSheet`、`AttachmentChoiceSheet`。
 9. **不要条件化 `MiuixComponentHost`**：`SubcomposeLayout` 同帧销毁会崩溃。
 10. **禁止日志打印 Cookie 明文**，只可打 uid / isLoggedIn。
 11. **提交**：Conventional Commits；主体 ≤72 字符；不加 AI 署名或 Co-authored-by。
@@ -91,6 +94,8 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     UI 显示登录卡片 + 跳 `Route.Login`，**不要**把登录页解析成“空结果”。
     **设置页「论坛」分组只留「我的收藏」+「草稿」两行**（`Route.Favorites` / `Route.Drafts`—
     两者都是登录账号自己的论坛数据，放在这里最直觉）；消息提醒从首页顶栏铃铛进，
+    **每日签到从首页顶栏最右侧的 `Tasks` 图标进**（`ForumSignInSheet` 底部面板，OS4 玻璃/OS3
+    窗口；面板内容 `ForumSignInCard`，游客仍是登录卡片），签到**不进**设置页；
     我的主页从账号卡片点头像/昵称进（`AccountSection` 的 `onOpenProfile`），不要再往设置页
     的「论坛」分组加回 Notices / UserProfile 行。发帖页顶栏**不另设**草稿入口（避免重复）。
 19. **搜索是 POST 流程**：`search.php?mod=forum&mobile=2` 先取 `formhash`，POST
