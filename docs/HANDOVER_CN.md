@@ -171,7 +171,7 @@ HTML，任务是**忠实渲染这段 HTML**——不引 WebView、不引第三�
 | `Quote(text, author, truncated, children)` | `div.comiis_quote > blockquote` / 裸 `<blockquote>` | 左侧竖线；作者行（`font color=#999999` 的「…发表于…」）作暗色页眉；**体内列表/表格/代码/分隔线/图片按原顺序成为 `children`** |
 | `Divider` | `<hr class="l">` | 1dp 分隔线 |
 | `BulletList(items)` | `ul/ol > li`（支持 2–3 层嵌套；**纯图片列表除外，见下**） | 圆点 / 序号 + 缩进 |
-| `Table(rows)` | `table/tr/th\|td`（含 `colspan`） | weight 网格 + 细边框；**表头加粗+底色，`colspan` 变 weight** |
+| `Table(rows)` | `table/tr/th\|td`（含 `colspan`） | **列宽按内容加权**（短列有下限、长列取剩余）+ 细边框，整表过宽时卡内横向滚动；**表头加粗+底色，单元格对齐、`colspan` 变合并 weight**（见下「列宽按内容加权」） |
 | `Attachment(name, caption, url, iconUrl, previewUrl, isImage, costCoins)` | `div.comiis_attach`（`span.f_ok`、`p.attach_size`、`a[href*=mod=attachment]`、`img[src*=filetype]`） | 附件卡片，**尾随下载图标 + 文件类型角标；点击弹出"下载/浏览器/复制"选择**；付费附件另有「下载将扣除 N 金币」提示（见 §3.9） |
 | `ModeratorNote` | `div.comiis_modact` | 蓝色信息 chip |
 | `EditNote` | `i.pstatus`（「本帖最后由…编辑」） | 12sp 暗色说明，非斜体 |
@@ -263,6 +263,28 @@ jsoup；只有纯 BBCode（客户端外发回复 / 预览响应）才走 `bbcode
 | 引用里的 `<img>` 被丢掉 | 图片按**原位置**成为 `Quote.children` 的 `Picture`，渲染为 96dp 缩略图 | 合成用例（站点引用体内暂无图；见下方「诚实缺口」） |
 | 引用里的列表/表格/分隔线被拍平 | 引用体走独立 walker，`children` 保留结构 | `sample_bbcode_thread.html` 引用 + 合成 `[quote]` 用例 |
 
+**列宽按内容加权（2026-11-27 修复「表格方面显示不行」）**：`rich_156696.html`（网盘对比帖）的
+5 列表格，前四列短（2–10 字），最后一列「备注说明」是几十字长散文。旧渲染给每格 `weight(1f)`
+（或 `colspan`），5 列被均分成各 1/5 → 备注每行一个字、URL 从中间断行，整表不可读。现在列宽由
+`ForumHtmlText.kt` 的纯函数 `tableColumnWeights(rows): List<Float>` 决定（单位 dp，可无像素断言）：
+
+- 每列取**能到达该列的最长单元格字数** `len[j]`（最长格决定该列要几行才读得顺）；`colspan` 格
+  的宽度按覆盖列数均摊，不把宽度全堆到第一列。
+- `weight[j] = len[j] * 16dp`，再夹在 `[64dp, 200dp]`：**下限**保证短列（`❌ 否`、`小飞机网盘`）
+  一行放得下；**上限**让长散文列折几行而不是独占整行。
+- 若**每一列都是长列**（`len ≥ 12`），内容不再有区分度 → 返回**等 weight**（宽表均分 + 横向滚动）。
+- 渲染：表格宽度 = `max(卡片宽度, Σweight)`；够宽时按 weight 比例撑满卡片（2/3 列表格照旧填满），
+  超出时整表在卡片内 `horizontalScroll` 滚动——单元格绝不会被压成一字一行，卡片圆角/边框不变。
+- **行高**：由最高（散文）格决定，单元格**顶部对齐**（短格文字与散文首行齐平，空白留在下方，
+  比把单行标签居中更自然）。
+- **每单元格对齐**：解析期按 `<td align>` → 第一个 `<div align>` / `[style*=text-align]` →
+  单元格自身 `style` 的 `text-align` 取值（`blockAlignOf` / `cellAlignOf` / `styleAlignOf`）。
+  表头整行 `<div align="center"><strong>` 故居中；单元格文本需 `fillMaxWidth()` 才能让 `textAlign` 生效。
+
+证据：解析 `ForumBodyRichParserTest`（2 表 / 15 `tr` / 75 `td`、首行 header、`❌ 否`、长备注、
+`LinkAnnotation`、`div align` 居中）；加权 `ForumTableLayoutTest`（备注列 weight > 网盘名称列、
+2/3/5 列与「全长列」回退）；截图 `ForumTableScreenshotTest`。
+
 **已知限制（更新）**：嵌套表格仍降级为文本行（可读即可，fixture 里无真实嵌套表格）；
 `rowspan` 不参与布局（只保证不丢单元格文字，Discuz `[table]` 本身不产生 `rowspan`）；
 服务端已丢弃的 `font size` 无法还原；引用截断按「行尾 ` ...`」判别，站点若改文案需同步调整。
@@ -284,6 +306,11 @@ jsoup；只有纯 BBCode（客户端外发回复 / 预览响应）才走 `bbcode
 都进了同一张 `06_rich_body_constructs.png`；真实 `div.comiis_attach` 卡片（尾随下载图标）单独出一张：
 
 ![真实附件卡片（可下载）](screenshots/attachment-card.png)
+
+网盘对比帖 `rich_156696.html` 的五列表格（列宽按内容加权：`网盘名称` 窄、`官方网址` 放得下整条 URL、
+`备注说明` 最宽折三行；表头加粗+底色并居中）：
+
+![网盘五列表格（列宽按内容加权）](screenshots/table-render.png)
 
 **下载选择面板本身没有截图**：`WindowBottomSheet` 是独立 Dialog 窗口，Robolectric 下
 `decorView.draw()` 与 `captureToImage()` 都取不到它的像素（两者都是空白）。面板的可见性由
@@ -499,8 +526,10 @@ bash tools/build.sh :app:lintVitalStableRelease     # 改字符串/资源后必�
 | `Os4PredictiveBackGeometryTest` | OS4 卡片返回几何：端点、单调、逐帧无跳变、像素对齐、scrim 起手为 0 |
 | `Os4PredictiveBackScreenshotTest` | 用真实 transition + 假 `NavTransitionScope` 渲出 p=0.45 的一帧并做像素断言 |
 | `ForumImageScreenshotTest` | **JVM 截图**：真实卡片 + 正文渲染、失败占位块落盘 PNG |
-| `ForumBodyRichParserTest` | 代码块（DOM 计数/多行/实体还原）、字号标题、`hr` 分隔、表格、附件卡、引用作者、`[code]` 转义 |
+| `ForumBodyRichParserTest` | 代码块（DOM 计数/多行/实体还原）、字号标题、`hr` 分隔、表格（含网盘帖 2 表 / 15 `tr` / 75 `td`、表头、对齐、链接）、附件卡、引用作者、`[code]` 转义 |
+| `ForumTableLayoutTest` | 列宽加权纯函数：备注列 > 网盘名称列、2/3/5 列、全长列回退等 weight、`colspan` 均摊 |
 | `ForumRichBodyScreenshotTest` | **JVM 截图**：代码块+标题+表格+附件+引用+列表合成图、真实 `rich_bbcode_reply` 回复 |
+| `ForumTableScreenshotTest` | **JVM 截图**：网盘五列表格加权列宽（`table-render.png`）、手机宽度横向滚动 |
 | `ForumProfileParserTest` | 个人主页：头部/计数/积分/资料行；**二维码行动画层被丢弃**、签名行保留（§17.1） |
 | `TopAppBarBackdropTest` | 顶栏采样层守卫 `barBackdrop()`：只接受页面内容层，宿主层被拒（§17.2） |
 | `MiuixPageScrollBarTest` | 长列表滚动条覆盖层：贴右缘、满页高、与列表同 padding + 截图（§17.3） |

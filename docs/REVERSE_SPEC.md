@@ -362,7 +362,35 @@ OP 只发相册附件时，正文里**没有** `span.comiis_postimg`：模板把
 - 解析约定：图片列表（有 `comiis_img_list` 类，或“只有图、没有文字”的 `ul`）按文档顺序
   发 `Picture` 块；混排列表保留文字行、图片按序跟在列表之后。见 HANDOVER §3.5。
 
-### 21.2 DOM 选择器
+### 21.1c 网盘对比表格（`rich_156696.html`）— 2026-11-27 实测
+
+用户反馈「表格方面显示不行」对应的 thread 156696。整页正文含**两张五列表格**（4 + 11 = 15 个
+`<tr>`，75 个 `<td>`，**无 `colspan`/`rowspan`/`th`**）。原始 markup：
+
+```html
+<table><tr>
+  <td><div align="center"><strong>网盘名称</strong></div></td>
+  <td><div align="center"><strong>官方网址</strong></div></td>
+  <td><div align="center"><strong>必须登录下载</strong></div></td>
+  <td><div align="center"><strong>非会员限速</strong></div></td>
+  <td><div align="center"><strong>备注说明</strong></div></td>
+</tr><tr>
+  <td><div align="center">小飞机网盘</div></td>
+  <td><a href="https://www.feejii.com/" target="_blank">https://www.feejii.com</a></td>
+  <td><div align="center">❌ 否</div></td>
+  <td><div align="center">❌ 全程不限速</div></td>
+  <td>论坛签约合作网盘，用户可通过专属通道免费扩容至 1TB，支持大文件稳定传输</td>
+</tr>…</table>
+```
+
+要点：
+- **5 列**，前四列短（2–10 字，多为 `<div align="center">` 居中），最后一列 `备注说明` 是几十字
+  长散文（无对齐，左对齐）。列宽必须**按内容**分配，均分会让备注每行一个字、URL 断行。
+- **表头靠「整行 `<strong>`」**（无 `<th>`）；对齐来自单元格内的 `<div align="center">`（不是
+  `<td align>`）。链接是单元格内 `<a href>`，要保留可点。
+- 表格实现见 HANDOVER §3.5「列宽按内容加权」；截图 `docs/screenshots/table-render.png`。
+
+
 
 - 正文容器：`div.comiis_postli` → `div.comiis_messages`（`ForumHtmlParser.parsePost`）。
 - 代码块：`div.comiis_blockcode > div.b_l > ol > li`，行内 `<br>` 为额外换行，`&nbsp;` 为缩进。
