@@ -295,4 +295,30 @@
     <string name="forum_paging_page_format">%1$d / %2$d</string>
     <string name="forum_messages_login_required">Sign in to view messages</string>
     <string name="forum_messages_empty">No conversations yet</string>
+    <!-- New-thread composer (发帖页): board picker, image feedback, actions moved out of Kotlin literals -->
+    <string name="composer_title_new">New thread</string>
+    <string name="composer_title_edit_draft">Edit draft</string>
+    <string name="composer_subject_label">Title</string>
+    <string name="composer_message_label">Message (supports [b] [i] [quote] and emoji)</string>
+    <string name="composer_smiley">Emoji</string>
+    <string name="composer_smiley_hide">Hide emoji</string>
+    <string name="composer_add_images">Add images</string>
+    <string name="composer_publish">Publish</string>
+    <string name="composer_published_toast">Thread published</string>
+    <string name="composer_draft_deleted_toast">Draft deleted</string>
+    <string name="composer_board_label">Post to: %1$s</string>
+    <string name="composer_board_unknown_format">Board %1$d</string>
+    <string name="composer_board_today_format">%1$d today</string>
+    <string name="composer_board_title">Choose a board</string>
+    <string name="composer_board_draft_locked">A draft stays on the board it was created in.</string>
+    <string name="composer_board_loading">Loading boards…</string>
+    <string name="composer_board_error">Could not load the boards: %1$s</string>
+    <string name="composer_board_retry">Retry</string>
+    <string name="composer_form_loading">Refreshing the form for this board…</string>
+    <string name="composer_image_hint">Images upload with the post as forum attachments (1 MB each, up to 5).</string>
+    <string name="composer_image_added_format">Added %1$s (%2$s)</string>
+    <string name="composer_image_added_scaled_format">Added %1$s (%2$s, compressed to fit 1 MB)</string>
+    <string name="composer_image_too_large_format">Not added %1$s: %2$s is over the 1 MB limit and could not be compressed</string>
+    <string name="composer_image_unreadable_format">Not added %1$s: the file cannot be read (deleted, or no permission)</string>
+    <string name="composer_image_over_cap_format">Not added %1$s: at most %2$d images per post</string>
 </resources>

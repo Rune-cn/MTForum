@@ -3,7 +3,7 @@ package io.rune.mt.forum.data.forum.repository
 
 import io.rune.mt.forum.data.forum.network.ForumCookieJar
 import io.rune.mt.forum.data.forum.network.ForumHtmlParser
-import io.rune.mt.forum.data.forum.network.ForumHttpClient
+import io.rune.mt.forum.data.forum.network.ForumHttpGateway
 import io.rune.mt.forum.data.forum.network.ForumUrls
 import io.rune.mt.forum.data.forum.network.MultipartPart
 import io.rune.mt.forum.domain.forum.model.ForumConversationDetail
@@ -47,7 +47,12 @@ import timber.log.Timber
  * the view models free of dispatcher plumbing.
  */
 class ForumRepositoryImpl(
-    private val http: ForumHttpClient,
+    /**
+     * The HTTP surface, typed as the gateway so the multipart request shape can be asserted through
+     * a recording fake (`ForumNewThreadContractTest`). [ForumHttpClient] is its only implementation
+     * in production wiring (rule 1: the cookie jar and `AcwInterceptor` live there).
+     */
+    private val http: ForumHttpGateway,
     private val cookieJar: ForumCookieJar,
 ) : ForumRepository {
 
@@ -415,6 +420,16 @@ class ForumRepositoryImpl(
         )
     }
 
+    /**
+     * Publishes a new thread with its images as inline attachments.
+     *
+     * Measured contract (docs/REVERSE_SPEC.md §16): one `multipart/form-data` POST to
+     * `forum.php?mod=post&action=newthread&fid={fid}&extra=&topicsubmit=yes&mobile=2`, carrying
+     * **all eight** fields the mobile form submits — `formhash`, `posttime`, `subject`, `message`,
+     * `htmlon=0`, `usesig=1`, `allownoticeauthor=1`, `save=` (empty = publish) — plus one
+     * `Filedata` part per image. There is no separate attachment/upload hop and no image-host API:
+     * the server stores the files as thread attachments on the MT CDN (`oos.binmt.cc`).
+     */
     override suspend fun createThread(
         fid: Int,
         subject: String,
@@ -431,9 +446,14 @@ class ForumRepositoryImpl(
             "htmlon" to "0",
             "usesig" to "1",
             "allownoticeauthor" to "1",
+            // Empty `save` = publish. 保存草稿 is the same POST with save=1 (ForumDraftServiceImpl).
             "save" to "",
         )
         val parts = images.map { MultipartPart("Filedata", it.fileName, it.contentType, it.bytes) }
+        if (parts.isNotEmpty()) {
+            Timber.tag("ForumRepository")
+                .i("new thread fid=%d attachments=%d bytes=%d", fid, parts.size, parts.sumOf { it.bytes.size })
+        }
         val html = http.postMultipart(
             "forum.php?mod=post&action=newthread&fid=$fid&extra=&topicsubmit=yes&mobile=2",
             fields,
