@@ -136,25 +136,68 @@ class ForumDraftServiceImpl(
 
     override suspend fun loadDraft(tid: Int, fid: Int, pid: Long?): ForumDraftEdit =
         withContext(Dispatchers.IO) {
-            val html = http.getHtml(ForumUrls.draftEditPath(fid, tid, pid))
+            // The 草稿 list row does not print the draft's `pid`, but Discuz's edit page *requires*
+            // it: `post_editpost.php` opens with `get_post_by_tid_pid($_G['tid'], $pid)` and calls
+            // `showmessage('post_nonexistence')` — literally 「帖子不存在」 — when pid is 0/absent
+            // (lang_message.php; see docs/REVERSE_SPEC.md §16.7). That is the false error the user
+            // saw on delete: the row-based flow asked for the edit page without a pid, the site
+            // said 帖子不存在, and the client never sent the delete at all.
+            //
+            // The pid lives on the draft's *own thread page*, which the author can read, so it is
+            // fetched once when the caller does not already know it.
+            val resolvedPid = pid?.takeIf { it > 0 } ?: resolveDraftPid(tid)
+            if (resolvedPid == null) {
+                // Refuse before the edit page: asking it without a pid is what produces the
+                // misleading site notice. A local, explicit reason is the honest answer.
+                throw IllegalStateException(
+                    "无法读取草稿帖子的 pid（tid=$tid），站点拒绝在没有 pid 时打开编辑页",
+                )
+            }
+            val editPath = ForumUrls.draftEditPath(fid, tid, resolvedPid)
+            val html = http.getHtml(editPath)
             if (ForumHtmlParser.isLoginRequired(html)) throw ForumLoginRequiredException()
-            val edit = ForumHtmlParser.parseDraftEdit(html, tid, fid, pid)
+            val edit = ForumHtmlParser.parseDraftEdit(html, tid, fid, resolvedPid)
             // A draft the author does not own answers with a Discuz notice page instead of a form.
             // Reporting the site's own wording beats handing back an empty composer whose saves
             // would all fail; a form without a formhash is the marker that no form was rendered.
             val notice = ForumHtmlParser.extractNotice(html)
-            if (edit.form.formhash.isBlank() && notice != null && ERROR_WORDS.containsMatchIn(notice)) {
-                throw IllegalStateException(notice)
+            if (edit.form.formhash.isBlank()) {
+                throw IllegalStateException(
+                    notice?.takeIf { ERROR_WORDS.containsMatchIn(it) }
+                        ?: "站点没有返回草稿编辑表单（$editPath）",
+                )
+            }
+            // `delete`/`publish` replay the form's own `pid`; a form that lost it would be
+            // rejected by the site with 帖子不存在 again, so it is checked here once.
+            val formPid = edit.form.fields["pid"]?.toLongOrNull()
+            if (formPid == null || formPid <= 0) {
+                throw IllegalStateException("草稿编辑表单缺少 pid（$editPath）")
             }
             Timber.tag(TAG).i(
-                "loadDraft tid=%d fid=%d pid=%s fields=%d",
+                "loadDraft tid=%d fid=%d pid=%s requestPid=%s fields=%d",
                 tid,
                 fid,
-                pid,
+                resolvedPid,
+                formPid,
                 edit.form.fields.size,
             )
             edit
         }
+
+    /**
+     * Reads the draft's `pid` from its thread page (`div.comiis_postli#pid…`).
+     *
+     * Only the author can see the draft's thread, so a stale session shows up as the login form
+     * here as well; that is surfaced as [ForumLoginRequiredException] instead of a pid failure.
+     */
+    private suspend fun resolveDraftPid(tid: Int): Long? {
+        val path = ForumUrls.draftThreadPath(tid)
+        val html = http.getHtml(path)
+        if (ForumHtmlParser.isLoginRequired(html)) throw ForumLoginRequiredException()
+        val pid = ForumHtmlParser.draftThreadPid(html)
+        Timber.tag(TAG).i("draft pid tid=%d path=%s pid=%s", tid, path, pid)
+        return pid
+    }
 
     override suspend fun publishDraft(edit: ForumEditForm): DraftActionResult =
         withContext(Dispatchers.IO) {
@@ -218,6 +261,15 @@ class ForumDraftServiceImpl(
             return DraftActionResult.Failure("登录状态已失效，请重新登录")
         }
         val notice = ForumHtmlParser.extractNotice(html)
+        // A success wording wins even when the page's chrome carries an error word: the delete
+        // path answers with `post_edit_delete_succeed` ("主题删除成功"), and a template that also
+        // prints "不存在" somewhere in its furniture must not turn that into a false failure
+        // (docs/REVERSE_SPEC.md §16.7).
+        if (notice != null && SUCCESS_WORDS.containsMatchIn(notice)) {
+            val tid = ForumHtmlParser.resultTid(html)
+            Timber.tag(TAG).i("%s ok tid=%s notice=%s", kind, tid, notice)
+            return DraftActionResult.Success(notice, tid)
+        }
         if (notice != null && ERROR_WORDS.containsMatchIn(notice)) {
             Timber.tag(TAG).i("%s rejected: %s", kind, notice)
             return DraftActionResult.Failure(notice)
@@ -232,5 +284,11 @@ class ForumDraftServiceImpl(
 
         /** Discuz error notices that mean the write did not happen. */
         val ERROR_WORDS = Regex("抱歉|非法|错误|不能|失败|无权限|权限不足|间隔|不存在|没有找到")
+
+        /**
+         * Discuz success notices (`post_edit_delete_succeed` = 主题删除成功, `post_edit_succeed`
+         * = 帖子编辑成功). Checked before [ERROR_WORDS] so a success page's chrome cannot win.
+         */
+        val SUCCESS_WORDS = Regex("成功|已删除")
     }
 }

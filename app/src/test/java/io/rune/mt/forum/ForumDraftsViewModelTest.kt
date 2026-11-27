@@ -222,6 +222,86 @@ class ForumDraftsViewModelTest {
         assertEquals(ForumDraftsPhase.LoginRequired, viewModel.state.value.phase(signedIn = false))
     }
 
+    @Test
+    fun `an accepted delete removes the row and re-reads the list from the site`() =
+        runTest(dispatcher.scheduler) {
+            // The reported bug ended with "the draft is still there". The row must disappear only
+            // on a server-accepted delete, and the screen must then show the site's list instead
+            // of trusting the local removal.
+            val repository = DraftsFakeRepository(signedIn = true)
+            val service = DraftsFakeService().apply {
+                result = { page -> if (calls == 1) pageOf(page, 177381, 177363) else pageOf(page, 177363) }
+            }
+            val viewModel = ForumDraftsViewModel(repository, service)
+            viewModel.loadIfNeeded()
+            advanceUntilIdle()
+            assertEquals(2, viewModel.state.value.drafts.size)
+
+            viewModel.deleteDraft(viewModel.state.value.drafts.first())
+            advanceUntilIdle()
+
+            val state = viewModel.state.value
+            assertEquals(listOf(177363), state.drafts.map { it.tid })
+            assertNull(state.deleteError)
+            assertNull("the row spinner is cleared", state.deletingTid)
+            assertEquals("the list is re-read from the site", 2, service.calls)
+            assertEquals(1, service.deleteCalls)
+            assertEquals(
+                "the delete reads the edit form first (the row has no pid)",
+                listOf(177381 to null),
+                service.loadDraftCalls,
+            )
+        }
+
+    @Test
+    fun `a rejected delete keeps the row and shows the site's wording`() =
+        runTest(dispatcher.scheduler) {
+            val repository = DraftsFakeRepository(signedIn = true)
+            val service = DraftsFakeService().apply {
+                result = { page -> pageOf(page, 177381, 177363) }
+                deleteResult = DraftActionResult.Failure("抱歉，指定的主题不存在或已被删除或正在被审核")
+            }
+            val viewModel = ForumDraftsViewModel(repository, service)
+            viewModel.loadIfNeeded()
+            advanceUntilIdle()
+
+            viewModel.deleteDraft(viewModel.state.value.drafts.first())
+            advanceUntilIdle()
+
+            val state = viewModel.state.value
+            assertEquals("a failed delete must not lose the row", 2, state.drafts.size)
+            assertEquals(
+                "抱歉，指定的主题不存在或已被删除或正在被审核",
+                state.deleteError,
+            )
+            assertNull(state.deletingTid)
+            assertEquals("no list re-read after a rejected delete", 1, service.calls)
+        }
+
+    @Test
+    fun `a delete that cannot read the edit form keeps the row and reports why`() =
+        runTest(dispatcher.scheduler) {
+            // What the device saw before the fix: the edit form could not be read (the site
+            // answered 帖子不存在), so the delete POST never happened. The row must stay and the
+            // reason must be the one the service produced.
+            val repository = DraftsFakeRepository(signedIn = true)
+            val service = DraftsFakeService().apply {
+                result = { page -> pageOf(page, 177381, 177363) }
+                loadDraftFailure = IllegalStateException("帖子不存在")
+            }
+            val viewModel = ForumDraftsViewModel(repository, service)
+            viewModel.loadIfNeeded()
+            advanceUntilIdle()
+
+            viewModel.deleteDraft(viewModel.state.value.drafts.first())
+            advanceUntilIdle()
+
+            val state = viewModel.state.value
+            assertEquals(2, state.drafts.size)
+            assertEquals("帖子不存在", state.deleteError)
+            assertEquals(0, service.deleteCalls)
+        }
+
     private fun pageOf(page: Int, vararg tids: Int) = ForumDraftPage(
         drafts = tids.map { tid -> ForumDraft(tid = tid, fid = 44, title = "草稿 $tid", forumName = "综合交流") },
         page = page,
@@ -236,6 +316,12 @@ private class DraftsFakeService : ForumDraftService {
     var calls = 0
 
     var result: suspend (Int) -> ForumDraftPage = { page -> ForumDraftPage(page = page) }
+
+    /** What the edit-form read returns; a nullable override lets a test simulate the old failure. */
+    var loadDraftFailure: Exception? = null
+    var loadDraftCalls: MutableList<Pair<Int, Long?>> = mutableListOf()
+    var deleteResult: DraftActionResult = DraftActionResult.Success()
+    var deleteCalls = 0
 
     override suspend fun getDrafts(page: Int): ForumDraftPage {
         calls++
@@ -258,11 +344,40 @@ private class DraftsFakeService : ForumDraftService {
         noticeAuthor: String?,
     ): DraftActionResult = notWired()
 
-    override suspend fun loadDraft(tid: Int, fid: Int, pid: Long?): ForumDraftEdit = notWired()
+    override suspend fun loadDraft(tid: Int, fid: Int, pid: Long?): ForumDraftEdit {
+        loadDraftCalls += tid to pid
+        loadDraftFailure?.let { throw it }
+        return ForumDraftEdit(
+            tid = tid,
+            fid = fid,
+            pid = 12205913L,
+            subject = "草稿 $tid",
+            message = "正文",
+            form = ForumEditForm(
+                action = "forum.php?mod=post&action=edit&extra=&editsubmit=yes&mobile=2",
+                formhash = "16385279",
+                tid = tid,
+                fid = fid,
+                pid = 12205913L,
+                fields = mapOf(
+                    "formhash" to "16385279",
+                    "tid" to tid.toString(),
+                    "fid" to fid.toString(),
+                    "pid" to "12205913",
+                    "delete" to "0",
+                    "editsubmit" to "yes",
+                    "save" to "",
+                ),
+            ),
+        )
+    }
 
     override suspend fun publishDraft(edit: ForumEditForm): DraftActionResult = notWired()
 
-    override suspend fun deleteDraft(edit: ForumEditForm): DraftActionResult = notWired()
+    override suspend fun deleteDraft(edit: ForumEditForm): DraftActionResult {
+        deleteCalls++
+        return deleteResult
+    }
 
     override suspend fun updateDraft(
         edit: ForumEditForm,

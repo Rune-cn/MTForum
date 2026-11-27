@@ -74,6 +74,15 @@ internal object ForumUrls {
             if (page > 1) "&page=$page" else ""
 
     /**
+     * The draft's own thread page (`thread-<tid>-1-1.html`, the same shape the list row links to).
+     *
+     * It is the only page that reveals the draft's `pid` (`div.comiis_postli#pid…`), which the
+     * edit page needs before it can render a form — Discuz answers `post_nonexistence`
+     * (「帖子不存在」) when `pid` is missing.
+     */
+    fun draftThreadPath(tid: Int): String = "thread-$tid-1-1.html"
+
+    /**
      * The edit page of a draft — the only place that prints the draft's `pid` and the full hidden
      * field set the edit POST needs.
      */

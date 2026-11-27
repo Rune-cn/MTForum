@@ -140,16 +140,28 @@ class ForumDraftsViewModel(
      * Deletes [draft] on the site.
      *
      * The edit form has to be read first because deletion replays its hidden field set
-     * (`delete=1`); the row only disappears once the server accepted the write.
+     * (`delete=1`); the row only disappears once the server accepted the write. Reading that
+     * form is also where the draft's `pid` comes from — the list row does not print it, and
+     * Discuz's edit page answers 「帖子不存在」 without it (see
+     * `ForumDraftServiceImpl.loadDraft`).
      */
     fun deleteDraft(draft: ForumDraft) {
         if (deleteJob?.isActive == true) return
         _state.update { it.copy(deletingTid = draft.tid, deleteError = null) }
         deleteJob = viewModelScope.launch {
-            val result = runCatching {
+            val result = try {
                 val edit = draftService.loadDraft(draft.tid, draft.fid, draft.pid)
                 draftService.deleteDraft(edit.form)
-            }.getOrElse { DraftActionResult.Failure(it.message ?: "删除草稿失败") }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (login: ForumLoginRequiredException) {
+                // The cookie expired between listing and deleting: show the login card again
+                // instead of the generic failure text.
+                _state.update { it.copy(deletingTid = null, loginRequired = true, drafts = emptyList()) }
+                return@launch
+            } catch (error: Exception) {
+                DraftActionResult.Failure(error.message ?: "删除草稿失败")
+            }
             when (result) {
                 is DraftActionResult.Success -> {
                     Timber.tag(TAG).i("draft deleted tid=%d", draft.tid)
@@ -159,6 +171,11 @@ class ForumDraftsViewModel(
                             deletingTid = null,
                         )
                     }
+                    // The local row removal is only a claim: ask the site for page one again so
+                    // the screen shows what the account really has. Without this the row could be
+                    // gone from the app while the draft still exists (or come back after a
+                    // pull-to-refresh with no explanation).
+                    refreshAfterDelete(deletedTid = draft.tid)
                 }
 
                 is DraftActionResult.Failure -> {
@@ -166,6 +183,31 @@ class ForumDraftsViewModel(
                     _state.update { it.copy(deletingTid = null, deleteError = result.reason) }
                 }
             }
+        }
+    }
+
+    /**
+     * Re-reads the list after an accepted delete, keeping the current screen if that read fails.
+     *
+     * A failed refresh must not resurrect the deleted row (the server already accepted the
+     * write); the pull-to-refresh path stays available.
+     */
+    private suspend fun refreshAfterDelete(deletedTid: Int) {
+        val page = runCatching { draftService.getDrafts(1) }.getOrElse { error ->
+            if (error is CancellationException) throw error
+            Timber.tag(TAG).w(error, "drafts refresh after delete failed")
+            return
+        }
+        if (page.drafts.any { it.tid == deletedTid }) {
+            Timber.tag(TAG).w("draft tid=%d still listed after a successful delete", deletedTid)
+        }
+        _state.update { state ->
+            state.copy(
+                drafts = page.drafts,
+                page = page.page,
+                totalPages = page.totalPages,
+                loaded = true,
+            )
         }
     }
 

@@ -189,8 +189,27 @@ class ForumDraftParserTest {
         assertTrue(withPid.contains("action=edit"))
         assertTrue(withPid.contains("mobile=2"))
 
+        // The builder still omits a null pid, but the service never sends such a request: it reads
+        // the pid from the draft's thread page first, because Discuz answers 帖子不存在 without it
+        // (docs/REVERSE_SPEC.md §16.7).
         val withoutPid = ForumUrls.draftEditPath(fid = 50, tid = 177367, pid = null)
         assertTrue("a pending pid must be omitted, not sent as 0", !withoutPid.contains("pid="))
+    }
+
+    @Test
+    fun `the draft thread page is where the pid comes from`() {
+        assertEquals("thread-177367-1-1.html", ForumUrls.draftThreadPath(177367))
+        assertEquals(
+            "the captured draft thread page carries its own post id",
+            12_205_913L,
+            ForumHtmlParser.draftThreadPid(fixture("draft_thread_view.html")),
+        )
+        // Any thread page prints its OP's `div.comiis_postli#pid…`; for a draft that page is
+        // author-only, which is why the client reads it before the edit page.
+        assertEquals(
+            12_177_297L,
+            ForumHtmlParser.draftThreadPid(fixture("thread_177093.html")),
+        )
     }
 
     @Test
