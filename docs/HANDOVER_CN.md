@@ -1633,3 +1633,41 @@ internal fun barBackdrop(contentBackdrop: LayerBackdrop?, hostBackdrop: LayerBac
 **仍未验证**：OS4 玻璃签到面板在 Robolectric 下无法渲染（AGSL 着色器 `cannot swizzle value of
 type 'shader'`，与三点菜单同一限制），装机体感未测；付费附件的 `ck` 时效/一次性、再次 acw 挑战、
 扣费次数均只能在真机确认。
+
+### 16.7 发帖编辑器：图片、板块与按钮间距（2026-11-27）
+
+机主反馈：「表情和添加图片太近了」「添加图片没有用，对接了 mt 图床吗？」「帖子编辑时可选择发布板块」。
+
+**图片为什么"没用"**：旧实现用 `GetMultipleContents` 拿临时 URI，然后用 `readPicked()` 把整张图读进
+内存，超过 1MB 就**静默返回 null**——手机相册照片普遍 2–5MB，于是选了等于没选，界面上也不报错。
+
+**现在的管线**（`ComposerImagePrep.kt`）：
+
+| 阶段 | 做法 |
+|---|---|
+| 选择 | `OpenMultipleDocuments` + `takePersistableUriPermission`，URI 在进程重启后仍可读（与草稿一致） |
+| 体积策略 | 先按最长边 ≤2560px 缩放；仍超 1MB 就按 90→80→70→60 画质递减重编码；仍超则**拒绝并给原因** |
+| 结果 | `ImagePrepResult.Accepted(bytes, mime, name, downscaled)` / `Rejected(reason)`；`ImageRejectReason` 覆盖超大、不可读、无权限、超出 5 张上限 |
+| 反馈 | 每条选中/被拒都渲染一行（文件名 + 体积 + 「已压缩」或拒绝原因），**绝不静默丢弃** |
+| 上传 | 走站点自己的 multipart `Filedata`（`POST forum.php?mod=post&action=newthread&fid=…&topicsubmit=yes&mobile=2`），服务端把文件落到 MT 的 CDN/OSS 主机 |
+
+**关于「mt 图床」**：站点**没有**独立的图片上传 API。网页端的「添加图片」就是把文件作为
+`Filedata` 塞进同一个发帖表单；服务端存好后返回的正文 HTML 指向 `oos.binmt.cc` / `data/attachment/…`。
+客户端照同一条路走，所以「对接图床」= 这条附件上传链路，不是另调某个接口。
+
+**按钮间距**：表情 / 添加图片 / 草稿 收进一条 `Row`，用 `Arrangement.spacedBy(8.dp)` 统一定距，
+不再各自加 padding。
+
+**板块选择**（`ComposerBoardPicker.kt`）：编辑器顶部「发布到：<板块>」行，点开面板
+（OS4 `GlassBottomSheet` / OS3 `WindowBottomSheet`，板块来自首页已加载的 `state.forums`）；
+换板块会**重新取表单**（`formhash`/`posttime` 是按表单签发的），提交 URL 用新 `fid`；
+表单未加载完成时禁用提交。草稿绑定原板块，编辑草稿时选择器禁用并说明原因。
+
+**字符串**：编辑器里原来硬编码的中文（表情 / 添加图片 / 发布 / 取消 / 标题等）全部移进资源，
+三语同步。
+
+**验证**：`:app:testStableDebugUnitTest` → BUILD SUCCESSFUL；`:app:lintVitalStableRelease` →
+BUILD SUCCESSFUL（`Lint found no new issues`）。
+
+**未验证**：multipart 上传仍未对真实服务器跑过；压缩后的画质与 1MB 阈值需要真机取一张大图确认。
+

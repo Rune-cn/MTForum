@@ -2,11 +2,11 @@
 package io.rune.mt.forum.ui.page.forum
 
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.rune.mt.forum.domain.forum.model.DraftActionResult
+import io.rune.mt.forum.domain.forum.model.Forum
 import io.rune.mt.forum.domain.forum.model.ForumDraft
 import io.rune.mt.forum.domain.forum.model.ForumEditForm
 import io.rune.mt.forum.domain.forum.model.ForumNewThreadDraft
@@ -16,7 +16,9 @@ import io.rune.mt.forum.domain.forum.model.NewThreadResult
 import io.rune.mt.forum.domain.forum.repository.ForumDraftRepository
 import io.rune.mt.forum.domain.forum.repository.ForumDraftService
 import io.rune.mt.forum.domain.forum.repository.ForumRepository
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,11 +28,19 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 
-/** One image picked for a new thread, kept as a URI until submit. */
+/**
+ * One image attached to a new thread.
+ *
+ * [contentType] and [downscaled] describe the bytes that will actually leave the device, not the
+ * picked file: an oversized photo is re-encoded as JPEG before it reaches this point (see
+ * [AndroidImagePreparer]). The bytes themselves live in the view model's cache until submit.
+ */
 data class PickedImage(
     val uri: Uri,
     val fileName: String,
     val byteCount: Long,
+    val contentType: String,
+    val downscaled: Boolean = false,
 )
 
 /** Where the composer's content currently lives: a fresh thread, or a draft the site already has. */
@@ -58,6 +68,18 @@ data class NewThreadState(
     val title: String = "",
     val message: String = "",
     val images: List<PickedImage> = emptyList(),
+    /**
+     * Feedback of the last image pick (accepted files with their size, rejected ones with the
+     * reason). Never empty after a pick: a tap that attaches nothing must still say why.
+     */
+    val imageFeedback: List<ImagePickFeedback> = emptyList(),
+    /**
+     * Boards the composer may post into, read from the same index the home screen uses
+     * ([ForumRepository.getHome], never a hard-coded list). Empty until the first load finishes.
+     */
+    val boards: List<Forum> = emptyList(),
+    val isLoadingBoards: Boolean = false,
+    val boardsError: String? = null,
     val form: ForumNewThreadForm? = null,
     val isLoadingForm: Boolean = true,
     val isSubmitting: Boolean = false,
@@ -101,7 +123,10 @@ data class NewThreadState(
             when (val current = mode) {
                 is ComposerMode.DraftEdit -> current.form.formhash.isNotBlank()
                 ComposerMode.NewThread ->
-                    form?.formhash != null && form.needsCaptcha.not()
+                    // The formhash/posttime of the *selected* board must be in hand: switching
+                    // boards drops the old form and re-fetches, and submitting meanwhile would
+                    // post to the new fid with the old board's token (the site rejects it).
+                    form?.formhash != null && form.needsCaptcha.not() && !isLoadingForm
             }
 }
 
@@ -110,8 +135,14 @@ data class NewThreadState(
  * deletes a **site-side draft** (`action=edit`).
  *
  * Discuz's mobile form is multipart and takes the pictures inline as `Filedata`, so there is no
- * separate upload round-trip. The hidden `formhash`/`posttime` must be fetched from the form page
- * first; a captcha in that form is surfaced instead of being guessed (we cannot solve it).
+ * separate upload round-trip — and **no separate image-host API**: an "MT 图床" upload is just the
+ * site's attachment upload, which stores the file on the MT CDN (`oos.binmt.cc`). Images are
+ * therefore prepared here ([AndroidImagePreparer]) and ride along with the post. Every pick is
+ * reported to the user in [NewThreadState.imageFeedback]; a rejection always carries its reason.
+ *
+ * The hidden `formhash`/`posttime` must be fetched from the form page first; they are **per board**,
+ * which is why [selectBoard] re-fetches the form and why submitting is blocked while that fetch is
+ * in flight. A captcha in that form is surfaced instead of being guessed (we cannot solve it).
  *
  * **Drafts are stored by the site.** 保存草稿 POSTs the same form with the hidden `save` field set
  * to `1`, which creates a real (author-only) draft thread — the measured flow, see
@@ -132,6 +163,18 @@ class NewThreadViewModel(
     /** Signature of the last auto/manual local save; avoids a back-button + dispose double write. */
     private var lastSavedSignature: String? = null
 
+    /** In-flight board-index load, so re-opening the picker does not re-fetch it. */
+    private var boardsJob: Job? = null
+
+    /** In-flight new-thread form fetch; cancelled when the board changes again. */
+    private var formJob: Job? = null
+
+    /**
+     * Image preparation seam: production uses [AndroidImagePreparer], tests substitute a fake
+     * because Robolectric's `BitmapFactory` cannot decode real bytes in this environment.
+     */
+    internal var imagePreparer: ImagePreparer = AndroidImagePreparer()
+
     /**
      * Opens the composer for [fid].
      *
@@ -150,27 +193,106 @@ class NewThreadViewModel(
             loadDraftForEdit(draftTid, fid, draftPid)
             return
         }
+        loadForm(fid)
+        // The board list comes from the same index the home screen reads; it is what the
+        // composer's board picker lists. Best-effort: a failure only affects the picker.
+        loadBoards()
         viewModelScope.launch {
+            offerDraft(fid)
+        }
+    }
+
+    /**
+     * Fetches the hidden `formhash`/`posttime` of [fid]'s form.
+     *
+     * The tokens are **per board**, so this runs again after a board change; the previous fetch is
+     * cancelled so a slow response for the old board cannot overwrite the new one.
+     */
+    private fun loadForm(fid: Int) {
+        formJob?.cancel()
+        _state.update { it.copy(form = null, isLoadingForm = true, error = null) }
+        formJob = viewModelScope.launch {
             runCatching { repository.getNewThreadForm(fid) }
                 .onSuccess { form ->
-                    _state.update {
-                        it.copy(
+                    // A response for a board the user already left is dropped.
+                    _state.update { current ->
+                        if (current.fid != fid) current else current.copy(
                             form = form,
                             isLoadingForm = false,
-                            error = if (form.needsCaptcha) "该版块发帖需要验证码，客户端暂不支持" else null,
+                            error = if (form.needsCaptcha) CAPTCHA_UNSUPPORTED else null,
                         )
                     }
                 }
                 .onFailure { e ->
                     Timber.tag(TAG).e(e, "new thread form fid=%d failed", fid)
-                    _state.update {
-                        it.copy(isLoadingForm = false, error = e.message ?: "无法读取发帖表单")
+                    _state.update { current ->
+                        if (current.fid != fid) current else current.copy(
+                            isLoadingForm = false,
+                            error = e.message ?: "无法读取发帖表单",
+                        )
                     }
                 }
         }
-        viewModelScope.launch {
-            offerDraft(fid)
+    }
+
+    /**
+     * Loads the boards the composer can post into (the home index's board list).
+     *
+     * Called when the composer opens and by the picker's retry. A successful load is reused — the
+     * site's board list does not change between two taps on the same screen.
+     */
+    fun loadBoards(force: Boolean = false) {
+        val current = _state.value
+        if (!force && (current.boards.isNotEmpty() || boardsJob?.isActive == true)) return
+        boardsJob?.cancel()
+        _state.update { it.copy(isLoadingBoards = true, boardsError = null) }
+        boardsJob = viewModelScope.launch {
+            runCatching { repository.getHome() }
+                .onSuccess { home ->
+                    Timber.tag(TAG).i("composer boards=%d", home.forums.size)
+                    _state.update {
+                        it.copy(boards = home.forums, isLoadingBoards = false, boardsError = null)
+                    }
+                }
+                .onFailure { e ->
+                    Timber.tag(TAG).w(e, "composer board list failed")
+                    _state.update {
+                        it.copy(
+                            isLoadingBoards = false,
+                            boardsError = e.message ?: "无法加载板块列表",
+                        )
+                    }
+                }
         }
+    }
+
+    /**
+     * Switches the board the new thread will be posted into.
+     *
+     * The composer stays a *new thread* composer: text and attached images are kept, but the form
+     * is re-fetched for [fid] because `formhash`/`posttime` are per-board, and the submit URL uses
+     * the new fid. A **draft** is bound to its board (its edit form carries `fid`/`tid`/`pid`), so
+     * this is a no-op in [ComposerMode.DraftEdit] — the page also disables the picker there rather
+     * than letting the tap do nothing silently.
+     */
+    fun selectBoard(fid: Int, forumName: String) {
+        val current = _state.value
+        if (fid <= 0 || fid == current.fid) return
+        if (current.isDraftEdit || current.isSubmitting || current.isDraftBusy) return
+        _state.update {
+            it.copy(
+                fid = fid,
+                forumName = forumName,
+                // The old board's form must never be submitted under the new fid.
+                form = null,
+                isLoadingForm = true,
+                error = null,
+            )
+        }
+        Timber.tag(TAG).i("composer board -> fid=%d (%s)", fid, forumName)
+        loadForm(fid)
+        // The local safety net is keyed by fid, so the text follows the new board.
+        persistLocalDraft(_state.value)
     }
 
     /**
@@ -242,23 +364,73 @@ class NewThreadViewModel(
 
     fun updateMessage(value: String) = _state.update { it.copy(message = value, error = null, draftError = null) }
 
-    /** Resolves a picked content URI into bytes so it can be attached to the multipart POST. */
+    /**
+     * Prepares picked content URIs for the multipart `Filedata` upload.
+     *
+     * Every pick produces feedback: an accepted file is listed with its name and the size that
+     * will be uploaded, and a file that could not be used is listed with the reason (too large,
+     * unreadable, over the cap). The composer previously dropped files over 1 MB with no message,
+     * which is what made 添加图片 look broken; [AndroidImagePreparer] now re-encodes them first.
+     */
     fun attachImages(context: Context, uris: List<Uri>) {
         if (uris.isEmpty()) return
         viewModelScope.launch {
-            val picked = withContext(Dispatchers.IO) {
-                uris.mapNotNull { uri ->
-                    // Open-document URIs carry a persistable read grant; without it a draft
-                    // restored after a restart would lose every image.
-                    persistReadPermission(context, uri)
-                    readPicked(context, uri)
+            val current = _state.value
+            var slots = (ComposerImagePolicy.MAX_IMAGES - current.images.size).coerceAtLeast(0)
+            val added = mutableListOf<PickedImage>()
+            val feedback = mutableListOf<ImagePickFeedback>()
+            val seen = mutableSetOf<Uri>()
+            for (uri in uris) {
+                if (!seen.add(uri)) continue
+                when (val prepared = imagePreparer.prepare(context, uri)) {
+                    is ImagePrepResult.Rejected -> feedback += ImagePickFeedback(
+                        fileName = prepared.fileName,
+                        byteCount = prepared.byteCount,
+                        reason = prepared.reason,
+                    )
+
+                    is ImagePrepResult.Ready -> {
+                        if (slots <= 0) {
+                            // Still read the file so the message can name it; the bytes are dropped.
+                            feedback += ImagePickFeedback(
+                                fileName = prepared.image.fileName,
+                                byteCount = prepared.image.bytes.size.toLong(),
+                                reason = ImageRejectReason.OverCap,
+                            )
+                        } else {
+                            slots--
+                            cache[prepared.image.uri] = prepared.image.bytes
+                            added += PickedImage(
+                                uri = prepared.image.uri,
+                                fileName = prepared.image.fileName,
+                                byteCount = prepared.image.bytes.size.toLong(),
+                                contentType = prepared.image.contentType,
+                                downscaled = prepared.image.downscaled,
+                            )
+                            feedback += ImagePickFeedback(
+                                fileName = prepared.image.fileName,
+                                byteCount = prepared.image.bytes.size.toLong(),
+                                downscaled = prepared.image.downscaled,
+                            )
+                        }
+                    }
                 }
             }
-            _state.update { it.copy(images = (it.images + picked).take(MAX_IMAGES)) }
+            _state.update {
+                it.copy(
+                    images = (it.images + added).take(ComposerImagePolicy.MAX_IMAGES),
+                    imageFeedback = feedback,
+                )
+            }
         }
     }
 
-    fun removeImage(uri: Uri) = _state.update { it.copy(images = it.images.filterNot { i -> i.uri == uri }) }
+    fun removeImage(uri: Uri) = _state.update {
+        it.copy(images = it.images.filterNot { image -> image.uri == uri })
+    }
+
+    /** Clears the last pick's feedback lines once the user has read them. */
+    fun clearImageFeedback() = _state.update { it.copy(imageFeedback = emptyList()) }
 
     // ---- Drafts (site first, device as the safety net) -----------------------
 
@@ -289,18 +461,7 @@ class NewThreadViewModel(
         }
         _state.update { it.copy(isDraftBusy = true, draftError = null) }
         viewModelScope.launch {
-            val images = withContext(Dispatchers.IO) {
-                current.images.mapNotNull { picked ->
-                    val bytes = cache[picked.uri] ?: readPicked(context, picked.uri)?.let { cache[picked.uri] }
-                    bytes?.let {
-                        NewThreadImage(
-                            fileName = picked.fileName,
-                            contentType = guessContentType(picked.fileName),
-                            bytes = it,
-                        )
-                    }
-                }
-            }
+            val images = uploadImages(context, current.images)
             val result = runCatching {
                 draftService.saveNewThreadDraft(
                     fid = current.fid,
@@ -489,28 +650,66 @@ class NewThreadViewModel(
         loadDraftForEdit(server.tid, server.fid, server.pid)
     }
 
-    /** Re-reads the image URIs of a restored draft; unreadable ones are counted as skipped. */
+    /**
+     * Re-reads the image URIs of a restored device draft.
+     *
+     * Uses the same preparation pipeline as a fresh pick: a permission that died between sessions
+     * shows up as a rejection with a reason instead of the image quietly disappearing, and an
+     * oversized file is re-encoded like any other.
+     */
     fun resolveRestoredImages(context: Context) {
         val uris = _state.value.restoreImageUris
         if (uris.isEmpty()) return
         _state.update { it.copy(restoreImageUris = emptyList()) }
         viewModelScope.launch {
             var skipped = 0
-            val restored = withContext(Dispatchers.IO) {
-                uris.mapNotNull { raw ->
-                    val uri = runCatching { Uri.parse(raw) }.getOrNull()
-                    val picked = uri?.let {
-                        persistReadPermission(context, it)
-                        readPicked(context, it)
+            val feedback = mutableListOf<ImagePickFeedback>()
+            val restored = mutableListOf<PickedImage>()
+            var slots = (ComposerImagePolicy.MAX_IMAGES - _state.value.images.size).coerceAtLeast(0)
+            for (raw in uris) {
+                val uri = runCatching { Uri.parse(raw) }.getOrNull()
+                if (uri == null) {
+                    skipped++
+                    feedback += ImagePickFeedback(fileName = raw, reason = ImageRejectReason.Unreadable)
+                    continue
+                }
+                when (val prepared = imagePreparer.prepare(context, uri)) {
+                    is ImagePrepResult.Rejected -> {
+                        skipped++
+                        feedback += ImagePickFeedback(
+                            fileName = prepared.fileName,
+                            byteCount = prepared.byteCount,
+                            reason = prepared.reason,
+                        )
                     }
-                    if (picked == null) skipped++
-                    picked
+
+                    is ImagePrepResult.Ready -> {
+                        if (slots <= 0) {
+                            skipped++
+                            feedback += ImagePickFeedback(
+                                fileName = prepared.image.fileName,
+                                byteCount = prepared.image.bytes.size.toLong(),
+                                reason = ImageRejectReason.OverCap,
+                            )
+                        } else {
+                            slots--
+                            cache[prepared.image.uri] = prepared.image.bytes
+                            restored += PickedImage(
+                                uri = prepared.image.uri,
+                                fileName = prepared.image.fileName,
+                                byteCount = prepared.image.bytes.size.toLong(),
+                                contentType = prepared.image.contentType,
+                                downscaled = prepared.image.downscaled,
+                            )
+                        }
+                    }
                 }
             }
             _state.update {
                 it.copy(
-                    images = (it.images + restored).take(MAX_IMAGES),
+                    images = (it.images + restored).take(ComposerImagePolicy.MAX_IMAGES),
                     skippedRestoredImages = it.skippedRestoredImages + skipped,
+                    imageFeedback = feedback,
                 )
             }
         }
@@ -567,25 +766,48 @@ class NewThreadViewModel(
 
     // ---- Images / submit ----------------------------------------------------
 
-    private fun persistReadPermission(context: Context, uri: Uri) {
-        runCatching {
-            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    /**
+     * Maps the attached strip to the multipart parts of the create request.
+     *
+     * The bytes are the prepared ones from the pick (the cache exists so a submit does not have to
+     * re-read and re-encode every image); if a cache entry is gone the file is prepared again from
+     * its URI. A file that can no longer be read is reported in [NewThreadState.imageFeedback]
+     * instead of vanishing from the upload.
+     */
+    private suspend fun uploadImages(context: Context, picked: List<PickedImage>): List<NewThreadImage> {
+        if (picked.isEmpty()) return emptyList()
+        val dropped = mutableListOf<ImagePickFeedback>()
+        val images = withContext(Dispatchers.IO) {
+            picked.mapNotNull { image ->
+                val bytes = cache[image.uri] ?: when (val again = imagePreparer.prepare(context, image.uri)) {
+                    is ImagePrepResult.Ready -> again.image.bytes.also { cache[image.uri] = it }
+                    is ImagePrepResult.Rejected -> {
+                        dropped += ImagePickFeedback(
+                            fileName = again.fileName,
+                            byteCount = again.byteCount,
+                            reason = again.reason,
+                        )
+                        null
+                    }
+                }
+                bytes?.let {
+                    NewThreadImage(
+                        fileName = image.fileName,
+                        contentType = image.contentType,
+                        bytes = it,
+                    )
+                }
+            }
         }
+        if (dropped.isNotEmpty()) {
+            _state.update { it.copy(imageFeedback = dropped) }
+            Timber.tag(TAG).w("upload dropped %d unreadable image(s)", dropped.size)
+        }
+        return images
     }
 
-    private fun readPicked(context: Context, uri: Uri): PickedImage? = runCatching {
-        val resolver = context.contentResolver
-        val name = resolver.query(uri, null, null, null, null)?.use { cursor ->
-            val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-            if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
-        } ?: uri.lastPathSegment ?: "image.jpg"
-        val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
-        if (bytes == null || bytes.size > MAX_BYTES) null
-        else PickedImage(uri, name, bytes.size.toLong()).also { cache[uri] = bytes }
-    }.getOrNull()
-
-    /** Byte cache for picked images; small enough (≤1 MB each) to keep in memory until submit. */
-    private val cache = mutableMapOf<Uri, ByteArray>()
+    /** Prepared bytes of the attached images, kept in memory (≤5 × 1 MB) until submit. */
+    private val cache = ConcurrentHashMap<Uri, ByteArray>()
 
     fun submit(context: Context) {
         val current = _state.value
@@ -595,21 +817,12 @@ class NewThreadViewModel(
             return
         }
         if (!current.canSubmit) return
+        // `canSubmit` already refuses this; the second check keeps a stale click out.
+        if (current.isLoadingForm) return
         val form = current.form ?: return
         viewModelScope.launch {
             _state.update { it.copy(isSubmitting = true, error = null) }
-            val images = withContext(Dispatchers.IO) {
-                current.images.mapNotNull { picked ->
-                    val bytes = cache[picked.uri] ?: readPicked(context, picked.uri)?.let { cache[picked.uri] }
-                    bytes?.let {
-                        NewThreadImage(
-                            fileName = picked.fileName,
-                            contentType = guessContentType(picked.fileName),
-                            bytes = it,
-                        )
-                    }
-                }
-            }
+            val images = uploadImages(context, current.images)
             when (val result = repository.createThread(
                 fid = current.fid,
                 subject = current.title.trim(),
@@ -637,18 +850,10 @@ class NewThreadViewModel(
         }
     }
 
-    private fun guessContentType(name: String): String = when {
-        name.endsWith(".png", true) -> "image/png"
-        name.endsWith(".gif", true) -> "image/gif"
-        name.endsWith(".webp", true) -> "image/webp"
-        else -> "image/jpeg"
-    }
-
     private companion object {
         const val TAG = "NewThreadVM"
 
-        /** The site's own attachment box says "大小限制: 1MB". */
-        const val MAX_BYTES = 1024 * 1024
-        const val MAX_IMAGES = 5
+        /** Shown when the board's form carries a captcha; the client cannot solve it. */
+        const val CAPTCHA_UNSUPPORTED = "该版块发帖需要验证码，客户端暂不支持"
     }
 }

@@ -282,4 +282,30 @@
     <string name="forum_attach_cancel">取消</string>
     <string name="forum_attach_retry">关闭</string>
     <string name="forum_attach_share">保存 / 分享</string>
+    <!-- 发帖页：板块选择、图片反馈，以及从 Kotlin 字面量搬出来的动作 -->
+    <string name="composer_title_new">发表主题</string>
+    <string name="composer_title_edit_draft">编辑草稿</string>
+    <string name="composer_subject_label">标题</string>
+    <string name="composer_message_label">正文(支持 [b] [i] [quote] 与表情)</string>
+    <string name="composer_smiley">表情</string>
+    <string name="composer_smiley_hide">收起表情</string>
+    <string name="composer_add_images">添加图片</string>
+    <string name="composer_publish">发布</string>
+    <string name="composer_published_toast">发布成功</string>
+    <string name="composer_draft_deleted_toast">草稿已删除</string>
+    <string name="composer_board_label">发布到：%1$s</string>
+    <string name="composer_board_unknown_format">版块 %1$d</string>
+    <string name="composer_board_today_format">今日 %1$d</string>
+    <string name="composer_board_title">选择板块</string>
+    <string name="composer_board_draft_locked">草稿绑定在创建它的版块，不能更换。</string>
+    <string name="composer_board_loading">正在加载板块…</string>
+    <string name="composer_board_error">无法加载板块列表：%1$s</string>
+    <string name="composer_board_retry">重试</string>
+    <string name="composer_form_loading">正在切换板块并刷新表单…</string>
+    <string name="composer_image_hint">图片随帖子一起上传（论坛附件，1MB/张，最多 5 张）。</string>
+    <string name="composer_image_added_format">已添加 %1$s（%2$s）</string>
+    <string name="composer_image_added_scaled_format">已添加 %1$s（%2$s，已压缩到 1MB 内）</string>
+    <string name="composer_image_too_large_format">未添加 %1$s：%2$s 超过站点 1MB 限制，压缩后仍超出</string>
+    <string name="composer_image_unreadable_format">未添加 %1$s：无法读取这个文件（可能已删除或没有读取权限）</string>
+    <string name="composer_image_over_cap_format">未添加 %1$s：每帖最多 %2$d 张图片</string>
 </resources>

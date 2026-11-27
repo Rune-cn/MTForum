@@ -156,7 +156,14 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     把服务端文案原样作为错误抛出，不要盲目重试。付费价格要在用户点「下载」**之前**显示
     （`Attachment.costCoins` → `forum_attach_cost_hint`），不得自动确认付费下载。
 
-26. **草稿由站点保存（服务器草稿），本机只做离线兜底**：发帖/回复表单里的隐藏域
+26. **发帖编辑器的图片、板块与三条硬约束**：图片选择用 `OpenMultipleDocuments` + 持久 URI，
+    经 `ComposerImagePrep` 缩放/重编码到站点 1MB 限制内（仍超则**拒绝并给原因**，绝不静默丢弃
+    ——「添加图片没有用」就是这么来的）；上传走站点自身的 multipart `Filedata`，**没有**独立
+    图床 API。换板块必须重新取表单（`formhash`/`posttime` 按表单签发）并让提交 URL 用新 `fid`；
+    草稿绑定原板块，编辑草稿时板块选择器禁用。表情/图片等动作统一用 `Arrangement.spacedBy`
+    定距，编辑器文案一律走三语资源。
+
+27. **草稿由站点保存（服务器草稿），本机只做离线兜底**：发帖/回复表单里的隐藏域
     `<input type="hidden" id="postsave" name="save" value="">` 就是「保存草稿」——那个按钮只是
     `document.getElementById('postsave').value=1` 后提交**同一个表单**。
     - **`save=1` = 存草稿**：服务端会建一个真实的 `thread-<tid>`，但它**不进版面列表**
@@ -190,24 +197,24 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     - **诊断日志**：`ForumDraftService` 每次加载打一行 `url / http / finalUrl / bytes / rows /
       parsed`（不含 Cookie）。`rows` 是 `li.forumlist_li` 原始行数、`parsed` 是解析出的行数，
       用来区分「站点没有草稿」和「选择器失配」；`finalUrl` 便于发现被 302 回登录页。
-27. **签到只有一条 GET，结果在 CDATA 里**：`plugin.php?id=k_misign:sign&operation=qiandao&format=text&formhash=…`
+28. **签到只有一条 GET，结果在 CDATA 里**：`plugin.php?id=k_misign:sign&operation=qiandao&format=text&formhash=…`
     返回 `<?xml version="1.0"?>\r\n<root><![CDATA[已签到]]></root>`；`formhash` 只能从签到页
     `k_misign-sign.html` 的**退出链接**取（`parseFormhash` 的 `formhash=` 兜底）。
     `已签到` 是「今天已签」，**不是错误**；其余非错误文案按成功原样展示（服务器文字即结果），
     权限/登录/限流文案必须判失败。接口不返回数字——签到后的排名/连续/累计只能**重新取页**，
     不要自己 +1。游客按规则 18 走登录卡片。解析在 `ForumHtmlParser.parseSignInState` /
     `parseSignInOutcome`，CDATA 抽取只此一处（见 REVERSE_SPEC §22）。
-28. **顶栏只能采样页面内容层**：`chrome.backdrop` 由 `MiuixPageChrome.contentBackdropModifier`
+29. **顶栏只能采样页面内容层**：`chrome.backdrop` 由 `MiuixPageChrome.contentBackdropModifier`
     录在滚动容器上（不含顶栏）。`MiuixTopAppBar` 三个分支都只读
     `barBackdrop(backdrop, pageBackdrop)`，宿主层 `MiuixComponentScope.pageBackdrop` 会被拒绝。
     不要为了“加模糊”把 `pageBackdrop` 传给顶栏——那是 §23 同一个自环（HANDOVER §17.2）。
-29. **长列表要带滚动条**：`MiuixPageScaffold` 已内置 `MiuixPageScrollBar`；自带 `Scaffold` 的页面
+30. **长列表要带滚动条**：`MiuixPageScaffold` 已内置 `MiuixPageScrollBar`；自带 `Scaffold` 的页面
     （帖子/版块/提醒/收藏）把 `MiuixPageScrollBar` 作为列表**兄弟**放在同一个 `Box` 里，传列表自己的
     `contentPadding` 与 `chrome.scrollBehavior`（下拉刷新不受影响，示例 `PullToRefreshPage.kt` 同形）。
-30. **分组卡片用 `MiuixGroupedCards`**：需要把连续行画成一张 Miuix 卡片时用
+31. **分组卡片用 `MiuixGroupedCards`**：需要把连续行画成一张 Miuix 卡片时用
     `miuixGroupedItems` / `MiuixCardSegment`（圆角取 `CardDefaults.CornerRadius`），
     不要各自 `clip(RoundedCornerShape(...))` 手写。单个卡片直接用 `Card` + `CardDefaults`。
-31. **解析器只出“能渲染的信息”**：站点模板里纯 JS 的动作行（如 `a.profile_ewmbox` 的 二维码
+32. **解析器只出“能渲染的信息”**：站点模板里纯 JS 的动作行（如 `a.profile_ewmbox` 的 二维码
     浮层）在 `ForumHtmlParser` 就丢弃并写明原因（HANDOVER §17.1）；不要留到 UI 端靠“空值”判断，
     否则会连带吞掉真正空值的字段。
 

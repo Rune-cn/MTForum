@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.vector.group
 import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Ok
@@ -33,6 +34,9 @@ object AppMiuixIcons {
 
     // --- Navigation Icons ---
     val Back = MiuixIcons.Regular.Back
+
+    /** Trailing chevron of a row that opens a picker (the composer's 发布到 row). */
+    val ChevronForward = MiuixIcons.Regular.ChevronForward
 
     val Close: ImageVector
         get() {

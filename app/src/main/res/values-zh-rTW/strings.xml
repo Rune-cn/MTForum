@@ -282,4 +282,30 @@
     <string name="forum_attach_cancel">取消</string>
     <string name="forum_attach_retry">關閉</string>
     <string name="forum_attach_share">儲存 / 分享</string>
+    <!-- 發帖頁：板塊選擇、圖片回饋，以及從 Kotlin 字面量搬出來的字串 -->
+    <string name="composer_title_new">發表主題</string>
+    <string name="composer_title_edit_draft">編輯草稿</string>
+    <string name="composer_subject_label">標題</string>
+    <string name="composer_message_label">正文(支援 [b] [i] [quote] 與表情)</string>
+    <string name="composer_smiley">表情</string>
+    <string name="composer_smiley_hide">收合表情</string>
+    <string name="composer_add_images">新增圖片</string>
+    <string name="composer_publish">發佈</string>
+    <string name="composer_published_toast">發佈成功</string>
+    <string name="composer_draft_deleted_toast">草稿已刪除</string>
+    <string name="composer_board_label">發佈到：%1$s</string>
+    <string name="composer_board_unknown_format">板塊 %1$d</string>
+    <string name="composer_board_today_format">今日 %1$d</string>
+    <string name="composer_board_title">選擇板塊</string>
+    <string name="composer_board_draft_locked">草稿綁定在建立它的板塊，無法更換。</string>
+    <string name="composer_board_loading">正在載入板塊…</string>
+    <string name="composer_board_error">無法載入板塊列表：%1$s</string>
+    <string name="composer_board_retry">重試</string>
+    <string name="composer_form_loading">正在切換板塊並重新整理表單…</string>
+    <string name="composer_image_hint">圖片隨文章一起上傳（論壇附件，1MB/張，最多 5 張）。</string>
+    <string name="composer_image_added_format">已新增 %1$s（%2$s）</string>
+    <string name="composer_image_added_scaled_format">已新增 %1$s（%2$s，已壓縮至 1MB 內）</string>
+    <string name="composer_image_too_large_format">未新增 %1$s：%2$s 超過站點 1MB 限制，壓縮後仍超出</string>
+    <string name="composer_image_unreadable_format">未新增 %1$s：無法讀取這個檔案（可能已刪除或沒有讀取權限）</string>
+    <string name="composer_image_over_cap_format">未新增 %1$s：每篇最多 %2$d 張圖片</string>
 </resources>

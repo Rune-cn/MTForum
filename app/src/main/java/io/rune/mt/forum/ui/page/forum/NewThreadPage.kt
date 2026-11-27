@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -30,8 +31,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -51,12 +52,30 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
+/** Test tag of the composer's 表情 action. */
+internal const val COMPOSER_SMILEY_TAG = "composer_smiley"
+
+/** Test tag of the composer's 添加图片 action. */
+internal const val COMPOSER_ADD_IMAGE_TAG = "composer_add_images"
+
+/** Test tag of the attached-images strip. */
+internal const val COMPOSER_IMAGE_ROW_TAG = "composer_image_row"
+
 /**
  * Compose a new thread (`forum.php?mod=post&action=newthread&fid=`), or edit an existing **site
  * draft** (`action=edit`).
  *
  * The body is BBCode, exactly like the reply composer, because that is what the site's own editor
- * posts. Images are attached inline (multipart `Filedata`), which is how the mobile form works.
+ * posts. Images are attached inline (multipart `Filedata` parts on the same POST), which is how
+ * the mobile form works — there is no separate image-host upload: an "MT 图床" link is just the
+ * forum attachment stored on the MT CDN (`oos.binmt.cc`). Every pick therefore ends with visible
+ * feedback (accepted with name/size, or rejected with the reason), because the previous build
+ * dropped files over 1 MB without a word and the button looked dead.
+ *
+ * The target board is changeable **inside** the composer: the 发布到 row opens a board sheet fed by
+ * the site index, and choosing a board re-fetches its form (`formhash`/`posttime` are per board)
+ * while 发布 stays disabled until that form is back. A draft keeps its own board — see
+ * [ComposerBoardRow].
  *
  * Drafts are stored by the site: 保存草稿 POSTs the very same form with the hidden `save` field set
  * to `1`, creating (or updating) an author-only draft thread that is listed under 草稿. The
@@ -82,9 +101,12 @@ fun NewThreadPage(
     val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     var pickerOpen by remember { mutableStateOf(false) }
+    var boardPickerOpen by remember { mutableStateOf(false) }
     var publishConfirm by remember { mutableStateOf(false) }
     var deleteConfirm by remember { mutableStateOf(false) }
     val draftSavedText = stringResource(R.string.draft_saved_toast)
+    val publishedText = stringResource(R.string.composer_published_toast)
+    val draftDeletedText = stringResource(R.string.composer_draft_deleted_toast)
 
     val pickImages = rememberLauncherForActivityResult(
         // OpenMultipleDocuments (not GetMultipleContents) so the read permission is persistable
@@ -95,13 +117,13 @@ fun NewThreadPage(
     LaunchedEffect(fid, draftTid) { viewModel.open(fid, forumName, draftTid, draftPid) }
     LaunchedEffect(state.successTid, state.successMessage) {
         if (state.successTid != null || state.successMessage != null) {
-            android.widget.Toast.makeText(context, "发布成功", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(context, publishedText, android.widget.Toast.LENGTH_SHORT).show()
             navigator.pop()
         }
     }
     LaunchedEffect(state.draftDeleted) {
         if (state.draftDeleted) {
-            android.widget.Toast.makeText(context, "草稿已删除", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(context, draftDeletedText, android.widget.Toast.LENGTH_SHORT).show()
             navigator.pop()
         }
     }
@@ -122,151 +144,239 @@ fun NewThreadPage(
         onDispose { viewModel.saveOnLeave() }
     }
 
-    MiuixPageScaffold(
-        title = if (state.isDraftEdit) "编辑草稿" else "发表主题",
-        chrome = chrome,
-        outerPadding = outerPadding,
-        horizontalPadding = 12.dp,
-        verticalPadding = 12.dp,
-        navigationIcon = {
-            MiuixBackButton(onClick = {
-                viewModel.saveOnLeave()
-                navigator.pop()
-            })
-        },
-    ) {
-        if (state.isLoadingForm) {
-            item { ForumLoadingCard() }
-            return@MiuixPageScaffold
-        }
-        item {
-            Card(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-                Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
-                    Text(
-                        text = forumName.ifBlank { state.forumName.ifBlank { "版块 $fid" } },
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                    if (state.isDraftEdit) {
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            text = stringResource(R.string.draft_edit_hint),
-                            fontSize = 12.sp,
-                            color = MiuixTheme.colorScheme.primary,
+    // The page root `Box` exists for the board sheet: the OS4 glass sheet is an inline overlay that
+    // must be a sibling of the scaffold (rules 12/23), and it stays outside the content subtree
+    // `chrome.backdrop` records, so the panel can never sample itself.
+    Box(modifier = Modifier.fillMaxSize()) {
+        MiuixPageScaffold(
+            title = if (state.isDraftEdit) {
+                stringResource(R.string.composer_title_edit_draft)
+            } else {
+                stringResource(R.string.composer_title_new)
+            },
+            chrome = chrome,
+            outerPadding = outerPadding,
+            horizontalPadding = 12.dp,
+            verticalPadding = 12.dp,
+            navigationIcon = {
+                MiuixBackButton(onClick = {
+                    viewModel.saveOnLeave()
+                    navigator.pop()
+                })
+            },
+        ) {
+            item {
+                Card(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
+                        // 发布到：<板块> — the target board is part of the composer, not a decision
+                        // made for the user by the route that opened it.
+                        ComposerBoardRow(
+                            forumName = state.forumName,
+                            fid = state.fid,
+                            isLoadingForm = state.isLoadingForm,
+                            isDraft = state.isDraftEdit,
+                            onClick = { boardPickerOpen = true },
                         )
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    Text("标题", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                    TextField(
-                        value = state.title,
-                        onValueChange = viewModel::updateTitle,
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Text("正文(支持 [b] [i] [quote] 与表情)", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                    TextField(
-                        value = state.message,
-                        onValueChange = viewModel::updateMessage,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp),
-                        singleLine = false,
-                        minLines = 8,
-                    )
-
-                    if (state.images.isNotEmpty()) {
-                        Spacer(Modifier.height(10.dp))
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(items = state.images, key = { it.uri.toString() }) { image ->
-                                Box {
-                                    AsyncImage(
-                                        model = image.uri,
-                                        contentDescription = image.fileName,
-                                        modifier = Modifier.size(72.dp).clip(RoundedCornerShape(8.dp)),
-                                        contentScale = ContentScale.Crop,
-                                    )
-                                    TextButton(
-                                        text = "×",
-                                        onClick = { viewModel.removeImage(image.uri) },
-                                        modifier = Modifier.align(Alignment.TopEnd),
-                                    )
-                                }
-                            }
+                        if (state.isLoadingForm) {
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = stringResource(R.string.composer_form_loading),
+                                fontSize = 11.sp,
+                                color = MiuixTheme.colorScheme.primary,
+                            )
                         }
-                    }
-                    if (state.skippedRestoredImages > 0) {
-                        Spacer(Modifier.height(8.dp))
+                        if (state.isDraftEdit) {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                text = stringResource(R.string.draft_edit_hint),
+                                fontSize = 12.sp,
+                                color = MiuixTheme.colorScheme.primary,
+                            )
+                        }
+                        Spacer(Modifier.height(10.dp))
                         Text(
-                            text = stringResource(
-                                R.string.draft_images_skipped_format,
-                                state.skippedRestoredImages,
-                            ),
+                            text = stringResource(R.string.composer_subject_label),
                             fontSize = 12.sp,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         )
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(
-                            text = if (pickerOpen) "收起表情" else "表情",
-                            onClick = { pickerOpen = !pickerOpen },
+                        TextField(
+                            value = state.title,
+                            onValueChange = viewModel::updateTitle,
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
                         )
-                        TextButton(text = "添加图片", onClick = { pickImages.launch(arrayOf("image/*")) })
-                    }
-                    if (pickerOpen) {
-                        SmileyPicker(onPick = { smiley -> viewModel.updateMessage(state.message + smiley.code) })
-                    }
-
-                    state.error?.let {
-                        Spacer(Modifier.height(8.dp))
-                        Text(text = it, fontSize = 12.sp, color = MiuixTheme.colorScheme.error)
-                    }
-                    state.draftError?.let {
-                        Spacer(Modifier.height(8.dp))
-                        Text(text = it, fontSize = 12.sp, color = MiuixTheme.colorScheme.error)
-                    }
-
-                    Spacer(Modifier.height(12.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        if (state.isDraftEdit) {
-                            TextButton(
-                                text = stringResource(R.string.drafts_delete_action),
-                                onClick = { deleteConfirm = true },
-                                enabled = !state.isDraftBusy && !state.isSubmitting,
-                            )
-                        } else {
-                            TextButton(text = "取消", onClick = {
-                                viewModel.saveOnLeave()
-                                navigator.pop()
-                            })
-                        }
-                        Spacer(Modifier.weight(1f))
-                        TextButton(
-                            text = stringResource(R.string.draft_save),
-                            onClick = { viewModel.saveDraft(context) },
-                            enabled = !state.isSubmitting && !state.isDraftBusy &&
-                                (state.title.isNotBlank() || state.message.isNotBlank() || state.images.isNotEmpty()),
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            text = stringResource(R.string.composer_message_label),
+                            fontSize = 12.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         )
-                        Spacer(Modifier.width(8.dp))
-                        Button(
-                            onClick = {
-                                // A brand-new thread posts directly; turning a draft into a thread
-                                // is destructive enough (it becomes public) to ask first.
-                                if (state.isDraftEdit) publishConfirm = true else viewModel.submit(context)
-                            },
-                            enabled = state.canSubmit,
-                        ) {
-                            if (state.isSubmitting || state.isDraftBusy) {
-                                InfiniteProgressIndicator(modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(8.dp))
+                        TextField(
+                            value = state.message,
+                            onValueChange = viewModel::updateMessage,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp),
+                            singleLine = false,
+                            minLines = 8,
+                        )
+
+                        if (state.images.isNotEmpty()) {
+                            Spacer(Modifier.height(10.dp))
+                            LazyRow(
+                                modifier = Modifier.fillMaxWidth().testTag(COMPOSER_IMAGE_ROW_TAG),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                items(items = state.images, key = { it.uri.toString() }) { image ->
+                                    Box {
+                                        AsyncImage(
+                                            model = image.uri,
+                                            contentDescription = image.fileName,
+                                            modifier = Modifier.size(72.dp).clip(RoundedCornerShape(8.dp)),
+                                            contentScale = ContentScale.Crop,
+                                        )
+                                        TextButton(
+                                            text = "×",
+                                            onClick = { viewModel.removeImage(image.uri) },
+                                            modifier = Modifier.align(Alignment.TopEnd),
+                                        )
+                                    }
+                                }
                             }
-                            Text(if (state.isDraftEdit) "发表" else "发布")
+                        }
+                        // One line per picked file: what was attached (name + the size that will
+                        // be uploaded) or why it was not. Silent drops are the bug this replaces.
+                        state.imageFeedback.forEach { feedback ->
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = imageFeedbackText(feedback),
+                                fontSize = 11.sp,
+                                lineHeight = 16.sp,
+                                color = if (feedback.accepted) {
+                                    MiuixTheme.colorScheme.onSurfaceVariantSummary
+                                } else {
+                                    MiuixTheme.colorScheme.error
+                                },
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = stringResource(R.string.composer_image_hint),
+                            fontSize = 11.sp,
+                            lineHeight = 16.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                        if (state.skippedRestoredImages > 0) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = stringResource(
+                                    R.string.draft_images_skipped_format,
+                                    state.skippedRestoredImages,
+                                ),
+                                fontSize = 12.sp,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            )
+                        }
+
+                        // Action row: the two actions share the row's own 8dp arrangement instead of
+                        // sitting flush against each other (the reported "表情和添加图片太近了").
+                        Spacer(Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            TextButton(
+                                text = if (pickerOpen) {
+                                    stringResource(R.string.composer_smiley_hide)
+                                } else {
+                                    stringResource(R.string.composer_smiley)
+                                },
+                                onClick = { pickerOpen = !pickerOpen },
+                                modifier = Modifier.testTag(COMPOSER_SMILEY_TAG),
+                                minHeight = 48.dp,
+                            )
+                            TextButton(
+                                text = stringResource(R.string.composer_add_images),
+                                onClick = { pickImages.launch(arrayOf("image/*")) },
+                                modifier = Modifier.testTag(COMPOSER_ADD_IMAGE_TAG),
+                                minHeight = 48.dp,
+                            )
+                        }
+                        if (pickerOpen) {
+                            SmileyPicker(onPick = { smiley -> viewModel.updateMessage(state.message + smiley.code) })
+                        }
+
+                        state.error?.let {
+                            Spacer(Modifier.height(8.dp))
+                            Text(text = it, fontSize = 12.sp, color = MiuixTheme.colorScheme.error)
+                        }
+                        state.draftError?.let {
+                            Spacer(Modifier.height(8.dp))
+                            Text(text = it, fontSize = 12.sp, color = MiuixTheme.colorScheme.error)
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            if (state.isDraftEdit) {
+                                TextButton(
+                                    text = stringResource(R.string.drafts_delete_action),
+                                    onClick = { deleteConfirm = true },
+                                    enabled = !state.isDraftBusy && !state.isSubmitting,
+                                )
+                            } else {
+                                TextButton(text = stringResource(R.string.cancel), onClick = {
+                                    viewModel.saveOnLeave()
+                                    navigator.pop()
+                                })
+                            }
+                            Spacer(Modifier.weight(1f))
+                            TextButton(
+                                text = stringResource(R.string.draft_save),
+                                onClick = { viewModel.saveDraft(context) },
+                                enabled = !state.isSubmitting && !state.isDraftBusy &&
+                                    (state.title.isNotBlank() || state.message.isNotBlank() || state.images.isNotEmpty()),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Button(
+                                onClick = {
+                                    // A brand-new thread posts directly; turning a draft into a thread
+                                    // is destructive enough (it becomes public) to ask first.
+                                    if (state.isDraftEdit) publishConfirm = true else viewModel.submit(context)
+                                },
+                                enabled = state.canSubmit,
+                            ) {
+                                if (state.isSubmitting || state.isDraftBusy) {
+                                    InfiniteProgressIndicator(modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                }
+                                Text(
+                                    if (state.isDraftEdit) {
+                                        stringResource(R.string.draft_publish_confirm)
+                                    } else {
+                                        stringResource(R.string.composer_publish)
+                                    },
+                                )
+                            }
                         }
                     }
                 }
             }
         }
+
+        ComposerBoardPickerSheet(
+            show = boardPickerOpen,
+            boards = state.boards,
+            selectedFid = state.fid,
+            isLoading = state.isLoadingBoards,
+            error = state.boardsError,
+            onRetry = { viewModel.loadBoards(force = true) },
+            onSelect = { board ->
+                boardPickerOpen = false
+                viewModel.selectBoard(board.fid, board.name)
+            },
+            onDismissRequest = { boardPickerOpen = false },
+            // Page-chrome content layer, never the app-wide page backdrop (rules 23/28).
+            backdrop = chrome.backdrop,
+        )
     }
 
     DraftRestoreDialog(
@@ -312,4 +422,23 @@ fun NewThreadPage(
         },
         onDismiss = { deleteConfirm = false },
     )
+}
+
+/** The readable line for one pick: accepted files say their size, rejections say the reason. */
+@Composable
+private fun imageFeedbackText(feedback: ImagePickFeedback): String {
+    val name = feedback.fileName
+    val size = ComposerImagePolicy.formatBytes(feedback.byteCount)
+    return when (feedback.reason) {
+        null -> if (feedback.downscaled) {
+            stringResource(R.string.composer_image_added_scaled_format, name, size)
+        } else {
+            stringResource(R.string.composer_image_added_format, name, size)
+        }
+
+        ImageRejectReason.TooLarge -> stringResource(R.string.composer_image_too_large_format, name, size)
+        ImageRejectReason.Unreadable -> stringResource(R.string.composer_image_unreadable_format, name)
+        ImageRejectReason.OverCap ->
+            stringResource(R.string.composer_image_over_cap_format, name, ComposerImagePolicy.MAX_IMAGES)
+    }
 }

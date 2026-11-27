@@ -148,19 +148,7 @@ class ForumHttpClient(
         fields: Map<String, String>,
         parts: List<MultipartPart>,
     ): String = withContext(Dispatchers.IO) {
-        val body = MultipartBody.Builder()
-            .setType(MultipartBody.FORM)
-            .apply {
-                fields.forEach { (k, v) -> addFormDataPart(k, v) }
-                parts.forEach { part ->
-                    addFormDataPart(
-                        part.fieldName,
-                        part.fileName,
-                        part.bytes.toRequestBody(part.contentType.toMediaTypeOrNull()),
-                    )
-                }
-            }
-            .build()
+        val body = buildMultipartBody(fields, parts)
         val request = Request.Builder()
             .url(BASE_URL + path.removePrefix("/"))
             .header("User-Agent", MOBILE_UA)
@@ -174,3 +162,28 @@ class ForumHttpClient(
         }
     }
 }
+
+/**
+ * Builds the `multipart/form-data` body of a Discuz write: plain fields first, then the files.
+ *
+ * Extracted so the wire shape can be asserted without a socket (`ForumNewThreadMultipartTest`):
+ * the new-thread contract is "the eight hidden/submitted fields **plus** one `Filedata` part per
+ * image, with the file's own name and sniffed MIME type" (docs/REVERSE_SPEC.md §16). Discuz reads
+ * the files from the same POST as the message; there is no separate upload endpoint.
+ */
+internal fun buildMultipartBody(
+    fields: Map<String, String>,
+    parts: List<MultipartPart>,
+): MultipartBody = MultipartBody.Builder()
+    .setType(MultipartBody.FORM)
+    .apply {
+        fields.forEach { (name, value) -> addFormDataPart(name, value) }
+        parts.forEach { part ->
+            addFormDataPart(
+                part.fieldName,
+                part.fileName,
+                part.bytes.toRequestBody(part.contentType.toMediaTypeOrNull()),
+            )
+        }
+    }
+    .build()
