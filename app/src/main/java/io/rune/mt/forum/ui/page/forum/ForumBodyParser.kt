@@ -310,11 +310,48 @@ internal object ForumBodyParser {
             )
         }
 
+        /**
+         * `ul`/`ol` — except an **image-only list**, which is really the album gallery.
+         *
+         * Discuz renders a post's 相册 (album) attachments as a list of *pictures*:
+         * `<ul class="comiis_img_list"><li><span onclick=…><img …></span></li>…</ul>` (the
+         * real markup is in `album_images_177269.html`). Treating every `ul` as a bullet list
+         * dropped those images entirely — [collectListItems] only harvests text, and `ul` being a
+         * block tag meant the `<img>` never reached the picture branch, so an album-only post
+         * rendered as prose with no images at all. An image-only list now yields one
+         * [ForumBodyBlock.Picture] per image, in document order.
+         *
+         * A list that mixes text and images keeps its text rows; the images follow the rows as
+         * trailing pictures, because a [ForumBodyBlock.BulletList] row is text-only and cannot
+         * carry a block. Image-only `<li>` rows produce no empty bullet in that case.
+         */
         private fun emitList(list: Element, ordered: Boolean, depth: Int) {
             flush()
+            if (isImageGallery(list)) {
+                list.select("img").forEach { handleImage(it) }
+                return
+            }
             val items = mutableListOf<ForumBodyBlock.ListItem>()
             collectListItems(list, ordered, depth, items)
             if (items.isNotEmpty()) blocks += ForumBodyBlock.BulletList(items)
+            if (list.selectFirst("img") != null) {
+                // Mixed list: the rows stay, the images it carried come right after them.
+                list.select("img").forEach { handleImage(it) }
+            }
+        }
+
+        /**
+         * True for a list that is really a picture gallery.
+         *
+         * The template's own `comiis_img_list` class is authoritative. As a guard against
+         * template variants the structure is also accepted when the list holds pictures and no
+         * text of its own (`<li><span onclick=…><img …></span></li>`, or a bare `<li><img>`),
+         * which no genuine bullet list looks like.
+         */
+        private fun isImageGallery(list: Element): Boolean {
+            if (list.selectFirst("img") == null) return false
+            if (list.hasClass("comiis_img_list")) return true
+            return list.text().isBlank()
         }
 
         /**
@@ -345,7 +382,10 @@ internal object ForumBodyParser {
                     }
                 }
                 val value = normalize(builder.toAnnotatedString())
-                if (value.isNotBlank() || nested.isEmpty()) {
+                // A row whose only content is a picture is not a bullet: the image is emitted as a
+                // trailing Picture by [emitList] instead of leaving an empty marker behind.
+                val hasImage = child.selectFirst("img") != null
+                if (value.isNotBlank() || (nested.isEmpty() && !hasImage)) {
                     val marker = if (ordered) "$index." else "•"
                     out.add(ForumBodyBlock.ListItem(marker = marker, text = value, depth = depth))
                 }
