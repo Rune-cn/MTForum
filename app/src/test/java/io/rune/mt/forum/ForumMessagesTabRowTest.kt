@@ -57,6 +57,7 @@ import org.junit.runner.RunWith
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
+import io.rune.mt.forum.domain.forum.model.ImageHostGateway
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
 import org.robolectric.RobolectricTestRunner
@@ -116,6 +117,7 @@ class ForumMessagesTabRowTest {
             modules(
                 module {
                     single<ForumRepository> { repository }
+                    single<ImageHostGateway> { TabRowUnusedImageHost }
                     viewModelOf(::ForumMessagesViewModel)
                     viewModelOf(::ForumNoticesViewModel)
                 },
@@ -342,4 +344,14 @@ private class FakeMessagesRepository : ForumRepository {
     ): NewThreadResult = notWired()
 
     private fun <T> notWired(): T = error("not wired in this fake")
+}
+
+/** The tab row never uploads; the page just needs the gateway to construct its view model. */
+private object TabRowUnusedImageHost : ImageHostGateway {
+    override suspend fun upload(
+        bytes: ByteArray,
+        fileName: String,
+        mimeType: String,
+    ): io.rune.mt.forum.domain.forum.model.ImageHostResult =
+        error("the tab row test must not upload")
 }

@@ -80,6 +80,8 @@ import org.junit.runner.RunWith
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
+import io.rune.mt.forum.domain.forum.repository.ForumSearchHistoryRepository
+import io.rune.mt.forum.ui.page.forum.ForumSearchHistoryViewModel
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
 import org.robolectric.RobolectricTestRunner
@@ -130,8 +132,10 @@ class ForumHomeFeedPagingTest {
                     single<ForumRepository> { repository }
                     single<ForumDraftRepository> { FeedFakeDraftRepository }
                     single<ForumDraftService> { FeedFakeDraftService }
+                    single<ForumSearchHistoryRepository> { FeedFakeSearchHistory() }
                     viewModelOf(::ForumViewModel)
                     viewModelOf(::ForumSignInViewModel)
+                    viewModelOf(::ForumSearchHistoryViewModel)
                 },
             )
         }
@@ -505,4 +509,14 @@ private object FeedFakeDraftService : ForumDraftService {
         subject: String,
         message: String,
     ): DraftActionResult = error("drafts unused here")
+}
+
+/** In-memory search history for the home page's overlay; the page only needs it to resolve. */
+private class FeedFakeSearchHistory : ForumSearchHistoryRepository {
+    override val recent: kotlinx.coroutines.flow.StateFlow<List<String>> =
+        kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+
+    override suspend fun record(keyword: String) = Unit
+
+    override suspend fun clear() = Unit
 }
