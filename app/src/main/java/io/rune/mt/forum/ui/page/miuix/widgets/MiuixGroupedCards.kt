@@ -119,6 +119,9 @@ internal fun MiuixCardSegment(
  * @param keyPrefix Stable key prefix for the lazy items (one group per prefix).
  * @param outerTopPadding Space above the first segment.
  * @param outerBottomPadding Space below the last segment; the example's sections use 12dp.
+ * @param key Optional stable key per item; defaults to `"$keyPrefix:<index>"`.
+ * @param segmentModifier Optional modifier per segment, e.g. a test tag on the surface.
+ * @param row The caller's own row content, drawn inside the segment.
  */
 internal fun <T> LazyListScope.miuixGroupedItems(
     items: List<T>,
