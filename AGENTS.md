@@ -123,6 +123,18 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     `normalize()`/引用截断会重建 AnnotatedString，**重建时必须重映射 link 注解**，否则链接
     静默退回不可点（正文段落全走 `normalize()`，漏一次就全站失效）。
 
+    **span/链接偏移必须按真实变换重映射，不能只减一个 delta**：`normalize()` 折叠模板空白时，
+    内部的换行+缩进、连续空格都会让**后面所有** offset 左移。只补 `leadingTrim` 会把
+    `link`/颜色/下划线画到相邻字符上（真机反馈「有些 bbcode 蓝色解析错位置了」）。重建时边折叠
+    边记 `raw → new` 的索引映射，用映射重算 `spanStyles`/`paragraphStyles`/`LinkAnnotation`
+    的 start/end；任何新的“先改写文本再重建 AnnotatedString”路径同理。
+
+    **纯图片的列表是相册，不是 bullet list**：`ul.comiis_img_list`（以及任何“只有图片、没有
+    文字”的 `ul`/`ol`）要把每个 `<img>` 按文档顺序发成 `Picture` 块，绝不能走
+    `BulletList`——`collectListItems` 只收文字，`ul` 又是块标签，图片会整块消失（真机反馈
+    「图片完全不显示」，样本 `album_images_177269.html`）。文字+图片混排的列表保留文字行，
+    图片按文档顺序**跟在列表之后**；只有图片的 `li` 不产生空 bullet。真实列表仍是 `BulletList`。
+
     **附件必须给「下载 or 浏览器」选择**：附件卡的点击只能弹选择面板
     （`AttachmentChoiceSheet`），不能直接把 `mod=attachment` 丢给浏览器（Cookie 门禁，403 或
     下载到 acw 挑战页）。下载走 `ForumAttachmentDownloader`（复用 `ForumHttpClient.client`

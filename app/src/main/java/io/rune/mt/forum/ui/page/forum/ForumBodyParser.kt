@@ -310,11 +310,48 @@ internal object ForumBodyParser {
             )
         }
 
+        /**
+         * `ul`/`ol` — except an **image-only list**, which is really the album gallery.
+         *
+         * Discuz renders a post's 相册 (album) attachments as a list of *pictures*:
+         * `<ul class="comiis_img_list"><li><span onclick=…><img …></span></li>…</ul>` (the
+         * real markup is in `album_images_177269.html`). Treating every `ul` as a bullet list
+         * dropped those images entirely — [collectListItems] only harvests text, and `ul` being a
+         * block tag meant the `<img>` never reached the picture branch, so an album-only post
+         * rendered as prose with no images at all. An image-only list now yields one
+         * [ForumBodyBlock.Picture] per image, in document order.
+         *
+         * A list that mixes text and images keeps its text rows; the images follow the rows as
+         * trailing pictures, because a [ForumBodyBlock.BulletList] row is text-only and cannot
+         * carry a block. Image-only `<li>` rows produce no empty bullet in that case.
+         */
         private fun emitList(list: Element, ordered: Boolean, depth: Int) {
             flush()
+            if (isImageGallery(list)) {
+                list.select("img").forEach { handleImage(it) }
+                return
+            }
             val items = mutableListOf<ForumBodyBlock.ListItem>()
             collectListItems(list, ordered, depth, items)
             if (items.isNotEmpty()) blocks += ForumBodyBlock.BulletList(items)
+            if (list.selectFirst("img") != null) {
+                // Mixed list: the rows stay, the images it carried come right after them.
+                list.select("img").forEach { handleImage(it) }
+            }
+        }
+
+        /**
+         * True for a list that is really a picture gallery.
+         *
+         * The template's own `comiis_img_list` class is authoritative. As a guard against
+         * template variants the structure is also accepted when the list holds pictures and no
+         * text of its own (`<li><span onclick=…><img …></span></li>`, or a bare `<li><img>`),
+         * which no genuine bullet list looks like.
+         */
+        private fun isImageGallery(list: Element): Boolean {
+            if (list.selectFirst("img") == null) return false
+            if (list.hasClass("comiis_img_list")) return true
+            return list.text().isBlank()
         }
 
         /**
@@ -345,7 +382,10 @@ internal object ForumBodyParser {
                     }
                 }
                 val value = normalize(builder.toAnnotatedString())
-                if (value.isNotBlank() || nested.isEmpty()) {
+                // A row whose only content is a picture is not a bullet: the image is emitted as a
+                // trailing Picture by [emitList] instead of leaving an empty marker behind.
+                val hasImage = child.selectFirst("img") != null
+                if (value.isNotBlank() || (nested.isEmpty() && !hasImage)) {
                     val marker = if (ordered) "$index." else "•"
                     out.add(ForumBodyBlock.ListItem(marker = marker, text = value, depth = depth))
                 }
@@ -693,6 +733,12 @@ internal object ForumBodyParser {
                 val end = span.end.coerceAtMost(cut.length)
                 if (span.start < end) addStyle(span.item, span.start, end)
             }
+            // Truncation only ever cuts a *suffix*, so surviving offsets are unchanged; the ranges
+            // still have to be re-added, or they would be lost with the discarded tail.
+            text.paragraphStyles.forEach { span ->
+                val end = span.end.coerceAtMost(cut.length)
+                if (span.start < end) addStyle(span.item, span.start, end)
+            }
             text.getLinkAnnotations(0, text.length).forEach { link ->
                 val end = link.end.coerceAtMost(cut.length)
                 if (link.start >= end) return@forEach
@@ -718,34 +764,77 @@ internal object ForumBodyParser {
     /**
      * Collapses template whitespace while keeping deliberate line breaks.
      *
-     * Only whitespace is rewritten, so span styles and **link annotations** are remapped rather
-     * than recomputed. Dropping the annotations here would silently undo the tappable-link fix:
-     * every real body paragraph goes through this function, and a link whose run survived a
-     * collapse would otherwise lose its `LinkAnnotation` (the text stayed blue, taps did nothing).
+     * Only whitespace is rewritten, so span styles, paragraph styles and **link annotations** are
+     * remapped through the actual transformation rather than recomputed. Dropping the annotations
+     * here would silently undo the tappable-link fix: every real body paragraph goes through this
+     * function, and a link whose run survived a collapse would otherwise lose its
+     * `LinkAnnotation` (the text stayed blue, taps did nothing).
+     *
+     * The collapse is not a single leading shift. The template pretty-prints its HTML, so a
+     * `<br>` leaves a source-indentation text node behind that jsoup normalises to one space, and
+     * that space is swallowed together with the line break — every interior collapse moves all
+     * later offsets. Subtracting only the leading trim therefore painted link runs (and
+     * bold/colour spans) over the wrong characters, which is the reported
+     * 「有些 bbcode 蓝色解析错位置了」. The mapping is recorded while the string is rebuilt
+     * (`indexMap[rawIndex] == collapsedOffset`), so each range is clamped to where its original
+     * text actually went.
      */
     private fun normalize(value: AnnotatedString): AnnotatedString {
         val raw = value.text
-        val collapsed = raw
-            .replace(Regex("[ \\t]+"), " ")
-            .replace(Regex(" *\\n *"), "\n")
-            .replace(Regex("\\n{3,}"), "\n\n")
-            .trim()
-        if (collapsed == raw) return value
+        val collapsed = StringBuilder(raw.length)
+        // Boundary map: `indexMap[i]` is the offset in `collapsed` just before raw[i] was written.
+        val indexMap = IntArray(raw.length + 1)
+        var i = 0
+        while (i < raw.length) {
+            val char = raw[i]
+            if (char != ' ' && char != '\t' && char != '\n') {
+                indexMap[i] = collapsed.length
+                collapsed.append(char)
+                i++
+                continue
+            }
+            var end = i
+            var breaks = 0
+            while (end < raw.length) {
+                val next = raw[end]
+                if (next != ' ' && next != '\t' && next != '\n') break
+                if (next == '\n') breaks++
+                end++
+            }
+            // A run with a newline keeps at most one blank line and swallows the indentation
+            // around it; a run without one becomes exactly one space. Leading/trailing runs are
+            // trimmed, which is what the old `replace(…).trim()` chain did.
+            val token = if (breaks > 0) "\n".repeat(breaks.coerceAtMost(2)) else " "
+            for (k in i until end) indexMap[k] = collapsed.length
+            if (collapsed.isNotEmpty() && end < raw.length) collapsed.append(token)
+            i = end
+        }
+        indexMap[raw.length] = collapsed.length
+        val result = collapsed.toString()
+        if (result == raw) return value
 
-        // `leadingTrim` is how much was cut from the front; every range shifts by it, and both
-        // ends are clamped to the collapsed text.
-        val leadingTrim = raw.length - raw.trimStart().length
+        val length = result.length
+        fun remap(index: Int): Int =
+            indexMap[index.coerceIn(0, raw.length)].coerceIn(0, length)
+
         return buildAnnotatedString {
-            append(collapsed)
+            append(result)
             value.spanStyles.forEach { span ->
-                val start = (span.start - leadingTrim).coerceAtLeast(0)
-                val end = (span.end - leadingTrim).coerceAtMost(collapsed.length)
+                val start = remap(span.start)
+                val end = remap(span.end)
+                if (start < end) addStyle(span.item, start, end)
+            }
+            // Paragraph styles are ranges too, so they must follow the same mapping.
+            value.paragraphStyles.forEach { span ->
+                val start = remap(span.start)
+                val end = remap(span.end)
+                // `addStyle` is overloaded for both SpanStyle and ParagraphStyle.
                 if (start < end) addStyle(span.item, start, end)
             }
             value.getLinkAnnotations(0, raw.length).forEach { link ->
-                val start = (link.start - leadingTrim).coerceAtLeast(0)
-                val end = (link.end - leadingTrim).coerceAtMost(collapsed.length)
-                // ddLink is overloaded per concrete annotation kind, and the range item is the
+                val start = remap(link.start)
+                val end = remap(link.end)
+                // addLink is overloaded per concrete annotation kind, and the range item is the
                 // common supertype, so each kind is re-added explicitly.
                 if (start < end) {
                     when (val annotation = link.item) {

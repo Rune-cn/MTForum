@@ -22,9 +22,11 @@ import io.rune.mt.forum.domain.settings.model.preferences.theme.ThemeColorSpec
 import io.rune.mt.forum.domain.settings.model.preferences.theme.ThemeMode
 import io.rune.mt.forum.ui.page.forum.AttachmentChoiceSheet
 import io.rune.mt.forum.ui.page.forum.ForumBodyBlock
+import io.rune.mt.forum.ui.page.forum.ForumBodyParser
 import io.rune.mt.forum.ui.page.forum.ForumHtmlText
 import io.rune.mt.forum.ui.theme.AppTheme
 import java.io.File
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -101,6 +103,30 @@ class ForumRichBodyScreenshotTest {
     fun `real attachment block renders with download affordance`() {
         val html = realAttachmentHtml()
         render(html, "08_attachment_download.png")
+    }
+
+    /**
+     * The real album gallery of thread 177269: its four OP screenshots live in
+     * `ul.comiis_img_list`, not in `span.comiis_postimg`. Before the gallery fix this body had no
+     * pictures at all; the PNG is the visual proof that the album renders as four picture blocks.
+     *
+     * The images themselves are remote (`oos.binmt.cc`) and there is no network in tests, so each
+     * block shows the renderer's `min-height` placeholder — which is exactly what proves a picture
+     * block exists instead of the images being dropped.
+     */
+    @Test
+    fun `real album gallery renders as picture blocks`() {
+        val path = "src/test/resources/forum/album_images_177269.html"
+        val file = File(path).takeIf { it.exists() } ?: File("app/$path")
+        val posts = ForumHtmlParser.parseThreadDetail(file.readText(), tid = 177269, page = 1).posts
+        val html = posts.first().contentHtml
+        val pictures = ForumBodyParser.parse(html).filterIsInstance<ForumBodyBlock.Picture>()
+        assertTrue("the gallery must render as four pictures, got ${pictures.size}", pictures.size == 4)
+        assertTrue(
+            "every gallery picture must be a real oos file, got ${pictures.map { it.url }}",
+            pictures.all { it.url.contains("oos.binmt.cc/") },
+        )
+        render(html, "09_album_gallery.png")
     }
 
     private fun realAttachmentHtml(): String {

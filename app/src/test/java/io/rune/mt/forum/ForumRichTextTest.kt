@@ -302,4 +302,140 @@ class ForumRichTextTest {
             links.all { it.item is androidx.compose.ui.text.LinkAnnotation.Url },
         )
     }
+
+    // ---- Offsets through normalize(): span/link ranges must follow the rewrite --------------
+
+    /**
+     * "有些 bbcode 蓝色解析错位置了": the link colour/underline landed on neighbouring characters.
+     *
+     * `normalize()` rebuilds the string after collapsing template whitespace. It used to shift
+     * every range by the *leading trim only*, so an interior collapse (two spaces → one, or the
+     * indentation a line break swallows) moved all later offsets and the span painted the wrong
+     * text. This case isolates it: the two spaces between the links are real (the template leaves
+     * `<span></span>` between the whitespace runs), so the second link starts one character
+     * earlier in the collapsed string than it did in the raw one.
+     */
+    @Test
+    fun `interior space collapse keeps each link on its own word`() {
+        val html = """<div><a href="https://bbs.binmt.cc/a">甲</a> <span></span> <a href="https://bbs.binmt.cc/b">乙</a> 后文</div>"""
+        val paragraph = parse(html).filterIsInstance<ForumBodyBlock.Paragraph>().first()
+        assertEquals("甲 乙 后文", paragraph.text.text)
+        val links = paragraph.text.getLinkAnnotations(0, paragraph.text.length)
+        assertEquals("both links must survive normalize, got $links", 2, links.size)
+        assertEquals(
+            "甲",
+            paragraph.text.text.substring(links[0].start, links[0].end),
+        )
+        assertEquals(
+            "the second link must stay on 乙, not drift onto the space, got " +
+                "'${paragraph.text.text.substring(links[1].start, links[1].end)}'",
+            "乙",
+            paragraph.text.text.substring(links[1].start, links[1].end),
+        )
+        // The colour/underline SpanStyle is what the user actually sees; it must be remapped too.
+        val painted = paragraph.text.spanStyles
+            .filter { it.item.color == Color(0xFF0000FF) }
+            .map { paragraph.text.text.substring(it.start, it.end) }
+        assertEquals(setOf("甲", "乙"), painted.toSet())
+    }
+
+    /**
+     * The realistic shape: the template pretty-prints, so after a `<br />` the source indentation
+     * arrives as a text node that jsoup normalises to a single space — and `normalize()` swallows
+     * that space next to the line break, shifting every later offset by one. This is the markup
+     * pattern of the captured threads (`rich_166223.html`, `album_images_177269.html`).
+     */
+    @Test
+    fun `a link after a collapsed indentation run stays on its own text`() {
+        val html = "<div>见 <a href=\"https://bbs.binmt.cc/a\">第一</a><br />\n             " +
+            "<a href=\"https://bbs.binmt.cc/b\">第二</a> 说明</div>"
+        val paragraph = parse(html).filterIsInstance<ForumBodyBlock.Paragraph>().first()
+        assertEquals("见 第一\n第二 说明", paragraph.text.text)
+        val links = paragraph.text.getLinkAnnotations(0, paragraph.text.length)
+        assertEquals(2, links.size)
+        assertEquals("第一", paragraph.text.text.substring(links[0].start, links[0].end))
+        assertEquals(
+            "the link must stay on 第二, got '${paragraph.text.text.substring(links[1].start, links[1].end)}'",
+            "第二",
+            paragraph.text.text.substring(links[1].start, links[1].end),
+        )
+    }
+
+    /** Whole-string case: nothing to collapse, the range must stay exactly the anchor run. */
+    @Test
+    fun `a link covering the whole paragraph keeps its range`() {
+        val paragraph = parse("""<div><a href="https://bbs.binmt.cc/whole">整段链接</a></div>""")
+            .filterIsInstance<ForumBodyBlock.Paragraph>()
+            .first()
+        assertEquals("整段链接", paragraph.text.text)
+        val link = paragraph.text.getLinkAnnotations(0, paragraph.text.length).single()
+        assertEquals(0, link.start)
+        assertEquals(paragraph.text.length, link.end)
+        assertEquals("整段链接", paragraph.text.text.substring(link.start, link.end))
+    }
+
+    /** Leading-trim case: the previous fix's scenario must keep working. */
+    @Test
+    fun `a link after the leading trim keeps its range`() {
+        val html = "<div>\n            <a href=\"https://bbs.binmt.cc/lead\">前导</a>后文\n        </div>"
+        val paragraph = parse(html).filterIsInstance<ForumBodyBlock.Paragraph>().first()
+        assertEquals("前导后文", paragraph.text.text)
+        val link = paragraph.text.getLinkAnnotations(0, paragraph.text.length).single()
+        assertEquals("前导", paragraph.text.text.substring(link.start, link.end))
+    }
+
+    /**
+     * The real fixtures prove the remap: a link's destination identifies the anchor, so the run it
+     * covers must be exactly that anchor's text. A drift of even one character breaks the equality.
+     */
+    @Test
+    fun `real fixture link runs cover the anchor text of their url`() {
+        val fixtures = listOf("album_images_177269.html" to 177269, "rich_166223.html" to 166223)
+        var checked = 0
+        fixtures.forEach { (name, tid) ->
+            val path = "src/test/resources/forum/$name"
+            val file = java.io.File(path).takeIf { it.exists() } ?: java.io.File("app/$path")
+            val posts = io.rune.mt.forum.data.forum.network.ForumHtmlParser
+                .parseThreadDetail(file.readText(), tid = tid, page = 1)
+                .posts
+            posts.forEach { post ->
+                val anchors: Map<String, List<String>> = org.jsoup.Jsoup.parseBodyFragment(post.contentHtml)
+                    .select("a[href]")
+                    .mapNotNull { anchor ->
+                        val destination = io.rune.mt.forum.data.forum.network.ForumUrls
+                            .absolute(anchor.attr("href")) ?: return@mapNotNull null
+                        val text = anchor.text().trim()
+                        if (text.isEmpty()) null else destination to text
+                    }
+                    .groupBy({ it.first }, { it.second })
+                paragraphsOf(ForumBodyParser.parse(post.contentHtml)).forEach { paragraph ->
+                    val annotations = paragraph.text.getLinkAnnotations(0, paragraph.text.length)
+                    annotations.forEach link@{ link ->
+                        val url = (link.item as? androidx.compose.ui.text.LinkAnnotation.Url)?.url
+                            ?: return@link
+                        val covered = paragraph.text.text.substring(link.start, link.end).trim()
+                        val expected = anchors[url]
+                        assertTrue("$name: no anchor text captured for $url", expected != null)
+                        assertTrue(
+                            "$name: link $url covers '$covered' but its anchor text is $expected",
+                            expected!!.any { it == covered },
+                        )
+                        checked++
+                    }
+                }
+            }
+        }
+        assertTrue("expected real links to check, got $checked", checked > 0)
+    }
+
+    /** Paragraphs at any depth: quotes and `[align]` groups hold their own text runs. */
+    private fun paragraphsOf(blocks: List<ForumBodyBlock>): List<ForumBodyBlock.Paragraph> =
+        blocks.flatMap { block ->
+            when (block) {
+                is ForumBodyBlock.Paragraph -> listOf(block)
+                is ForumBodyBlock.Quote -> paragraphsOf(block.children)
+                is ForumBodyBlock.Aligned -> paragraphsOf(block.blocks)
+                else -> emptyList()
+            }
+        }
 }
