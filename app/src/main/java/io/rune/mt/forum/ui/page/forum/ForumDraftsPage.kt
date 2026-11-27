@@ -25,7 +25,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -110,18 +109,14 @@ fun ForumDraftsPage(
         viewModel.clearDeleteError()
     }
 
-    val shouldAppend by remember(state.drafts.size, state.page, state.totalPages) {
-        derivedStateOf {
-            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            val totalItems = listState.layoutInfo.totalItemsCount
-            totalItems > 0 && lastVisible >= totalItems - 2
-        }
-    }
-    LaunchedEffect(shouldAppend, state.canLoadMore, state.loginRequired) {
-        if (shouldAppend && state.canLoadMore && !state.isAppending && !state.loginRequired) {
-            viewModel.loadMore()
-        }
-    }
+    // Auto-append once the tail is visible; the footer row is the explicit path and the retry.
+    ForumAppendEffect(
+        listState = listState,
+        enabled = state.canLoadMore && !state.loginRequired,
+        isAppending = state.isAppending,
+        hasError = state.error != null,
+        onLoadMore = viewModel::loadMore,
+    )
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),

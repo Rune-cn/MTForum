@@ -282,4 +282,17 @@
     <string name="forum_attach_cancel">取消</string>
     <string name="forum_attach_retry">關閉</string>
     <string name="forum_attach_share">儲存 / 分享</string>
+    <!-- Home top bar: search overlay, board picker; messages tabs; paging footer. -->
+    <string name="forum_messages_tab_private">私訊</string>
+    <string name="forum_messages_login_required_title">登入後查看私訊</string>
+    <string name="forum_messages_login_hint">私訊只對登入帳號可見。</string>
+    <string name="forum_messages_empty_title">暫無會話</string>
+    <string name="forum_messages_empty_hint">還沒有收到或發出私訊。</string>
+    <string name="forum_new_thread_board_title">選擇版塊</string>
+    <string name="forum_new_thread_board_hint">新主題會發佈在你選擇的版塊。</string>
+    <string name="forum_search_cancel">取消</string>
+    <string name="forum_search_submit_format">搜尋「%1$s」</string>
+    <string name="forum_paging_page_format">%1$d / %2$d</string>
+    <string name="forum_messages_login_required">登入後檢視訊息</string>
+    <string name="forum_messages_empty">暫無會話</string>
 </resources>

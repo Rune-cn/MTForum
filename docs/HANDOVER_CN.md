@@ -1633,3 +1633,38 @@ internal fun barBackdrop(contentBackdrop: LayerBackdrop?, hostBackdrop: LayerBac
 **仍未验证**：OS4 玻璃签到面板在 Robolectric 下无法渲染（AGSL 着色器 `cannot swizzle value of
 type 'shader'`，与三点菜单同一限制），装机体感未测；付费附件的 `ck` 时效/一次性、再次 acw 挑战、
 扣费次数均只能在真机确认。
+
+## 20. 第八轮真机反馈：主页顶栏改版 + 消息分栏 + 表格 + 发帖编辑器（2026-11-27）
+
+### 20.1 主页顶栏：搜索放大镜 / 发帖 / 撤销消息铃铛
+
+- 列表里的整块搜索卡片删除，改为顶栏左侧的放大镜（`MiuixTopBarIconButton`）。
+- 点击走 Miuix 示例应用的搜索覆盖层形态（`example/.../GlassPage.kt` + `GlassSearchOverlay`）：
+  OS4 用 `GlassSearchOverlay`（全屏遮罩 + 从顶栏位置展开的搜索条 + 取消按钮），OS3 用同形态的
+  非玻璃面板；两种都会自动聚焦并弹输入法，返回键关闭。`GlassSearchOverlay` 没有提交回调，
+  所以面板里给一行「搜索 “关键词”」确认行，确认后进入 `Route.ForumSearch(keyword)`。
+- 顶栏右侧新增「发帖」动作：先弹板块选择面板（`ForumBoardPickerSheet`，OS4 `GlassBottomSheet` /
+  OS3 `WindowBottomSheet`，数据取首页已加载的 `state.forums`），选定后 `Route.NewThread(fid, name)`；
+  游客先走登录。
+- **消息提醒铃铛从顶栏删除**：三个提醒分类搬到底栏「消息」页，见 20.2。
+
+### 20.2 消息页：私信 + 三类提醒用 TabRow 分开
+
+`ForumMessagesPage` 从「只有私信」变成四个页签：私信 / 系统提醒 / 坛友互动 / 我的帖子
+（复用 `ForumNoticeTab.entries` 与 `ForumNoticesViewModel`）。两半各自持有 VM 与分页状态，
+切页签不互相重取；`Route.Notices` 仍保留（深链用），内容一致。
+
+### 20.3 列表翻页：`ForumAppendEffect` 取代旧的 derivedStateOf 组合
+
+旧写法是 `shouldAppend`（由 `layoutInfo` 推导）+ `LaunchedEffect(shouldAppend, canLoadMore)`：
+一次 append 完成后列表变长但视口仍可能停在末尾（短页、整页刚好填满、快速连翻），
+effect 已 armed 却再也不会触发 → 第 3 页永远到不了。新 helper `ForumAppendEffect` 的 effect
+额外 key 在 `isAppending` 上，每次 append 完成都重新武装；同时 `ForumPagingFooter` 提供显式
+「加载第 N 页」入口，失败的页可以手动重试而不会自动死循环。
+
+### 20.4 验证
+
+- 分支内：`:app:testStableDebugUnitTest` → BUILD SUCCESSFUL（52 suites / 317 tests 基线 + 新增用例）；
+  `:app:lintVitalStableRelease` → BUILD SUCCESSFUL，`Lint found no new issues`。
+- ⚠️ OS4 玻璃面板/覆盖层无法在 Robolectric 渲染（AGSL 着色器），OS4 侧只断言接线与节点可达。
+

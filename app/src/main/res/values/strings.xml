@@ -141,7 +141,7 @@
     <string name="forum_empty_posts">No posts to show.</string>
     <string name="forum_load_more_format">Load page %1$d</string>
     <string name="forum_loading_more">Loading more…</string>
-    <string name="forum_last_page">End of the thread</string>
+    <string name="forum_last_page">All loaded</string>
     <string name="forum_op_badge">OP</string>
     <string name="forum_floor_format">#%1$d</string>
     <string name="forum_pinned_badge">Pinned</string>
@@ -282,4 +282,17 @@
     <string name="forum_attach_cancel">Cancel</string>
     <string name="forum_attach_retry">Close</string>
     <string name="forum_attach_share">Save / share</string>
+    <!-- Home top bar: search overlay, board picker; messages tabs; paging footer. -->
+    <string name="forum_messages_tab_private">Private messages</string>
+    <string name="forum_messages_login_required_title">Sign in to see your messages</string>
+    <string name="forum_messages_login_hint">Private messages are visible to the signed-in account only.</string>
+    <string name="forum_messages_empty_title">No conversations</string>
+    <string name="forum_messages_empty_hint">You have not sent or received a private message yet.</string>
+    <string name="forum_new_thread_board_title">Choose a board</string>
+    <string name="forum_new_thread_board_hint">The new thread is posted in the board you pick.</string>
+    <string name="forum_search_cancel">Cancel</string>
+    <string name="forum_search_submit_format">Search for &quot;%1$s&quot;</string>
+    <string name="forum_paging_page_format">%1$d / %2$d</string>
+    <string name="forum_messages_login_required">Sign in to view messages</string>
+    <string name="forum_messages_empty">No conversations yet</string>
 </resources>

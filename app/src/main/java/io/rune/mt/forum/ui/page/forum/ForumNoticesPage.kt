@@ -104,6 +104,14 @@ fun ForumNoticesPage(
     LaunchedEffect(session.isLoggedIn) { viewModel.loadIfNeeded() }
     // A tab switch starts that tab at its own first row instead of inheriting the scroll offset.
     LaunchedEffect(state.selected) { listState.scrollToItem(0) }
+    // Notice pages append on scroll like the board listing; the footer stays the manual path.
+    ForumAppendEffect(
+        listState = listState,
+        enabled = session.isLoggedIn && current.canLoadMore,
+        isAppending = current.isAppending,
+        hasError = current.error != null,
+        onLoadMore = viewModel::loadMore,
+    )
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -186,15 +194,13 @@ fun ForumNoticesPage(
                                         },
                                     )
                                 }
-                                if (current.totalPages > 1) {
-                                    item {
-                                        ForumPagingFooter(
-                                            page = current.page,
-                                            totalPages = current.totalPages,
-                                            isAppending = current.isAppending,
-                                            onLoadMore = viewModel::loadMore,
-                                        )
-                                    }
+                                item {
+                                    ForumPagingFooter(
+                                        page = current.page,
+                                        totalPages = current.totalPages,
+                                        isAppending = current.isAppending,
+                                        onLoadMore = viewModel::loadMore,
+                                    )
                                 }
                             }
                         }
@@ -212,7 +218,7 @@ fun ForumNoticesPage(
 
 /** One inbox row: avatar (or a kind icon for authorless site messages), author, preview, time. */
 @Composable
-private fun NoticeRow(
+internal fun NoticeRow(
     notice: ForumNotice,
     onOpenThread: (tid: Int, title: String) -> Unit,
 ) {

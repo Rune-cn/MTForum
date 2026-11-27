@@ -282,4 +282,17 @@
     <string name="forum_attach_cancel">取消</string>
     <string name="forum_attach_retry">关闭</string>
     <string name="forum_attach_share">保存 / 分享</string>
+    <!-- Home top bar: search overlay, board picker; messages tabs; paging footer. -->
+    <string name="forum_messages_tab_private">私信</string>
+    <string name="forum_messages_login_required_title">登录后查看私信</string>
+    <string name="forum_messages_login_hint">私信只对登录账号可见。</string>
+    <string name="forum_messages_empty_title">暂无会话</string>
+    <string name="forum_messages_empty_hint">还没有收到或发出私信。</string>
+    <string name="forum_new_thread_board_title">选择版块</string>
+    <string name="forum_new_thread_board_hint">新主题会发布在你选择的版块。</string>
+    <string name="forum_search_cancel">取消</string>
+    <string name="forum_search_submit_format">搜索「%1$s」</string>
+    <string name="forum_paging_page_format">%1$d / %2$d</string>
+    <string name="forum_messages_login_required">登录后查看消息</string>
+    <string name="forum_messages_empty">暂无会话</string>
 </resources>

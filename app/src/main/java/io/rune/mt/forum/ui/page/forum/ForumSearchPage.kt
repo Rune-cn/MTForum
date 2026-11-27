@@ -73,6 +73,14 @@ fun ForumSearchPage(
     LaunchedEffect(Unit) {
         if (initialKeyword.isBlank()) focusRequester.requestFocus()
     }
+    // Results append on scroll like every other paged list; the footer stays the manual path.
+    ForumAppendEffect(
+        listState = listState,
+        enabled = state.canLoadMore && !state.loginRequired && state.searched,
+        isAppending = state.isAppending,
+        hasError = state.error != null,
+        onLoadMore = viewModel::loadMore,
+    )
 
     val submit = {
         keyboard?.hide()
