@@ -2270,3 +2270,19 @@ squircle 圆角在 Robolectric 下退化为普通圆角，真机是超椭圆。
 **未验证**：无真机，无法验证浏览器点 `https://bbs.binmt.cc/forum.php` 时系统是否把链接交给 App
 （站点没有 `assetlinks.json`，Android 12+ 可能仍走浏览器 —— HANDOVER §14.5 的老限制）；冷启动时
 从恢复页签动画到论坛页签的观感也没在设备上看过。
+
+### 25.1 合入 main 后的总体验证（2026-11-27，第九轮）
+
+五条分支（图床+私信 BBCode §21、回复面板 §22、草稿删除 §23、检查更新 §24、搜索/页签/主题/深链 §25）
+全部合入 main 后：
+
+- `:app:testStableDebugUnitTest` → **71 suites / 429 tests / 0 failures / 0 errors / 0 skipped**
+- `:app:lintVitalStableRelease` → BUILD SUCCESSFUL（`No issues found (and 1 error filtered by baseline lint-baseline.xml)`）
+- 三语字符串各 **343** 键，数量一致
+- 截图：`search-overlay-os3.png`（最近搜索 + 确认行）、`messages-tab-row.png` / `-360.png`
+  （四页签不省略；窄屏横向滚动）、`theme-mode-control.png`（示例应用的浅色/深色预览卡）、
+  `home-feed.png`（首页最新主题流）、`reply-sheet.png`（回复底部面板）
+- 合并过程中修掉 7 个跨分支集成失败：新 VM（`ForumSearchHistoryViewModel` 及 `ImageHostGateway`
+  依赖）未注册进三个 UI 测试的 Koin 模块，已在测试侧补上 fake（生产代码未改）。
+- ⚠️ 无设备：图床真实上传、OS4 玻璃面板、深链在浏览器中的握手（无 `assetlinks.json`）均未在真机确认。
+
