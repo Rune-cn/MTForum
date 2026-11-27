@@ -63,7 +63,7 @@ app/src/main/java/io/rune/mt/forum/
 │   │   │   ├── ForumSignInCard.kt    签到面板内容（排名/连续/累计 + 签到按钮 + 游客登录提示）
 │   │   │   ├── ForumSignInViewModel.kt 签到页状态 + 签到结果（CDATA 文案）
 │   │   │   ├── ForumViewModel.kt     VM + 各页面 State
-│   │   │   ├── ReplyComposer.kt      回复框（引用 + 表情）
+│   │   │   ├── ReplyComposer.kt      回复底部面板（与签到共用 `MiuixBottomSheet`，引用 + 表情，无草稿）
 │   │   │   ├── SmileyPicker.kt       表情选择器
 │   │   │   ├── ForumGuidePage.kt     导读五视图（最新/热门/精华/回复/抢沙发）
 │   │   │   └── ThreadActions.kt      顶栏溢出按钮 + 页面根部 OS4 玻璃菜单（收藏/顶/关注/复制/分享）＋返回关菜单
@@ -71,7 +71,7 @@ app/src/main/java/io/rune/mt/forum/
 │   │   ├── main/forum/               论坛 VM 与 State（旧位置，保留兼容）
 │   │   ├── miuix/
 │   │   │   ├── settings/             设置页（账号区块、主题入口、关于）
-│   │   │   └── widgets/              共享组件（页面脚手架、顶栏、滚动条、分组卡片、弹窗等）
+│   │   │   └── widgets/              共享组件（页面脚手架、顶栏、滚动条、分组卡片、底部面板 `MiuixBottomSheet` 等）
 │   │   └── theme/ · library/ · animation/
 └── App.kt
 ```

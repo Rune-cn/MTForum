@@ -1766,3 +1766,67 @@ BUILD SUCCESSFUL（`Lint found no new issues`）。
   铃铛已移除）
 - ⚠️ 无设备：顶栏覆盖层、消息四页签、编辑器图片/板块面板的实际观感未在真机确认；OS4 玻璃
   覆盖层在 Robolectric 下渲染不了（AGSL），只验证了接线。
+
+---
+
+## 21. 第九轮：评论面板换成签到面板的样式（2026-11-27）
+
+机主请求「评论功能的样式换成签到功能的那种」。`ReplyComposer` 从居中的 `WindowDialog` 改成底部面板，
+并与签到面板共用同一实现。
+
+### 21.1 共用 sheet 助手 `MiuixBottomSheet`
+
+新文件 `ui/page/miuix/widgets/MiuixBottomSheet.kt`，是**唯一**按风格分支的底部面板壳：
+
+| 内容 | 值 |
+|---|---|
+| OS4 | `GlassBottomSheet`（内联，渲染进根 `Miuix Scaffold` 的 dialog 层，`backdrop` 传页面内容层或 `null`） |
+| OS3 | `WindowBottomSheet`（真实 dialog 窗口） |
+| 内边距 | `insideMargin = DpSize(16.dp, 0.dp)`（与签到面板原值一致，助手内固定） |
+| 圆角 | 不传，两个面板都取 Miuix `BottomSheetDefaults.cornerRadius`（28dp） |
+| 标题头 | `title` + `startAction` / `endAction` 插槽 |
+| 关闭动作 | `MiuixBottomSheetCloseAction`：`MiuixBackButton`（规则 7）+ `LocalDismissState`（面板自带动画关闭；玻璃分支没有该 provider 时回落 `onDismissRequest`）。**不新增 `BackHandler`**，返回手势/预测式返回由面板自己处理（规则 15） |
+
+`ForumSignInSheet` 改成调用该助手（行为、标题、内边距都不变），`ReplyComposer` 同样调用它；
+两个面板因此不再可能各自漂移成两套形状。`ReplySheetTest` 有源码级断言把这条固定下来
+（两个调用点都含 `MiuixBottomSheet(`、风格分支只在助手里、页面分支顺序与缩进）。
+
+### 21.2 回复面板的内容与放置
+
+- 结构：`ReplyComposer` = `MiuixBottomSheet(...)` + `ReplyComposerBody`。标题头沿用「回复 /
+  回复 @author」，原来的 X 关闭按钮移到标题头的 `startAction`；正文保留引用楼层 chip、
+  自动聚焦并弹键盘的 4–8 行输入框、表情选择器、错误行、「取消 / 发送」按钮行
+  （发送中显示进度并禁用）。
+- **仍然没有草稿**：底部只有「取消 / 发送」，关闭即丢弃输入（§19.1 / 规则 27）。
+- **放置按规则 12**：OS4 内联玻璃面板 compose 在 `ForumThreadPage` 页面根 `Box` 里、
+  作为 `Scaffold` 的兄弟（与 `ThreadActionsGlassMenu` 同层），并且**在
+  `ThreadActionsBackHandler` 之后**组合——面板打开时由面板自己的返回处理器接管手势；
+  OS3 `WindowBottomSheet` 是真实窗口，仍在页面根 `Box` **之外**（原位置），组合位置不影响布局。
+- **IME 按规则 24**：删掉旧的 `imePadding()` + `navigationBarsPadding()` 叠加。面板传
+  `defaultWindowInsetsPadding = false`，正文只做一次
+  `windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))`，键盘弹出时在键盘上方、
+  收起时在导航栏上方，两条路径不会相加。
+- **玻璃采样**：`backdrop = chrome.backdrop`（页面内容层），绝不传 `pageBackdrop`（规则 23/28）。
+- 引用楼层的 chip 仍在：`ReplyState.quoteAuthor/quoteText` 不变，标题显示「回复 @author」。
+
+### 21.3 验证
+
+- `:app:compileStableDebugKotlin` → BUILD SUCCESSFUL。
+- `:app:testStableDebugUnitTest` → **55 suites / 324 tests / 0 failures / 0 errors / 0 skipped**
+  （基线 54 / 321；新增 `ReplySheetTest` 3 例）。
+- `:app:lintVitalStableRelease` → BUILD SUCCESSFUL（`Lint found no new issues`）。
+- 字符串：**未新增/删除**任何键，三语仍各 **312** 键。
+- 截图：`docs/screenshots/reply-sheet.png`（OS3 面板 + 已输入文字 + 键盘焦点框；见下方限制）。
+
+### 21.4 未验证（如实）
+
+- **OS4 玻璃面板在 Robolectric 下渲染不了**（AGSL 着色器 `cannot swizzle value of type 'shader'`，
+  与签到面板、三点菜单同一限制）：本轮只做了接线/源码断言（OS4 分支走
+  `GlassBottomSheet`、`backdrop` 是页面内容层、组合位置在页面根 Box），真机观感未测。
+- **OS3 `WindowBottomSheet` 是独立 dialog 窗口**：Robolectric 下 `captureToImage()` 对所有
+  compose root 都返回 activity 窗口的像素（试过 root 枚举，得到的是帖子页本身），所以
+  `reply-sheet.png` 用 Miuix 的**内联** `OverlayBottomSheet` 承载**同一个** `ReplyComposerBody`
+  渲染。两者共用 Miuix `BottomSheetContentLayout`，圆角/标题头/关闭按钮/拖拽手柄/正文几何与生产
+  一致，只有窗口级动效（进场/退场动画、窗口层级）不在截图里。
+- 输入法在真机上是否让面板整体上移：规则 24 的 union 只保证内容在键盘上方，面板窗口本身
+  （`WindowBottomSheet`）的行为需真机确认。
