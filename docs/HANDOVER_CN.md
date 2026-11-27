@@ -1610,7 +1610,7 @@ internal fun barBackdrop(contentBackdrop: LayerBackdrop?, hostBackdrop: LayerBac
 - ⚠️ 本机无设备/模拟器：所有 UI 证据是 Robolectric 版面断言 + NATIVE 截图；
   「真机不崩」「玻璃观感」「下载面板实际观感」仍未实测。
 
-### 19. 第七轮真机反馈（2026-11-27）
+## 19. 第七轮真机反馈（2026-11-27）
 
 四条独立修复，全部来自机主实测反馈；本机无设备/模拟器，证据均为 fixture + 单测 + Robolectric 截图。
 
