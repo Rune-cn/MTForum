@@ -3,12 +3,15 @@ package io.rune.mt.forum.ui.page.main.settings.preferred
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import io.rune.mt.forum.R
 import io.rune.mt.forum.domain.settings.repository.AppSettingsRepository
 import io.rune.mt.forum.domain.settings.repository.BooleanSetting
 import io.rune.mt.forum.domain.settings.usecase.settings.UpdateSettingUseCase
+import io.rune.mt.forum.domain.updater.model.UpdateCheckResult
+import io.rune.mt.forum.domain.updater.model.checkedVersion
 import io.rune.mt.forum.domain.updater.repository.UpdateRepository
-import kotlinx.coroutines.Dispatchers
+import io.rune.mt.forum.ui.page.main.settings.preferred.about.UpdateCheckFeedback
+import io.rune.mt.forum.ui.page.main.settings.preferred.about.updateCheckFeedback
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -35,7 +38,8 @@ class PreferredViewModel(
     val state: StateFlow<PreferredViewState> = combine(
         appSettingsRepo.preferencesFlow,
         updateRepo.updateInfoFlow,
-    ) { prefs, updateInfo ->
+        updateRepo.checkState,
+    ) { prefs, updateInfo, checkState ->
         PreferredViewState(
             allowInternetAccess = prefs.allowInternetAccess,
             hasUpdate = prefs.allowInternetAccess && (updateInfo?.hasUpdate ?: false),
@@ -43,6 +47,7 @@ class PreferredViewModel(
             autoCheckUpdateOnStart = prefs.autoCheckUpdateOnStart,
             useBlur = prefs.useBlur,
             updateInfo = updateInfo,
+            checkState = checkState,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -68,20 +73,32 @@ class PreferredViewModel(
         }
     }
 
-    private fun checkUpdate(force: Boolean = false) = viewModelScope.launch(Dispatchers.IO) {
-        // legado-style 4-stage: loading -> result -> sheet / toast (+ onFinally)
+    /**
+     * Runs one check; the loading dialog follows `state.isChecking`, not an event pair, so a
+     * cancellation or a thrown repository cannot strand the UI in "检查更新".
+     */
+    private fun checkUpdate(force: Boolean = false) = viewModelScope.launch {
         Timber.i("Update check requested (force=%s)", force)
-        _uiEvents.emit(PreferredViewEvent.ShowUpdateLoading)
-        val info = runCatching { updateRepo.checkUpdate(force) }
-            .onFailure { e -> Timber.e(e, "Update check failed") }
-            .getOrNull()
-        _uiEvents.emit(PreferredViewEvent.HideUpdateLoading)
-        if (info?.hasUpdate == true) {
-            Timber.i("Update found: %s", info.remoteVersion)
-            _uiEvents.emit(PreferredViewEvent.ShowUpdateSheet)
-        } else {
-            Timber.i("No update available")
-            _uiEvents.emit(PreferredViewEvent.ShowMessage(R.string.check_update_latest_shell))
+        val result = try {
+            updateRepo.checkUpdate(force)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            Timber.e(error, "Update check failed")
+            UpdateCheckResult.Failed(
+                reason = error.message ?: error.javaClass.simpleName,
+                checkedAt = System.currentTimeMillis(),
+            )
+        }
+        when (val feedback = updateCheckFeedback(result)) {
+            UpdateCheckFeedback.ShowUpdateSheet -> {
+                Timber.i("Update found: %s", result.checkedVersion)
+                _uiEvents.emit(PreferredViewEvent.ShowUpdateSheet)
+            }
+
+            is UpdateCheckFeedback.Message -> _uiEvents.emit(
+                PreferredViewEvent.ShowMessage(feedback.resId, feedback.args),
+            )
         }
     }
 }

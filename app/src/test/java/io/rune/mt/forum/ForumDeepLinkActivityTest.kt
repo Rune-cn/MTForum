@@ -11,6 +11,8 @@ import io.rune.mt.forum.domain.settings.repository.AppSettingsRepository
 import io.rune.mt.forum.domain.settings.repository.BooleanSetting
 import io.rune.mt.forum.domain.settings.repository.IntSetting
 import io.rune.mt.forum.domain.settings.repository.StringSetting
+import io.rune.mt.forum.domain.updater.model.UpdateCheckResult
+import io.rune.mt.forum.domain.updater.model.UpdateCheckState
 import io.rune.mt.forum.domain.updater.model.UpdateInfo
 import io.rune.mt.forum.domain.updater.repository.UpdateRepository
 import io.rune.mt.forum.ui.activity.SettingsActivity
@@ -155,7 +157,10 @@ class ForumDeepLinkActivityTest {
     private class FakeUpdateRepository : UpdateRepository {
         override val updateInfoFlow: StateFlow<UpdateInfo?> = MutableStateFlow(null)
 
-        override suspend fun checkUpdate(force: Boolean): UpdateInfo? = null
+        override val checkState: StateFlow<UpdateCheckState> = MutableStateFlow(UpdateCheckState.Idle)
+
+        override suspend fun checkUpdate(force: Boolean): UpdateCheckResult =
+            UpdateCheckResult.Skipped(UpdateCheckResult.SkipReason.DEBUG_BUILD)
 
         override suspend fun downloadUpdate(url: String): Pair<InputStream, Long>? = null
     }

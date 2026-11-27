@@ -30,6 +30,7 @@ import io.rune.mt.forum.ui.page.main.settings.AccountViewModel
 import io.rune.mt.forum.ui.navigation.Route
 import io.rune.mt.forum.ui.page.main.settings.preferred.PreferredViewEvent
 import io.rune.mt.forum.ui.page.main.settings.preferred.PreferredViewModel
+import io.rune.mt.forum.ui.page.main.settings.preferred.about.updateCheckDescription
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBlockingLoadingDialog
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixNavigationItemWidget
 import org.koin.androidx.compose.koinViewModel
@@ -66,7 +67,6 @@ fun MiuixPreferredPage(
     }
 
     var updateMessage by remember { mutableStateOf<String?>(null) }
-    var showUpdateLoading by remember { mutableStateOf(false) }
     var showUpdateSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -74,15 +74,7 @@ fun MiuixPreferredPage(
         viewModel.uiEvents.collect { event ->
             when (event) {
                 is PreferredViewEvent.ShowMessage -> {
-                    updateMessage = context.getString(event.messageResId)
-                }
-
-                PreferredViewEvent.ShowUpdateLoading -> {
-                    showUpdateLoading = true
-                }
-
-                PreferredViewEvent.HideUpdateLoading -> {
-                    showUpdateLoading = false
+                    updateMessage = context.getString(event.messageResId, *event.args.toTypedArray())
                 }
 
                 PreferredViewEvent.ShowUpdateSheet -> {
@@ -160,7 +152,7 @@ fun MiuixPreferredPage(
             ) {
                 BasicComponent(
                     title = stringResource(R.string.about_detail),
-                    summary = if (uiState.hasUpdate) {
+                    summary = updateCheckDescription(uiState.checkState) ?: if (uiState.hasUpdate) {
                         stringResource(
                             R.string.update_available,
                             uiState.remoteVersion,
@@ -206,7 +198,9 @@ fun MiuixPreferredPage(
     )
 
     MiuixBlockingLoadingDialog(
-        visible = showUpdateLoading,
+        // Derived from the repository's check state, so it cannot outlive the check: the
+        // repository settles state on every path (skip / timeout / error / cancellation).
+        visible = uiState.isChecking,
         text = stringResource(R.string.checking_update),
     )
 }

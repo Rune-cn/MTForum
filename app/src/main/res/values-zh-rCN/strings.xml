@@ -94,6 +94,12 @@
     <string name="auto_check_update_on_start">启动时检查更新</string>
     <string name="auto_check_update_on_start_desc">每次进程启动仅检查一次</string>
     <string name="check_update_latest_shell">已是最新版本</string>
+    <string name="update_up_to_date_format">已是最新版本（已检查 %1$s）</string>
+    <string name="update_last_checked_format">上次检查 %1$s · 版本 %2$s</string>
+    <string name="update_check_failed_format">检查更新失败：%1$s</string>
+    <string name="update_check_skip_offline">已跳过检查更新：未开启联网权限</string>
+    <string name="update_check_skip_debug">已跳过检查更新：调试版本不检查</string>
+    <string name="update_check_skip_channel">已跳过检查更新：当前渠道没有发布版本</string>
     <string name="settings_update">更新</string>
     <string name="update_sheet_title">更新</string>
     <string name="update_sheet_installed_version">已安装版本</string>

@@ -8,11 +8,13 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import io.rune.mt.forum.R
 import io.rune.mt.forum.domain.settings.repository.AppSettingsRepository
 import io.rune.mt.forum.domain.settings.repository.BooleanSetting
 import io.rune.mt.forum.domain.settings.usecase.settings.UpdateSettingUseCase
+import io.rune.mt.forum.domain.updater.model.UpdateCheckResult
+import io.rune.mt.forum.domain.updater.model.checkedVersion
 import io.rune.mt.forum.domain.updater.repository.UpdateRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -44,14 +46,16 @@ class AboutViewModel(
     val state: StateFlow<AboutState> = combine(
         appSettingsRepo.preferencesFlow,
         updateRepo.updateInfoFlow,
+        updateRepo.checkState,
         _appIcon,
-    ) { prefs, updateInfo, appIcon ->
+    ) { prefs, updateInfo, checkState, appIcon ->
         AboutState(
             hasUpdate = prefs.allowInternetAccess && (updateInfo?.hasUpdate ?: false),
             remoteVersion = if (prefs.allowInternetAccess) updateInfo?.remoteVersion.orEmpty() else "",
             autoCheckUpdateOnStart = prefs.autoCheckUpdateOnStart,
             appIcon = appIcon,
             updateInfo = updateInfo,
+            checkState = checkState,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -72,19 +76,35 @@ class AboutViewModel(
         }
     }
 
+    /**
+     * Runs one check and announces the **terminal** outcome.
+     *
+     * There is no loading event any more: `UpdateRepository.checkState` drives the dialog, and
+     * the repository settles it on every path. Even a repository that throws (or a cancellation)
+     * therefore cannot leave the page spinning — the exception becomes a definite failure.
+     */
     private fun checkUpdate(force: Boolean = false) = viewModelScope.launch {
         Timber.i("About update check (force=%s)", force)
-        _uiEvents.emit(AboutEvent.ShowUpdateLoading)
-        val info = runCatching { updateRepo.checkUpdate(force) }
-            .onFailure { e -> Timber.e(e, "Update check failed") }
-            .getOrNull()
-        _uiEvents.emit(AboutEvent.HideUpdateLoading)
-        if (info?.hasUpdate == true) {
-            Timber.i("Update found: %s", info.remoteVersion)
-            _uiEvents.emit(AboutEvent.ShowUpdateSheet)
-        } else {
-            Timber.i("No update available")
-            _uiEvents.emit(AboutEvent.ShowMessage(R.string.check_update_latest_shell))
+        val result = try {
+            updateRepo.checkUpdate(force)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            Timber.e(error, "Update check failed")
+            UpdateCheckResult.Failed(
+                reason = error.message ?: error.javaClass.simpleName,
+                checkedAt = System.currentTimeMillis(),
+            )
+        }
+        when (val feedback = updateCheckFeedback(result)) {
+            UpdateCheckFeedback.ShowUpdateSheet -> {
+                Timber.i("Update found: %s", result.checkedVersion)
+                _uiEvents.emit(AboutEvent.ShowUpdateSheet)
+            }
+
+            is UpdateCheckFeedback.Message -> _uiEvents.emit(
+                AboutEvent.ShowMessage(feedback.resId, feedback.args),
+            )
         }
     }
 
