@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -124,7 +125,15 @@ internal sealed interface ForumBodyBlock {
         val span: Int = 1,
     )
 
-    /** A grid parsed from `table/tr/th|td`, with header cells and merge spans preserved. */
+    /**
+     * A grid parsed from `table/tr/th|td`, with header cells and merge spans preserved.
+     *
+     * Columns are **not** equal slices: [ForumHtmlText]'s `tableColumnWeights` measures each
+     * column's text and gives short columns a minimum width while the prose column takes the
+     * rest (see the heuristic there). Keeping the grid as plain rows keeps the model independent
+     * of any pixel decision; the sizing lives in the renderer and is unit-tested through the pure
+     * weight function.
+     */
     data class Table(val rows: List<List<TableCell>>) : ForumBodyBlock
 
     /**
@@ -571,12 +580,29 @@ private fun BulletListRows(
 }
 
 /**
- * Table grid.
+ * Table grid whose **column widths follow content, not column count**.
  *
- * Header cells are bold on a tinted surface, so the site's "first row is bold" idiom reads as a
- * header row. A cell's `colspan` becomes its weight (and the row's remaining columns share the
- * rest), so a merged cell keeps its width instead of squeezing every column to an equal slice and
- * the text stays readable. Cell content that is itself aligned keeps that alignment.
+ * The old renderer gave every cell `.weight(1f)` (or its `colspan`), so a five-column table with a
+ * long prose column squeezed all five into `width/5`: the 备注 column wrapped to a character per
+ * line, the URL column broke mid-URL, and the table was unreadable (feedback:
+ * 「表格方面显示不行」, thread 156696). Column widths now come from [tableColumnWeights], which
+ * measures each column's cells and gives short columns a minimum width while the long column takes
+ * the rest.
+ *
+ * A genuinely wide table is laid out at its computed (summed) width inside a `horizontalScroll`
+ * so a cell can never be crushed to one character per line; the scroll lives inside the card and
+ * the card keeps its rounded border. When the computed width fits, the row is stretched to the card
+ * and the weights share the leftover proportionally — so 2- and 3-column tables fill the card as
+ * before.
+ *
+ * Row heights are driven by the tallest cell (a prose cell). Cells are **top-aligned** so a short
+ * neighbour's text sits on the first line of the prose rather than being pushed down; the leftover
+ * space stays below the short cell, which reads better than centring a one-line label in a
+ * ten-line row.
+ *
+ * A cell's `colspan` contributes the sum of the widths of the columns it covers, so a merged cell
+ * keeps its width. Per-cell alignment (from `<td align>`, an inner `<div align>`, or
+ * `style="text-align:…"`) is honoured; the header row is bold on a tinted surface.
  */
 @Composable
 private fun TableGrid(
@@ -585,48 +611,142 @@ private fun TableGrid(
 ) {
     val border = MiuixTheme.colorScheme.outline.copy(alpha = 0.35f)
     val headerBackground = MiuixTheme.colorScheme.surfaceContainerHigh
-    Column(
+    val weights = remember(block.rows) { tableColumnWeights(block.rows) }
+    val scrollState = rememberScrollState()
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(6.dp))
             .border(0.5.dp, border, RoundedCornerShape(6.dp)),
     ) {
-        block.rows.forEach { row ->
-            Row(modifier = Modifier.fillMaxWidth()) {
-                row.forEach { cell ->
-                    val align = when (cell.align) {
-                        ForumBodyBlock.BlockAlign.CENTER -> TextAlign.Center
-                        ForumBodyBlock.BlockAlign.END -> TextAlign.End
-                        ForumBodyBlock.BlockAlign.START -> TextAlign.Start
-                        null -> TextAlign.Start
-                    }
-                    Box(
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            // `maxWidth` is the space the card offers today. The table is never narrower than its
+            // content-preferring weights; beyond that it scrolls horizontally inside the card.
+            val available = maxWidth
+            val tableWidth = if (weights.isEmpty()) available else maxOf(available, weights.sum().dp)
+            Column(modifier = Modifier.horizontalScroll(scrollState)) {
+                block.rows.forEach { row ->
+                    val rowAllHeader = row.isNotEmpty() && row.all { it.header }
+                    Row(
                         modifier = Modifier
-                            .weight(cell.span.toFloat())
-                            .then(
-                                if (cell.header) {
-                                    Modifier.background(headerBackground)
-                                } else {
-                                    Modifier
-                                },
-                            )
-                            .border(0.5.dp, border)
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                            .width(tableWidth)
+                            .then(if (rowAllHeader) Modifier.background(headerBackground) else Modifier),
+                        verticalAlignment = Alignment.Top,
                     ) {
-                        Text(
-                            text = cell.text,
-                            fontSize = 14.sp,
-                            lineHeight = 20.sp,
-                            fontWeight = if (cell.header) FontWeight.SemiBold else FontWeight.Normal,
-                            color = contentColor,
-                            textAlign = align,
-                        )
+                        var column = 0
+                        row.forEach { cell ->
+                            val span = cell.span.coerceAtLeast(1)
+                            // A merged cell owns the summed weight of the columns it covers.
+                            val cellWeight = (0 until span)
+                                .sumOf { offset -> (weights.getOrNull(column + offset) ?: 0f).toDouble() }
+                                .toFloat()
+                                .coerceAtLeast(1f)
+                            column += span
+                            val align = when (cell.align) {
+                                ForumBodyBlock.BlockAlign.CENTER -> TextAlign.Center
+                                ForumBodyBlock.BlockAlign.END -> TextAlign.End
+                                ForumBodyBlock.BlockAlign.START -> TextAlign.Start
+                                null -> TextAlign.Start
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .weight(cellWeight)
+                                    .then(
+                                        // The whole-header row already tints the row; a stray
+                                        // header cell in a data row still needs its own tint.
+                                        if (cell.header && !rowAllHeader) {
+                                            Modifier.background(headerBackground)
+                                        } else {
+                                            Modifier
+                                        },
+                                    )
+                                    .border(0.5.dp, border)
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                            ) {
+                                Text(
+                                    text = cell.text,
+                                    fontSize = 14.sp,
+                                    lineHeight = 20.sp,
+                                    fontWeight = if (cell.header) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = contentColor,
+                                    textAlign = align,
+                                    // Fill the cell so `textAlign` actually anchors the text; a
+                                    // wrap-content Text would ignore centring and stay left.
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
     }
 }
+
+/**
+ * Content-derived column weights, in **dp of preferred width**, one entry per logical column.
+ *
+ * This is the whole column-sizing heuristic and it is deliberately a pure function of the model so
+ * it can be asserted without pixels (see `ForumTableLayoutTest`).
+ *
+ * For each column `j` the *longest* cell that reaches it sets `len[j]` — the longest cell is what
+ * decides whether the column can keep its text on a sensible number of lines. A `colspan` cell's
+ * demanded width is divided across the columns it covers (so a merged cell does not inflate only
+ * its first column). Then:
+ *
+ *  - `len[j] * CHAR_WIDTH_DP` is the width the column would like at the body font size;
+ *  - it is clamped to `[MIN_COLUMN_WEIGHT_DP, MAX_COLUMN_WEIGHT_DP]`. The minimum keeps short
+ *    labels and emoji (`❌ 否`, `小飞机网盘`) on a single line instead of one glyph per line; the
+ *    maximum stops a long prose column from demanding an unbounded slice — it is allowed to wrap
+ *    over a few lines instead.
+ *  - If **every** column is long (`len >= LONG_COLUMN_CHARS`) the content no longer distinguishes
+ *    the columns, so equal weights are returned (a wide, evenly split table that scrolls).
+ *
+ * A short 2/3-column table therefore sums well under the card width and is stretched to fill it;
+ * the five-column 网盘 table sums past it and scrolls, with 备注 wider than 网盘名称.
+ */
+internal fun tableColumnWeights(rows: List<List<ForumBodyBlock.TableCell>>): List<Float> {
+    if (rows.isEmpty()) return emptyList()
+    val columns = rows.maxOf { row -> row.sumOf { it.span.coerceAtLeast(1) } }
+    if (columns <= 0) return emptyList()
+    val longest = IntArray(columns)
+    rows.forEach { row ->
+        var column = 0
+        row.forEach { cell ->
+            val span = cell.span.coerceAtLeast(1)
+            val length = cell.text.text.length
+            val perColumn = if (span <= 1) length else length / span
+            for (offset in 0 until span) {
+                if (column + offset < columns) {
+                    longest[column + offset] = maxOf(longest[column + offset], perColumn)
+                }
+            }
+            column += span
+        }
+    }
+    val lengths = longest.toList()
+    if (lengths.all { it >= LONG_COLUMN_CHARS }) {
+        return List(columns) { EQUAL_COLUMN_WEIGHT_DP }
+    }
+    return lengths.map { length ->
+        (length * CHAR_WIDTH_DP).coerceIn(MIN_COLUMN_WEIGHT_DP, MAX_COLUMN_WEIGHT_DP)
+    }
+}
+
+/** Rough width of one body-font glyph (14sp plus the cell's horizontal padding share), in dp. */
+private const val CHAR_WIDTH_DP = 16f
+
+/** Minimum column width: keeps a short label or an emoji row on one line. */
+private const val MIN_COLUMN_WEIGHT_DP = 64f
+
+/** Maximum column width: a long prose column wraps over a few lines instead of hogging the row. */
+private const val MAX_COLUMN_WEIGHT_DP = 200f
+
+/** A column whose longest cell reaches this many characters stops discriminating width. */
+private const val LONG_COLUMN_CHARS = 12
+
+/** Equal weight used when every column is long: a wide, evenly split (scrolling) table. */
+private const val EQUAL_COLUMN_WEIGHT_DP = 120f
 
 /**
  * Attachment card with an explicit download affordance.
