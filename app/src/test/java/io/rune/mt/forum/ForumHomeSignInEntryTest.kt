@@ -46,6 +46,7 @@ import io.rune.mt.forum.domain.forum.model.NewThreadResult
 import io.rune.mt.forum.domain.forum.repository.ForumDraftRepository
 import io.rune.mt.forum.domain.forum.repository.ForumDraftService
 import io.rune.mt.forum.domain.forum.repository.ForumRepository
+import io.rune.mt.forum.domain.forum.repository.ForumSearchHistoryRepository
 import io.rune.mt.forum.domain.settings.model.preferences.theme.PaletteStyle
 import io.rune.mt.forum.domain.settings.model.preferences.theme.ThemeColorSpec
 import io.rune.mt.forum.domain.settings.model.preferences.theme.ThemeMode
@@ -53,6 +54,7 @@ import io.rune.mt.forum.ui.navigation.LocalNavigator
 import io.rune.mt.forum.ui.navigation.Navigator
 import io.rune.mt.forum.ui.navigation.Route
 import io.rune.mt.forum.ui.page.forum.ForumHomePage
+import io.rune.mt.forum.ui.page.forum.ForumSearchHistoryViewModel
 import io.rune.mt.forum.ui.page.forum.ForumSignInViewModel
 import io.rune.mt.forum.ui.page.forum.ForumViewModel
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixComponentHost
@@ -112,8 +114,12 @@ class ForumHomeSignInEntryTest {
                     single<ForumRepository> { repository }
                     single<ForumDraftRepository> { HomeFakeDraftRepository() }
                     single<ForumDraftService> { HomeFakeDraftService() }
+                    // The home page always mounts the search overlay, whose recent list comes from
+                    // this view model; the sheet tests never open it.
+                    single<ForumSearchHistoryRepository> { HomeFakeSearchHistory() }
                     viewModelOf(::ForumViewModel)
                     viewModelOf(::ForumSignInViewModel)
+                    viewModelOf(::ForumSearchHistoryViewModel)
                 },
             )
         }
@@ -426,4 +432,13 @@ private class HomeFakeDraftService : ForumDraftService {
         notWired()
 
     private fun <T> notWired(): T = error("not wired in this fake")
+}
+
+/** Empty recent-search list: the home test never opens the search surface. */
+private class HomeFakeSearchHistory : ForumSearchHistoryRepository {
+    override val recent = kotlinx.coroutines.flow.flowOf(emptyList<String>())
+
+    override suspend fun record(keyword: String) = Unit
+
+    override suspend fun clear() = Unit
 }

@@ -1766,3 +1766,49 @@ BUILD SUCCESSFUL（`Lint found no new issues`）。
   铃铛已移除）
 - ⚠️ 无设备：顶栏覆盖层、消息四页签、编辑器图片/板块面板的实际观感未在真机确认；OS4 玻璃
   覆盖层在 Robolectric 下渲染不了（AGSL），只验证了接线。
+
+## 21. 第九轮真机反馈（2026-11-27）
+
+机主这一轮的四条（原话）：
+
+1. 「板块内的搜索去掉，只需要主页右上角那个搜索，你优化下」
+2. 「消息那里的分类被截断了「系统···」」
+3. 「深色模式浅色模式的切换的按钮也改成示例应用的那种」
+4. 「主页也加个深链」
+
+### 21.1 搜索只留一个入口 + 覆盖层优化（2026-11-27）
+
+**入口收敛**：`ForumListPage`（版块列表）顶栏的放大镜删除，以及首页宫格上方那块遗留的
+`ForumSearchEntryCard`（早先版本已停用、但函数还留着）一起删掉。现在全应用**只有一个**搜索
+入口：论坛首页顶栏左侧的放大镜 → `ForumSearchOverlay`。板内搜索原先还会把版块名塞进
+`Route.ForumSearch(keyword)` 当关键词，这既是第二个入口，也会被站点当成一次真实搜索；两条
+一起消失（AGENTS 规则 18 已写死这一点）。
+
+**覆盖层补成真正的搜索面板**（`ForumSearchOverlay.kt`）：
+
+| 能力 | 实现 |
+|---|---|
+| 关键词必须带过去 | 确认行、最近搜索行、OS3 输入法搜索键都走同一个 `submitKeyword`：trim → `historyViewModel.record` → `onSubmit` → `Route.ForumSearch(keyword)`；空串被拒 |
+| 最近搜索 | `ForumSearchHistoryRepository`（新，DataStore `files/datastore/forum_search_history`，一条 JSON 列表）+ `ForumSearchHistoryViewModel`；上限 `FORUM_SEARCH_HISTORY_LIMIT = 10`，忽略大小写去重，最新在前 |
+| 一键复搜 | 点最近搜索行直接提交该关键词（先记历史再跳转），不用再输入 |
+| 清除历史 | 最近搜索标题右侧 `Clear` → `clear()` 清空整个列表 |
+| 返回 / 取消关闭 | OS3：`BackHandler(enabled = expanded)` + `Cancel` 按钮；OS4：`GlassSearchOverlay` 自带 |
+| 输入法搜索键 | OS3 的 `TextField` 用 `ImeAction.Search` → 提交；OS4 的玻璃覆盖层内部固定 `ImeAction.Done` 只收键盘（组件没有提交回调），所以两种风格都保留确认行作为提交入口 |
+
+**结果页**（`ForumSearchPage` / `ForumSearchViewModel`）：带关键词的路由现在会**立刻**执行搜索
+（`prepare()` 里 trim 后直接 `search()`），不再出现「跳过去只有一个填好的输入框、还得再按一次
+搜索」；`prepared` 保证重组不会重放。字段保留该关键词，改了再按「搜索」就是原地重搜（并把列表
+滚回顶部）；重搜的关键词也会写进最近搜索。
+
+**样式分支不变**：OS4 仍是 `GlassSearchOverlay`，OS3 仍是自绘面板；两者都没有采样
+`pageBackdrop`（规则 23/28），覆盖层只画自己的背景。
+
+**验证**：新增 `ForumSearchHistoryStoreTest`（7：顺序/去重/大小写/空串/上限/清除/损坏文档）、
+`ForumSearchViewModelTest`（6：关键词语义立即搜索/幂等/空路由不请求/原地重搜/游客登录卡片/
+服务端错误重试）、`ForumSearchOverlayTest`（6：最近搜索一键复搜、确认行携带关键词、IME 提交、
+返回键关闭、清除历史、截图）。截图
+[screenshots/search-overlay-os3.png](screenshots/search-overlay-os3.png)（OS3；OS4 玻璃覆盖层的
+AGSL 在 Robolectric 下编译不了，和前几轮同一限制）。
+
+**未验证**：OS4 玻璃覆盖层里最近搜索列表的实际观感只能真机确认；OS4 输入法只有「Done」、
+提交只能点确认行，这是 miuix 组件的既定行为。

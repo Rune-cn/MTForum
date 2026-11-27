@@ -56,15 +56,19 @@ class ForumSearchViewModel(
 
     private var searchJob: Job? = null
 
-    /** Seeds the field from `Route.ForumSearch(keyword)`; later recompositions keep what is typed. */
+    /**
+     * Seeds the field from `Route.ForumSearch(keyword)`; later recompositions keep what is typed.
+     *
+     * A non-blank keyword is the result of a confirmed search (the home overlay or a recent-search
+     * tap), so the search runs immediately instead of leaving the user on a page that only *looks*
+     * like a result page until they press 搜索 again. `prepared` keeps a recomposition from
+     * replaying the route keyword, which would otherwise restart the request.
+     */
     fun prepare(initialKeyword: String) {
         if (_state.value.prepared) return
-        _state.update {
-            it.copy(
-                keyword = if (it.keyword.isBlank()) initialKeyword else it.keyword,
-                prepared = true,
-            )
-        }
+        val seeded = if (_state.value.keyword.isBlank()) initialKeyword.trim() else _state.value.keyword
+        _state.update { it.copy(keyword = seeded, prepared = true) }
+        if (seeded.isNotEmpty()) search()
     }
 
     fun updateKeyword(value: String) {

@@ -292,6 +292,8 @@
     <string name="forum_new_thread_board_hint">新主題會發佈在你選擇的版塊。</string>
     <string name="forum_search_cancel">取消</string>
     <string name="forum_search_submit_format">搜尋「%1$s」</string>
+    <string name="forum_search_recent">最近搜尋</string>
+    <string name="forum_search_clear_history">清除</string>
     <string name="forum_paging_page_format">%1$d / %2$d</string>
     <string name="forum_messages_login_required">登入後檢視訊息</string>
     <string name="forum_messages_empty">暫無會話</string>

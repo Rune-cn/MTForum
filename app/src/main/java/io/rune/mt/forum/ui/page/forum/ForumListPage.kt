@@ -41,7 +41,6 @@ import io.rune.mt.forum.ui.navigation.LocalNavigator
 import io.rune.mt.forum.ui.navigation.Route
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.Search
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBackButton
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixPageScrollBar
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopAppBar
@@ -116,18 +115,10 @@ fun ForumListPage(
                 scrollBehavior = chrome.scrollBehavior,
                 navigationIcon = { MiuixBackButton(onClick = { navigator.pop() }) },
                 actions = {
-                    MiuixTopBarIconButton(
-                        onClick = {
-                            // Carry the board name as the search field's initial hint; a blank
-                            // name (not resolved yet) still opens the page.
-                            navigator.push(Route.ForumSearch(forumName.ifBlank { state.forumName }))
-                        },
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Search,
-                            contentDescription = stringResource(R.string.forum_search),
-                        )
-                    }
+                    // Search lives only in the 论坛 home bar (rules 18 / 23): the board listing used
+                    // to push `Route.ForumSearch` with the board name as the keyword, which is a
+                    // second entry point for one feature. The home magnifier carries whatever the
+                    // user types into the one search surface.
                     MiuixTopBarIconButton(
                         onClick = { navigator.push(Route.NewThread(fid, forumName.ifBlank { state.forumName })) },
                     ) {

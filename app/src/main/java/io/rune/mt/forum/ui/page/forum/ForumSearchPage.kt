@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -38,6 +39,7 @@ import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBackButton
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixPageScaffold
 import io.rune.mt.forum.ui.page.miuix.widgets.rememberMiuixPageChrome
 import io.rune.mt.forum.ui.theme.AppTheme
+import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
@@ -49,10 +51,16 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /**
  * 论坛内搜索: the site's own thread search (`search.php?mod=forum`).
  *
+ * This page is reached only from the home top bar's magnifier (through
+ * [`ForumSearchOverlay`]) or a deep link; the board listing has no search icon (rule 18). A route
+ * that carries a keyword is a confirmed search, so [ForumSearchViewModel.prepare] runs it
+ * immediately and the field keeps that keyword for refining. With a blank keyword the field
+ * auto-focuses and nothing is requested until the user submits.
+ *
  * The site serves search only to signed-in accounts, so an anonymous visit shows the sign-in card
  * and never sends a request. Results reuse [ForumThreadCard] and the paging footer of the board
- * listing; tapping a row opens the thread. The field auto-focuses only when the route carried no
- * keyword (from the home card); the board-list entry pre-fills the board name instead.
+ * listing; tapping a row opens the thread. A refined submit re-runs the search and returns the
+ * list to the top, without popping back to type a new query elsewhere.
  */
 @Composable
 fun ForumSearchPage(
@@ -60,6 +68,7 @@ fun ForumSearchPage(
     enableBlur: Boolean,
     outerPadding: PaddingValues,
     viewModel: ForumSearchViewModel = koinViewModel(),
+    historyViewModel: ForumSearchHistoryViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val session by viewModel.session.collectAsStateWithLifecycle()
@@ -68,6 +77,7 @@ fun ForumSearchPage(
     val listState = rememberLazyListState()
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(initialKeyword) { viewModel.prepare(initialKeyword) }
     LaunchedEffect(Unit) {
@@ -82,9 +92,14 @@ fun ForumSearchPage(
         onLoadMore = viewModel::loadMore,
     )
 
-    val submit = {
+    // Refine in place: the field keeps the keyword (including the one the route carried), and a
+    // second submit re-runs against the edited text without leaving the page. The keyword is also
+    // recorded here so the overlay's recent list reflects the query that actually produced results.
+    val submit: () -> Unit = {
         keyboard?.hide()
+        historyViewModel.record(state.keyword)
         viewModel.search()
+        scope.launch { listState.scrollToItem(0) }
     }
 
     MiuixPageScaffold(

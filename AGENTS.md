@@ -96,6 +96,14 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     两者都是登录账号自己的论坛数据，放在这里最直觉）；**提醒不进顶栏**——系统提醒 / 坛友互动 /
     我的帖子三个分类在底栏「消息」页里用 `TabRow` 与「私信」并列（`ForumMessagesPage`），首页顶栏
     只留「搜索放大镜 / 发帖 / 签到」三个动作。
+    **搜索入口只有一个**：首页顶栏放大镜（`ForumSearchOverlay`，OS4 `GlassSearchOverlay` /
+    OS3 自绘面板）；版块列表 / 帖子页 / 设置页都**不要**再放搜索图标或搜索卡片
+    （`ForumListPage` 顶栏的搜索图标已删除，宫格上方的搜索卡片也已删除）。覆盖层的
+    「搜索 “关键词”」确认行、最近搜索行与 OS3 的输入法搜索键必须走**同一个**提交函数：trim →
+    记录历史 → `onSubmit` → `Route.ForumSearch(keyword)`，绝不允许提交空串。最近搜索由
+    `ForumSearchHistoryRepository`（DataStore `forum_search_history`，上限 10 条、忽略大小写
+    去重、可清除）保存。`ForumSearchPage` 收到带关键词的路由要**立即**执行搜索（不再要求用户
+    再按一次「搜索」），字段保留该关键词以便原地改写重搜（`ForumSearchViewModel.prepare`）。
     **每日签到从首页顶栏最右侧的 `Tasks` 图标进**（`ForumSignInSheet` 底部面板，OS4 玻璃/OS3
     窗口；面板内容 `ForumSignInCard`，游客仍是登录卡片），签到**不进**设置页；
     我的主页从账号卡片点头像/昵称进（`AccountSection` 的 `onOpenProfile`），不要再往设置页
