@@ -198,6 +198,10 @@ fun ForumThreadPage(
         onLoadMore = viewModel::loadMorePosts,
     )
 
+    // Read once, above the page root Box, because the sheet's two placement branches below are
+    // mutually exclusive (OS4 inline overlay inside the Box, OS3 window sheet outside it).
+    val replyState by viewModel.replyState.collectAsStateWithLifecycle()
+
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
@@ -326,17 +330,35 @@ if (state.posts.isEmpty()) {
         // previews the dismissal instead of letting the popup swallow the gesture. While the
         // menu is shut it is disabled and NavDisplay's gesture driver keeps the preview.
         ThreadActionsBackHandler(state = actionsState)
+
+        // The reply sheet's OS4 branch is an inline glass overlay (rule 8), so it is composed at
+        // the page root exactly like the overflow menu above (rule 12): inside the Scaffold it
+        // would be clipped by the list/IME layout, and inside the top bar it would be clamped by
+        // the action cell. It samples the page-chrome content layer, never `pageBackdrop`
+        // (rules 23/28). Composed after the menu's back handler so an open sheet owns the back
+        // gesture (the sheet's own handler, not a stray `BackHandler` — rule 15).
+        if (AppTheme.useMiuixOs4) {
+            ReplyComposer(
+                state = replyState,
+                onTextChange = viewModel::updateReplyText,
+                onSubmit = viewModel::submitReply,
+                onDismiss = viewModel::dismissReply,
+                backdrop = chrome.backdrop,
+            )
+        }
     }
 
-    // The composer lives outside the Scaffold so it overlays the thread instead of scrolling
-    // with the list.
-    val replyState by viewModel.replyState.collectAsStateWithLifecycle()
-    ReplyComposer(
-        state = replyState,
-        onTextChange = viewModel::updateReplyText,
-        onSubmit = viewModel::submitReply,
-        onDismiss = viewModel::dismissReply,
-    )
+    // The reply sheet's OS3 branch stays where the old composer was: `WindowBottomSheet` is a
+    // real dialog window, so its composition order is irrelevant to layout and it must not be an
+    // overlay inside the page Box (that Box is the OS4 popup host).
+    if (!AppTheme.useMiuixOs4) {
+        ReplyComposer(
+            state = replyState,
+            onTextChange = viewModel::updateReplyText,
+            onSubmit = viewModel::submitReply,
+            onDismiss = viewModel::dismissReply,
+        )
+    }
 
     ForumImageViewer(url = viewerUrl, onDismiss = { viewerUrl = null })
 
