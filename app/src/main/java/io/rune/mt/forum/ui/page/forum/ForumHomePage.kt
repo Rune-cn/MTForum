@@ -104,7 +104,21 @@ fun ForumHomePage(
     LaunchedEffect(Unit) {
         Timber.tag("ForumHomePage").i("home shown")
         viewModel.loadHomeIfNeeded()
+        // The 最新主题 feed is a separate request from the index; the owner opened the app for the
+        // threads, so it is not gated on the board grid succeeding.
+        viewModel.loadHomeLatestIfNeeded()
     }
+
+    // The home list is paged now: the site's 热帖排行 is a top-10, so the 最新主题 feed below it is
+    // what carries the thread stream forward. Same trigger as the board/guide lists (and the same
+    // explicit footer row), hosted in the bottom-bar pager exactly like those pages.
+    ForumAppendEffect(
+        listState = listState,
+        enabled = state.canLoadMoreLatest,
+        isAppending = state.isAppendingLatest,
+        hasError = state.latestError != null,
+        onLoadMore = viewModel::loadMoreHomeLatest,
+    )
 
     // The page root Box exists for the 签到 sheet: it must be a sibling of the scaffold when it is
     // the OS4 inline overlay, so it is measured against the page and stays outside the content
@@ -209,6 +223,18 @@ fun ForumHomePage(
                         item { ForumEmptyCard(stringResource(R.string.forum_empty_threads)) }
                     }
 
+                    // The thread stream the site itself renders under the ranking: paged in the
+                    // server's order, with the shared footer as the tap path and the append effect
+                    // as the scroll path (rules 16 / 20.3).
+                    ForumHomeLatestFeed(
+                        state = state,
+                        onOpenThread = { thread ->
+                            navigator.push(Route.ForumThread(thread.tid, thread.title))
+                        },
+                        onLoadMore = viewModel::loadMoreHomeLatest,
+                        onRetry = viewModel::loadHomeLatestIfNeeded,
+                    )
+
                     item { Spacer(Modifier.height(12.dp)) }
                 }
             }
@@ -255,6 +281,55 @@ fun ForumHomePage(
 }
 /** The grid stays three columns wide on phones, matching the site's shortcut block. */
 private const val FORUM_GRID_COLUMNS = 3
+
+/**
+ * The home page's 最新主题 feed: the thread stream the site renders below 热帖排行.
+ *
+ * The ranking above is the site's own **top-10**, so it is complete by definition and can never
+ * grow; the site's home page continues beneath it with a list that loads further pages (the mobile
+ * template does that with an AJAX loader at the end of `forum.php`, `index.html`'s
+ * `comiis_loadlistbo_1`). This section is that stream in its paged form: the 导读 `view=newthread`
+ * listing, which is the same server-ordered thread list every other page uses, with real `div.pg`
+ * paging. Rows are appended, never re-sorted or re-sliced (rule 16).
+ *
+ * The footer is always the last row once the first page has arrived, so scrolling to the tail and
+ * tapping "load page N" are two ways to the same request; a failed page leaves the footer in place
+ * as the retry (the automatic trigger stays off while an error is shown).
+ */
+private fun androidx.compose.foundation.lazy.LazyListScope.ForumHomeLatestFeed(
+    state: ForumHomeState,
+    onOpenThread: (ForumThread) -> Unit,
+    onLoadMore: () -> Unit,
+    onRetry: () -> Unit,
+) {
+    if (state.latestThreads.isNotEmpty()) {
+        item(key = "home_latest_title") {
+            SmallTitle(stringResource(R.string.forum_home_latest))
+        }
+        items(items = state.latestThreads, key = { "home_latest_${it.tid}" }) { thread ->
+            ForumThreadCard(thread = thread, onClick = { onOpenThread(thread) })
+        }
+    } else if (state.latestError != null) {
+        item(key = "home_latest_error") {
+            ForumErrorCard(message = state.latestError.orEmpty(), onRetry = onRetry)
+        }
+    } else if (state.latestLoaded) {
+        item(key = "home_latest_empty") {
+            ForumEmptyCard(stringResource(R.string.forum_empty_threads))
+        }
+    }
+
+    if (state.latestLoaded) {
+        item(key = "home_latest_footer") {
+            ForumPagingFooter(
+                page = state.latestPage,
+                totalPages = state.latestTotalPages,
+                isAppending = state.isAppendingLatest,
+                onLoadMore = onLoadMore,
+            )
+        }
+    }
+}
 
 /**
  * Entry card of the in-forum search, placed above the board grid.

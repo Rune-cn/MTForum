@@ -536,6 +536,9 @@ bash tools/build.sh :app:lintVitalStableRelease     # 改字符串/资源后必�
 | `MiuixGroupedCardsTest` | 分组卡片：相邻行无缝相接、保留 12dp 页边距 + 截图（§17.4） |
 | `ForumSignInParserTest` | 签到页两份真实样本（签到前/后）的昵称/等级/排名/连续/累计、已签到判定、`formhash` 兜底、CDATA 抽取与 `已签到`/成功/失败映射 |
 | `ForumSignInViewModelTest` | 签到卡片状态机：首次加载、签到后刷新数字并保留服务器文案、`已签到`、登录要求、失败不进已签到 |
+| `ForumHomeFeedPagingTest` | 主页「最新主题」流：**修复前渲染 0 条**、修复后渲染第 1 页；在底栏 pager 内滚到末尾 → 请求并**追加**第 2 页（第 1 页仍在）；footer 点击重试失败页（只请求一次） |
+| `ForumListPagingTest` | 版块列表在 `HorizontalPager` 内：滚到末尾 → `threads 10 → 20` 且第 2 页行渲染；footer 点击重试同样追加 |
+| `ForumPagingGuardTest` | 分页幂等：首屏只请求一次、在飞时第二次 append 被忽略、跨页重复 tid 去重、到 `totalPages` 即停（首页流与版块列表） |
 
 ### 无模拟器时怎么「跑」UI（2026-11-26 新增）
 
@@ -1708,6 +1711,55 @@ type 'shader'`，与三点菜单同一限制），装机体感未测；付费附
 effect 已 armed 却再也不会触发 → 第 3 页永远到不了。新 helper `ForumAppendEffect` 的 effect
 额外 key 在 `isAppending` 上，每次 append 完成都重新武装；同时 `ForumPagingFooter` 提供显式
 「加载第 N 页」入口，失败的页可以手动重试而不会自动死循环。
+
+#### 20.3.1 第二轮修正：主页根本没有列表（2026-11-27）
+
+机主第二次说「主页的帖子还是显示不完整」。上一轮的推断（滚动触发失灵）**不是**真因：
+`ForumAppendEffect` 只加在**本来就有分页的列表**上（版块 `ForumListPage`、导读
+`ForumGuidePage`、帖子 `ForumThreadPage`），而 `ForumHomePage` 里**一条帖子列表都没有**。
+
+逐项核对（数据侧没有截断）：
+
+| 检查项 | 结论 |
+|---|---|
+| `parseHotRanking` 是否有 cap / `take(n)` | 没有；`div.comiis_mh_txtlist_phb ul li` 全量解析 |
+| 站点 `index.html` 的榜单行数 vs 解析结果 | 都是 **10 行**（`ForumHomeRankingTest` 也钉住 10 与 `em` 名次） |
+| 版块宫格 `chunked(FORUM_GRID_COLUMNS)` | `chunked` 不丢余数行，`ForumBoardRow` 还会补空权重；首页 11 + 全量 12 个版块全渲染 |
+| `miuixGroupedItems` | `itemsIndexed` 全量渲染，无截断 |
+| 主页实际渲染内容 | 版块宫格 + **热帖排行 Top-10**，仅此而已 |
+
+所以「帖子显示不完整」= 主页只有站点榜单的前 10 名，**没有任何可分页的帖子流**。站点自己的
+`forum.php` 在榜单下面还有一段无限加载（`index.html` 末尾 `comiis_loadlistbo_1` +
+`plugin.php?id=comiis_app_portal&pid=1&page=N&comiis_list=yes&inajax=1` 的 AJAX 流），客户端从未实现，
+于是主页永远停在 10 条；上一轮修的翻页在别的页面上，修不到这里——这是「还是」的原因。
+
+**修复**：主页在 `热帖排行` 之下新增 **最新主题** 流（`forum_home_latest` 标题），走**现有导读仓库调用**
+`repository.getGuidePage(ForumGuideView.Latest, page)`（即 `ForumUrls.guidePath` → 
+`forum.php?mod=guide&view=newthread&index=1&page=N`，服务端顺序 + 真实 `div.pg` 分页），
+不手拼 URL、不重排、不切片（规则 16）：
+
+- `ForumHomeState` 新增 `latestThreads / latestPage / latestTotalPages / isAppendingLatest /
+  latestError / latestLoaded` 与派生 `canLoadMoreLatest`；索引与流是**两个独立请求**（榜单失败不挡帖子）。
+- `ForumViewModel.loadHomeLatestIfNeeded / loadMoreHomeLatest / loadHomeLatest(page, refresh)`：
+  单请求在飞（`homeLatestJob?.isActive`）+ `isAppendingLatest` 双守卫 → 底部「加载第 N 页」与滚动触发
+  同时开火也只发一次；append 按 **tid 去重**（服务端跨页重复某行不会渲染两次）；到 `totalPages` 即停。
+- UI：`ForumHomeLatestFeed`（`LazyListScope` 扩展）+ `ForumPagingFooter` + `ForumAppendEffect`，
+  与版块/导读同一套；失败时显示站点原文 + 重试（点 footer 或错误卡片），自动触发在错误期间保持关闭。
+
+**验证**（新增 3 个 suite / 10 个用例）：
+
+| 用例 | 断言 |
+|---|---|
+| `ForumHomeFeedPagingTest`（唯一复现用例） | 修复前主页渲染 **0** 条 feed 行（`expected:<1> but was:<0>`），修复后渲染第 1 页 10 条 + 标题 |
+| 同上（滚动） | 滚到末尾 → 请求第 2 页**且**追加：第 2 页行进入 item 列表、第 1 页行仍在（验证「追加而非替换」） |
+| 同上（footer 点击） | 第 2 页首次失败（自动触发关闭）→ 点「加载第 2 页」→ 只请求一次并追加 |
+| `ForumListPagingTest`（版块列表，**在 `HorizontalPager` 内**） | 滚到末尾 → `threads 10 → 20`，第 2 页行渲染，第 1 页行保留；footer 点击重试同样生效 |
+| `ForumPagingGuardTest`（VM，5 例） | 首页流 10 → 20、跨页重复 tid 去重、在飞时第二次请求被忽略、到末页不再请求；版块列表同样 |
+
+⚠️ 主页位于底栏 `HorizontalPager`（`MiuixSettingsPage.SettingsPagerContent`，`beyondViewportPageCount = 1`），
+所以 UI 用例一律把页面放进同样的 pager 里组合——嵌套滚动是丢「到底」信号的经典位置。测试里
+`onNode(hasScrollAction())` 会同时命中 pager 与 LazyColumn，必须用
+`SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange)` 收窄到竖向列表。
 
 ### 20.4 验证
 

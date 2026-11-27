@@ -170,6 +170,7 @@
     <string name="forum_tag_with_image">Image</string>
     <string name="forum_tag_hot">Hot</string>
     <string name="forum_hot_ranking">Hot threads</string>
+    <string name="forum_home_latest">Latest threads</string>
     <string name="thread_action_more">More actions</string>
     <string name="thread_action_like">Upvote this thread</string>
     <string name="thread_action_follow_author">Follow the author</string>

@@ -34,10 +34,28 @@ data class ForumHomeState(
     val forums: List<Forum> = emptyList(),
     /** Already ranked by the site; never re-sorted, never truncated. */
     val hotRanking: List<ForumHotEntry> = emptyList(),
+    /**
+     * The home page's 最新主题 feed, page by page.
+     *
+     * The 热帖排行 above it is a **server top-10**, so it can never be a complete list; the site's
+     * own home page continues below it with a thread stream that loads page after page. These rows
+     * are that stream (the 导读 `view=newthread` listing, in the server's order), appended page by
+     * page like every other paged list in the app.
+     */
+    val latestThreads: List<ForumThread> = emptyList(),
+    /** Page of [latestThreads] already in hand; `0` until the first page arrives. */
+    val latestPage: Int = 0,
+    val latestTotalPages: Int = 0,
+    val isAppendingLatest: Boolean = false,
+    val latestError: String? = null,
+    /** True once the feed's first page arrived; drives the footer, not the index spinner. */
+    val latestLoaded: Boolean = false,
     val error: String? = null,
     /** True after a successful load; keeps re-entry from re-fetching the index. */
     val loaded: Boolean = false,
-)
+) {
+    val canLoadMoreLatest: Boolean get() = latestLoaded && latestPage < latestTotalPages
+}
 /** State of one board's thread listing. */
 data class ForumListState(
     val fid: Int = 0,
@@ -120,6 +138,7 @@ class ForumViewModel(
     val threadState: StateFlow<ForumThreadState> = _threadState.asStateFlow()
 
     private var homeJob: Job? = null
+    private var homeLatestJob: Job? = null
     private var listJob: Job? = null
     private var threadJob: Job? = null
     /** Loads the board index once per VM; a manual refresh always re-fetches. */
@@ -128,7 +147,22 @@ class ForumViewModel(
         loadHome(refresh = false)
     }
 
-    fun refreshHome() = loadHome(refresh = true)
+    /**
+     * Loads the home page's 最新主题 feed's first page once per VM.
+     *
+     * The feed is a second request (the site renders it as its own block below 热帖排行), so it is
+     * kept independent of the index: a failed index must not hide the threads the owner opened the
+     * app for, and re-entering the tab must not re-fetch rows that are already on screen.
+     */
+    fun loadHomeLatestIfNeeded() {
+        if (_homeState.value.latestLoaded || homeLatestJob?.isActive == true) return
+        loadHomeLatest(page = 1, refresh = true)
+    }
+
+    fun refreshHome() {
+        loadHome(refresh = true)
+        loadHomeLatest(page = 1, refresh = true)
+    }
 
     fun loadHome(refresh: Boolean) {
         if (!refresh && homeJob?.isActive == true) return
@@ -144,13 +178,19 @@ class ForumViewModel(
             try {
                 Timber.tag(TAG).i("loadHome refresh=%s", refresh)
                 val home = repository.getHome()
-                _homeState.value = ForumHomeState(
-                    isLoading = false,
-                    forums = home.forums,
-                    hotRanking = home.hotRanking,
-                    loaded = true,
-                )
+                // Field-wise update, not a fresh state object: the feed may already be loading (or
+                // even loaded) beside the index request, and replacing the state would drop it.
+                _homeState.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        forums = home.forums,
+                        hotRanking = home.hotRanking,
+                        loaded = true,
+                    )
+                }
                 Timber.tag(TAG).i("loadHome ok forums=%d ranking=%d", home.forums.size, home.hotRanking.size)
+                loadHomeLatestIfNeeded()
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Exception) {
@@ -160,6 +200,68 @@ class ForumViewModel(
                         isLoading = false,
                         isRefreshing = false,
                         error = error.message ?: error.javaClass.simpleName,
+                    )
+                }
+            }
+        }
+    }
+
+    /** Appends the next page of the home page's 最新主题 feed. */
+    fun loadMoreHomeLatest() {
+        val state = _homeState.value
+        if (!state.canLoadMoreLatest || state.isAppendingLatest) return
+        loadHomeLatest(page = state.latestPage + 1, refresh = false)
+    }
+
+    /**
+     * Fetches one page of the home feed.
+     *
+     * [refresh] replaces the rows (first page, or a manual retry of a failed first page); otherwise
+     * the rows are appended and de-duplicated by tid. At most one request is in flight at a time:
+     * that guard is what keeps the footer's tap and the scroll trigger from firing twice for the
+     * same page, and the tid de-duplication keeps a server that repeats a row across pages from
+     * rendering it twice.
+     */
+    private fun loadHomeLatest(page: Int, refresh: Boolean) {
+        if (homeLatestJob?.isActive == true) return
+        if (!refresh && page <= 1) return
+        homeLatestJob = viewModelScope.launch {
+            _homeState.update {
+                if (refresh) {
+                    it.copy(latestError = null)
+                } else {
+                    it.copy(isAppendingLatest = true, latestError = null)
+                }
+            }
+            try {
+                Timber.tag(TAG).i("loadHomeLatest page=%d refresh=%s", page, refresh)
+                val data = repository.getGuidePage(ForumGuideView.Latest, page)
+                _homeState.update { current ->
+                    val base = if (refresh) emptyList() else current.latestThreads
+                    val known = base.map { it.tid }.toSet()
+                    current.copy(
+                        latestThreads = base + data.threads.filterNot { it.tid in known },
+                        latestPage = data.page,
+                        latestTotalPages = data.totalPages.coerceAtLeast(1),
+                        isAppendingLatest = false,
+                        latestLoaded = true,
+                        latestError = null,
+                    )
+                }
+                Timber.tag(TAG).i(
+                    "loadHomeLatest ok page=%d rows=%d pages=%d",
+                    page,
+                    data.threads.size,
+                    data.totalPages,
+                )
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                Timber.tag(TAG).e(error, "loadHomeLatest page=%d failed", page)
+                _homeState.update {
+                    it.copy(
+                        isAppendingLatest = false,
+                        latestError = error.message ?: error.javaClass.simpleName,
                     )
                 }
             }
