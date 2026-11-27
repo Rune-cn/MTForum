@@ -1841,3 +1841,36 @@ locale 用 `zh-rCN`）。断言是布局级的：合并后的页签节点宽度 
 
 **未验证**：OS4 玻璃顶栏 + 16dp gutter 的 411dp 组合没有截图像素级验证（Robolectric 下 OS4 的
 render-effect 路径不可用，和前几轮一致）；按宽度算式 4×90dp + 3×5dp = 375dp ≤ 379dp，仍应放得下。
+
+### 21.3 主题模式切换改成示例应用的形态（2026-11-27）
+
+原来设置页的「主题模式」是一行 `MiuixSpinnerPreference` + 下拉菜单。示例应用
+（`example/.../ThemeSettingsPage.kt`）不是这样：它是**两张预览卡片**（Light Mode / Dark Mode 并排，
+`selectableGroup()` + `Role.RadioButton`，选中态主色 3dp 描边、标题变主色）加一行
+**Follow System 开关**。本轮照这个形态重做，见
+[screenshots/theme-mode-control.png](screenshots/theme-mode-control.png)。
+
+- 新文件 `ui/page/miuix/settings/preferred/theme/ThemeModeSelector.kt`：
+  `ThemeModePreviewRow`（两张 tile）与 `ThemeModeFollowSystemRow`（第三模式）。tile 的示意缩略图
+  直接移植示例的渐变 + 两行「截图式」圆角条几何（`ThemeModeIllustration`），圆角用
+  `squircleBorder` / `squircleClip`（与示例一致），因此截图测试里要
+  `LocalSquircleEnabled provides false`。
+- **仍然是三种模式**：`ThemeMode.LIGHT / DARK / SYSTEM`；tile 对应浅色/深色，「跟随系统」开关对应
+  SYSTEM。关掉开关不会改配色，而是取应用**当前实际渲染**的深浅（`AppTheme.isDark` → DARK 或 LIGHT），
+  与示例的行为一致。
+- **持久化完全没变**：两个回调依旧是 `ThemeSettingsAction.SetThemeMode` →
+  `ThemeSettingsViewModel.dispatch` → `UpdateSettingUseCase` → `AppSettingsRepository.putString`，
+  tile 只是换了外观。旧的 `MiuixThemeModeWidget`（下拉）已删除。
+- 语义：把 `Role.RadioButton` + `selected` 放在 tile 的内容列上（不放在 `Card` 的 modifier 上）。
+  `Card` 的 clickable 会自成合并节点，放在外层会让「标题」与「选中态」落在两个节点上；放在内容列上
+  后，一个节点同时带标题与 `Selected`，读屏和测试都能一次拿到。
+
+**测试**（`ThemeModeControlTest`，6 个）：真实 `ThemeSettingsViewModel` + 假
+`AppSettingsRepository`（记录 `putString` 并把 themeMode 回灌到 `preferencesFlow`）组合本控件：
+两张 tile 与开关都存在；点深色 tile → `Selected=true`、写库 `DARK`；点浅色 → `LIGHT`；开关
+关/开各写一次 `LIGHT` / `SYSTEM`；再用源码约定检查设置页确实换了控件（`ThemeModePreviewRow(` /
+`ThemeModeFollowSystemRow(` 在、`MiuixThemeModeWidget` 不在）。截图
+[screenshots/theme-mode-control.png](screenshots/theme-mode-control.png)。
+
+**未验证**：切换后的深色/浅色**整页**观感没有截图（控件本身与页面接线已验证）；tile 的
+squircle 圆角在 Robolectric 下退化为普通圆角，真机是超椭圆。

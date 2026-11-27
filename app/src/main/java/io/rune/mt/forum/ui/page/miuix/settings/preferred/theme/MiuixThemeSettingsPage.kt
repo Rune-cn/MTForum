@@ -86,15 +86,25 @@ fun MiuixThemeSettingsPage(
         item { Spacer(modifier = Modifier.size(12.dp)) }
         // Shell mode: no Google/MIUIX UI switcher (miuix-only repo).
         item { SmallTitle(stringResource(R.string.theme_settings_miuix_ui)) }
+        // Light/dark are two preview tiles (the example app's presentation); 跟随系统 stays a
+        // switch row inside the card below, so the three modes are all still reachable.
+        item {
+            ThemeModePreviewRow(
+                currentMode = uiState.themeMode,
+                onModeChange = { newMode ->
+                    viewModel.dispatch(ThemeSettingsAction.SetThemeMode(newMode))
+                },
+            )
+        }
         item {
             Card(
                 modifier = Modifier
                     .padding(horizontal = 12.dp)
                     .padding(bottom = 12.dp),
             ) {
-                MiuixThemeModeWidget(
-                    currentThemeMode = uiState.themeMode,
-                    onThemeModeChange = { newMode ->
+                ThemeModeFollowSystemRow(
+                    currentMode = uiState.themeMode,
+                    onModeChange = { newMode ->
                         viewModel.dispatch(ThemeSettingsAction.SetThemeMode(newMode))
                     },
                 )
@@ -446,62 +456,6 @@ private fun MiuixThemeEngineWidget(
             val newModeIsMiuix = themeOptions.keys.sortedDescending().elementAt(newIndex)
             if (currentThemeIsMiuix != newModeIsMiuix) {
                 onThemeChange(newModeIsMiuix)
-            }
-        },
-    )
-}
-
-/**
- * A MiuixSpinnerPreference widget for selecting the application's theme mode (Light, Dark, or System).
- *
- * @param modifier The modifier to be applied to the MiuixSpinnerPreference.
- * @param currentThemeMode The currently selected ThemeMode.
- * @param onThemeModeChange A callback that is invoked when the theme mode selection changes.
- */
-@SuppressLint("LocalContextGetResourceValueCall")
-@Composable
-fun MiuixThemeModeWidget(
-    modifier: Modifier = Modifier,
-    currentThemeMode: ThemeMode,
-    onThemeModeChange: (ThemeMode) -> Unit,
-) {
-    val context = LocalContext.current
-
-    // Map of ThemeMode enum to its corresponding string resource ID.
-    val themeModeOptions = remember {
-        // The order in the map definition determines the order in the spinner.
-        mapOf(
-            ThemeMode.LIGHT to R.string.theme_settings_theme_mode_light,
-            ThemeMode.DARK to R.string.theme_settings_theme_mode_dark,
-            ThemeMode.SYSTEM to R.string.theme_settings_theme_mode_system,
-        )
-    }
-
-    // Convert the map of options to a list of DropdownItem for the MiuixSpinnerPreference component.
-    // The order of items in the list is important for index mapping.
-    val spinnerEntries = remember(themeModeOptions) {
-        themeModeOptions.entries.map { entry ->
-            DropdownItem(title = context.getString(entry.value))
-        }
-    }
-
-    // Calculate the selected index based on the current theme mode.
-    // It finds the index of the currentThemeMode in the ordered list of keys.
-    val selectedIndex = remember(currentThemeMode, themeModeOptions) {
-        themeModeOptions.keys.indexOf(currentThemeMode).coerceAtLeast(0)
-    }
-
-    MiuixSpinnerPreference(
-        modifier = modifier,
-        title = stringResource(id = R.string.theme_settings_theme_mode),
-        items = spinnerEntries,
-        selectedIndex = selectedIndex,
-        onSelectedIndexChange = { newIndex ->
-            // Retrieve the new ThemeMode based on the selected index.
-            val newMode = themeModeOptions.keys.elementAt(newIndex)
-            // Invoke the callback only if the mode has actually changed.
-            if (currentThemeMode != newMode) {
-                onThemeModeChange(newMode)
             }
         },
     )

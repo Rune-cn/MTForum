@@ -251,6 +251,11 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
   底部导航 `MiuixGlassNavigationBar`（OS4）/ `FloatingBottomBar`（OS3）。
 - **OS4 专属视觉**：`size`、`Glass*` 来自 `miuix-material`/`miuix-glass`；
   OS3 下不得泄漏玻璃组件，反之亦然。
+- **主题模式切换用示例应用的形态**：`ThemeModePreviewRow`（浅色/深色两张预览 tile，单选）+
+  `ThemeModeFollowSystemRow`（跟随系统开关），见 `ThemeModeSelector.kt`；持久化仍走
+  `ThemeSettingsAction.SetThemeMode` → `UpdateSettingUseCase`，**不要**退回下拉 Spinner
+  （旧 `MiuixThemeModeWidget` 已删）。tile 的 `Role.RadioButton` + `selected` 放在内容列上，
+  不要放在 `Card` 的 modifier 上（`Card` 的 clickable 会自成合并节点，标题与选中态会被拆开）。
 
 ## 测试环境说明
 
