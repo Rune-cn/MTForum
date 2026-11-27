@@ -95,3 +95,11 @@ MT 图床两步上传（令牌 → 上传、419 刷新重试、`status:false`、
 ## 许可
 
 GPL-3.0（见 [LICENSE](LICENSE)）。
+
+## 赞助
+
+感谢您对此项目的支持喵！如果此项目对您有帮助，可以通过微信赞赏码进行赞赏喵！
+
+<img src="sponsor/wechat-sponsor-qr.png" alt="微信赞赏码" width="240" />
+
+赞赏完全自愿，不影响任何功能——所有功能都是免费的。

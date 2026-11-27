@@ -267,7 +267,15 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     host/状态/字节数，令牌与 Cookie 一律不打（规则 10）。接口事实见
     `docs/REVERSE_SPEC.md` §24，产品决策见 `docs/HANDOVER_CN.md` §21。
     **两个编辑器共用**插入逻辑 `ComposerText`（插入到**光标处**，不是末尾）。
-34. **加载态必须是「状态」，不是一对 Show/Hide 事件**：阻塞对话框/进度条只能由
+34. **`singleOf` / `viewModelOf` 会解析每一个构造参数，默认值也不例外**：Koin 的无反射 DSL
+    不看 Kotlin 默认参数，`class X(private val baseUrl: String = "https://…")` 配
+    `singleOf(::X)` 会让容器去要一个 `java.lang.String`，启动第一帧就崩
+    （26.11.10 真机：`Could not create instance` → `No definition found for type 'java.lang.String'`）。
+    带默认值/常量的构造参数要么用 `single<X> { X() }` 显式构造，要么把参数移到可注入的接口后面。
+    `KoinGraphTest` 启动**真实** `appModules` 并解析所有屏幕级定义，任何“容器造不出来”的定义
+    会在测试里失败——不要改成用 fake 模块替代它。
+
+35. **加载态必须是「状态」，不是一对 Show/Hide 事件**：阻塞对话框/进度条只能由
     `StateFlow`（如 `UpdateRepository.checkState` 的 `Idle/Checking/Settled`）派生，且由**持有者**
     在 `try/finally` 里把 `Checking` 收尾（成功、跳过、超时、异常、取消都要收）。
     曾经的 `PreferredViewEvent.ShowUpdateLoading` / `AboutEvent.HideUpdateLoading` 只要有一条

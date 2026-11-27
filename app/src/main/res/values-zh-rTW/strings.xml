@@ -352,4 +352,9 @@
     <string name="pm_image_uploading">正在上傳圖片…</string>
     <string name="pm_image_failed_format">圖片上傳失敗：%1$s</string>
     <string name="pm_bbcode_note">BBCode 會原樣傳送，由論壇在顯示訊息時渲染。</string>
+    <string name="about_sponsor_section">贊助</string>
+    <string name="about_sponsor_message">感謝您對此專案的支持喵！如果此專案對您有幫助，可以透過微信讚賞碼進行讚賞喵！</string>
+    <string name="about_sponsor_qr_desc">微信讚賞碼</string>
+    <string name="about_sponsor_voluntary">讚賞完全自願，不影響任何功能——所有功能都是免費的。</string>
+    <string name="about_sponsor_github">在程式碼倉庫查看讚賞碼</string>
 </resources>

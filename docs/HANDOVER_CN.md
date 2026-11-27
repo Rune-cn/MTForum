@@ -2286,3 +2286,53 @@ squircle 圆角在 Robolectric 下退化为普通圆角，真机是超椭圆。
   依赖）未注册进三个 UI 测试的 Koin 模块，已在测试侧补上 fake（生产代码未改）。
 - ⚠️ 无设备：图床真实上传、OS4 玻璃面板、深链在浏览器中的握手（无 `assetlinks.json`）均未在真机确认。
 
+---
+
+## 26. 26.11.10 启动崩溃（Koin）+ 关于页赞助（2026-11-27）
+
+### 26.1 崩溃：`No definition found for type 'java.lang.String'`
+
+真机日志（26.11.10，valueCode 22，第一帧即崩）：
+
+```
+FATAL EXCEPTION: main
+ik1: Could not create instance for '[Factory: 'oz0']'
+Caused by: ik1: Could not create instance for '[Singleton: 'py0',binds:cg1]'
+Caused by: xg2: No definition found for type 'java.lang.String' on scope '['_root_']'
+```
+
+根因：上一轮加图床时写了
+`singleOf(::ForumImageHostClient) { bind<ImageHostGateway>() }`，而
+`ForumImageHostClient` 的构造是 `(baseUrl: String = "https://img.binmt.cc/", client: OkHttpClient = …)`。
+Koin 的**无反射** DSL 会把每个构造参数都当依赖解析，**不看 Kotlin 默认值**，于是容器去要一个
+`java.lang.String`——没有任何定义能提供，`get()` 抛异常，`App.onCreate` 起 Koin 时直接终止。
+
+修复：改成显式构造 `single<ImageHostGateway> { ForumImageHostClient() }`，默认值由类自己负责。
+
+**为什么之前所有测试都没抓到**：全部 UI/VM 测试都 `startKoin { modules(module { … fakes … }) }`，
+从来没有启动过生产图。新增 `KoinGraphTest`：
+
+- 启动**真实**的 `appModules`（`App.onCreate` 用的那个列表，含 `serializationModule` 等），
+- 解析屏幕会直接要的所有定义（`ForumRepository` / `ForumDraftService` / `ForumDraftRepository` /
+  `ForumSearchHistoryRepository` / `ImageHostGateway`），任何一个构造失败就断言失败并打印根因；
+- **反向验证过**：把 `singleOf(::ForumImageHostClient)` 改回去，两个用例立刻失败
+  （`No definition found for type 'java.lang.String'`），改回来后通过。
+
+### 26.2 关于页：赞助
+
+- 文案（三语）：`about_sponsor_message`——中文原样保留机主给的
+  「感谢您对此项目的支持喵！如果此项目对您有帮助，可以通过微信赞赏码进行赞赏喵！」，
+  英文与繁体各一版；另有 `about_sponsor_voluntary`（自愿、不影响功能）与
+  `about_sponsor_github`（在仓库查看赞赏码）。
+- 赞赏码两份：App 内置 `app/src/main/res/drawable-nodpi/sponsor_wechat_qr.png`（离线可看），
+  仓库副本 `docs/sponsor/wechat-sponsor-qr.png`（行内链接指向
+  `https://github.com/Rune-cn/MTForum/blob/main/docs/sponsor/wechat-sponsor-qr.png`）。
+- 二维码**放在白色底卡片上**（即使深色模式）：它是深色模块 + 透明背景，跟随主题着色会扫不出来。
+- 纯自愿、无网络请求、不改变任何功能。
+
+### 26.3 验证
+
+- `:app:compileStableDebugKotlin` → BUILD SUCCESSFUL。
+- `:app:testStableDebugUnitTest --tests KoinGraphTest` → BUILD SUCCESSFUL（2 用例）；
+  反向验证见 26.1。
+

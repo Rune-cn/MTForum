@@ -8,6 +8,9 @@ import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBlockingLoadingDialog
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -701,6 +704,56 @@ private fun AboutContentBody(
                                 onClick = onDirectUpdate,
                             )
                         }
+                    }
+
+                    SmallTitle(stringResource(R.string.about_sponsor_section))
+                    Card(
+                        modifier = Modifier
+                            .padding(horizontal = 12.dp)
+                            .padding(bottom = 12.dp),
+                        colors = CardDefaults.defaultColors(MiuixTheme.colorScheme.surfaceContainer),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.about_sponsor_message),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            fontSize = 13.sp,
+                            lineHeight = 20.sp,
+                        )
+                        Text(
+                            text = stringResource(R.string.about_sponsor_voluntary),
+                            modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 12.dp),
+                            fontSize = 12.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                        // The QR is dark-on-white artwork: it sits on a **white** surface in every
+                        // theme so the modules stay scannable. Tinting it with the theme surface
+                        // would quietly break scanning in dark mode.
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .padding(bottom = 12.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.White)
+                                .padding(12.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Image(
+                                painter = painterResource(R.drawable.sponsor_wechat_qr),
+                                contentDescription = stringResource(R.string.about_sponsor_qr_desc),
+                                modifier = Modifier.size(240.dp),
+                                contentScale = ContentScale.Fit,
+                            )
+                        }
+                        MiuixNavigationItemWidget(
+                            title = stringResource(R.string.about_sponsor_github),
+                            description = "docs/sponsor/wechat-sponsor-qr.png",
+                            onClick = {
+                                uriHandler.openUri(
+                                    "https://github.com/Rune-cn/MTForum/blob/main/docs/sponsor/wechat-sponsor-qr.png",
+                                )
+                            },
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))

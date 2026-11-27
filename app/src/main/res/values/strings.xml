@@ -352,4 +352,9 @@
     <string name="pm_image_uploading">Uploading image…</string>
     <string name="pm_image_failed_format">Image upload failed: %1$s</string>
     <string name="pm_bbcode_note">BBCode is kept as text and rendered by the forum when the message is displayed.</string>
+    <string name="about_sponsor_section">Sponsor</string>
+    <string name="about_sponsor_message">Thank you for supporting this project, meow! If it has been useful to you, you can buy me a coffee with the WeChat reward code below, meow!</string>
+    <string name="about_sponsor_qr_desc">WeChat reward QR code</string>
+    <string name="about_sponsor_voluntary">Donations are voluntary and unlock nothing — every feature stays free.</string>
+    <string name="about_sponsor_github">View the reward code in the repository</string>
 </resources>

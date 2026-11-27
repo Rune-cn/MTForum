@@ -101,3 +101,11 @@ MT 图床两步上传（令牌 → 上传、419 刷新重试、`status:false`、
 ## 许可
 
 GPL-3.0（见 [LICENSE](LICENSE)）。
+
+## Sponsorship
+
+Thanks for supporting this project, meow! If it has been useful to you, you can use the WeChat reward code below, meow!
+
+<img src="docs/sponsor/wechat-sponsor-qr.png" alt="WeChat reward code" width="240" />
+
+Donations are voluntary and unlock nothing — every feature stays free.

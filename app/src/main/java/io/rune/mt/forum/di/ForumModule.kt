@@ -41,7 +41,13 @@ val forumModule = module {
 
     // The MT image host (img.binmt.cc) is a **separate service**: its own host, its own token and
     // its own cookie jar, so no forum cookie is ever sent there (rules 14 / 33).
-    singleOf(::ForumImageHostClient) { bind<ImageHostGateway>() }
+    //
+    // Built explicitly rather than with `singleOf(::ForumImageHostClient)`: its constructor has a
+    // `baseUrl: String = …` default, and Koin's reflection-free DSL resolves **every** constructor
+    // parameter, so `singleOf` asked the graph for a `java.lang.String` and the app died at the
+    // first frame with `No definition found for type 'java.lang.String'` (26.11.10 crash). Keeping
+    // the default here makes the host constant come from the class, not from the DI graph.
+    single<ImageHostGateway> { ForumImageHostClient() }
 
     // Drafts live on the site (the 保存草稿 button's `save=1`); this is the read/write surface.
     singleOf(::ForumDraftServiceImpl) { bind<ForumDraftService>() }
