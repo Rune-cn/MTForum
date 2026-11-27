@@ -1753,3 +1753,16 @@ effect 已 armed 却再也不会触发 → 第 3 页永远到不了。新 helper
 BUILD SUCCESSFUL（`Lint found no new issues`）。
 
 **未验证**：multipart 上传仍未对真实服务器跑过；压缩后的画质与 1MB 阈值需要真机取一张大图确认。
+
+### 20.5 合入 main 后的总体验证（2026-11-27，第八轮）
+
+本轮四条分支（表格列宽 §3.5、主页顶栏+消息分栏+翻页 §20、发帖编辑器 §16.7、回复去草稿 §19.1）
+全部合入 main 后：
+
+- `:app:testStableDebugUnitTest` → **54 suites / 321 tests / 0 failures / 0 errors / 0 skipped**
+- `:app:lintVitalStableRelease` → BUILD SUCCESSFUL（`Lint found no new issues`）
+- 三语字符串各 **312** 键，数量一致
+- 截图：`table-render.png`（网盘表 5 列按内容配宽）、`home-top-bar.png`（顶栏搜索/发帖/签到，
+  铃铛已移除）
+- ⚠️ 无设备：顶栏覆盖层、消息四页签、编辑器图片/板块面板的实际观感未在真机确认；OS4 玻璃
+  覆盖层在 Robolectric 下渲染不了（AGSL），只验证了接线。
