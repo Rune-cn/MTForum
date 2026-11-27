@@ -21,10 +21,10 @@
 | 帖子详情 | 楼层（楼主/回复区分）、正文富文本渲染（代码块/标题/引用/表格/附件/表情/块级对齐/表头与合并列/可点击链接）、**附件可选择「下载到本机 / 浏览器打开 / 复制链接」**（付费附件先提示「下载将扣除 N 金币」，下载走 attachcredit 两跳）、楼层内引用回复 |
 | 回复 | 右下角悬浮按钮、引用上一楼、论坛表情选择器（3 组 257 个）、服务器草稿（`save=1`，保存/恢复/丢弃） |
 | 登录 | 账号密码登录、会话持久化、退出二次确认 |
-| 私信 | 会话列表、会话气泡、收发消息（`home.php?mod=space&do=pm`） |
+| 私信 | 会话列表、会话气泡、收发消息（`home.php?mod=space&do=pm`）；正文支持 **BBCode**（b/i/u/引用/链接工具栏 + 预览），`添加图片` 走 MT 图床插入 `[img]` |
 | 收藏 / 关注 / 顶 | 帖子页溢出菜单一键收藏、关注楼主、推荐本帖，以及复制链接、在浏览器打开、系统分享 |
 | 深链 | `thread-*.html` / `forum-*.html` / `forum.php?mod=` / `mtforum://` 直接在应用内打开 |
-| 发新帖 | 标题 + 正文 + 表情 + 图片附件（multipart `Filedata`，1MB/张）、**服务器草稿**（`save=1`；草稿列表、编辑、发表、删除，见 `docs/REVERSE_SPEC.md` §16.1） |
+| 发新帖 | 标题 + 正文 + 表情 + 图片（**MT 图床** `img.binmt.cc`：原图直传并插入 `[img]…[/img]`，默认；或站点附件 multipart `Filedata`，1MB/张）、**服务器草稿**（`save=1`；草稿列表、编辑、发表、删除，见 `docs/REVERSE_SPEC.md` §16.1 与 §24） |
 | 图片查看 | 帖子内图片点击全屏，双指缩放、拖动、双击复位 |
 | 主题 | OS3 / OS4 双风格、动态取色、模糊与玻璃效果、HyperOS 风格预测式返回 |
 
@@ -82,7 +82,8 @@ bash tools/build.sh :app:lintVitalStableRelease
 测试覆盖：acw 签名（与 JS 参考实现交叉验证）、版块/列表/帖子/楼层解析、导读解析、
 登录表单与失败响应、正文富文本、帖子卡片 Compose 真实渲染、主线程安全、
 私信会话/收藏/发帖表单解析、图片 URL 规范化/解码器路由/会话 Cookie 隔离、
-OS4 玻璃菜单像素级锚定。
+MT 图床两步上传（令牌 → 上传、419 刷新重试、`status:false`、坏 JSON，均对本机回环 server）、
+两个编辑器的图床插入（光标位置/失败不丢字）、OS4 玻璃菜单像素级锚定。
 
 无模拟器时可以直接「看」UI（Robolectric 截图，产物在 `app/build/ui-screenshots/`）：
 `ThreadActionsPopupLayoutTest`（OS4 菜单）、`ForumImageScreenshotTest`（卡片+正文图片）、

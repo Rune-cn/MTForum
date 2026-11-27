@@ -21,11 +21,15 @@ app/src/main/java/io/rune/mt/forum/
 │   │       ├── ForumDraftRepositoryImpl.kt  本机草稿兜底（DataStore `forum_drafts`，上限 20 条）
 │   │       ├── ForumSessionStore.kt     DataStore 持久化 Cookie
 │   │       └── ForumPasswordAuthenticator.kt  账号密码登录
+│   ├── image/
+│   │   └── ForumImageHostClient.kt    MT 图床 `img.binmt.cc`：GET 令牌 → POST 上传，
+│   │                                  419 刷新重试一次，独立 client + 独立 CookieJar（不发论坛 Cookie）
 │   ├── settings/                     设置项仓库
 │   └── updater/                      更新检查（指向本仓库 Releases）
 ├── domain/
 │   ├── forum/
 │   │   ├── model/                    Forum / ForumThread / ForumPost / ForumUser / ForumSession / ForumDraft
+│   │   │                             / ForumImageHost（图床结果、网关接口、格式与上传文件名策略）
 │   │   └── repository/               ForumRepository.kt / ForumDraftRepository.kt（含 ForumDraftService）
 │   ├── settings/                     偏好模型与用例
 │   └── updater/

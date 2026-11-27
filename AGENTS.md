@@ -172,10 +172,11 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
 
 26. **发帖编辑器的图片、板块与三条硬约束**：图片选择用 `OpenMultipleDocuments` + 持久 URI，
     经 `ComposerImagePrep` 缩放/重编码到站点 1MB 限制内（仍超则**拒绝并给原因**，绝不静默丢弃
-    ——「添加图片没有用」就是这么来的）；上传走站点自身的 multipart `Filedata`，**没有**独立
-    图床 API。换板块必须重新取表单（`formhash`/`posttime` 按表单签发）并让提交 URL 用新 `fid`；
-    草稿绑定原板块，编辑草稿时板块选择器禁用。表情/图片等动作统一用 `Arrangement.spacedBy`
-    定距，编辑器文案一律走三语资源。
+    ——「添加图片没有用」就是这么来的）；**附件**上传走站点自身的 multipart `Filedata`。另有
+    独立的 **MT 图床**（`img.binmt.cc`，见规则 33）：`添加图片` 现在先问「图床 / 附件」两条路，
+    图床是默认（原图直传、不重压缩），附件仍原样保留。换板块必须重新取表单（`formhash`/`posttime`
+    按表单签发）并让提交 URL 用新 `fid`；草稿绑定原板块，编辑草稿时板块选择器禁用。
+    表情/图片等动作统一用 `Arrangement.spacedBy` 定距，编辑器文案一律走三语资源。
 
 27. **草稿由站点保存（服务器草稿），本机只做离线兜底**：发帖/回复表单里的隐藏域
     `<input type="hidden" id="postsave" name="save" value="">` 就是「保存草稿」——那个按钮只是
@@ -236,6 +237,18 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
 32. **解析器只出“能渲染的信息”**：站点模板里纯 JS 的动作行（如 `a.profile_ewmbox` 的 二维码
     浮层）在 `ForumHtmlParser` 就丢弃并写明原因（HANDOVER §17.1）；不要留到 UI 端靠“空值”判断，
     否则会连带吞掉真正空值的字段。
+33. **MT 图床（`img.binmt.cc`）是另一台主机，不是论坛**：与 `bbs.binmt.cc` 不同域、不同会话，
+    所以它**必须**有自己的 HTTP client 与 Cookie jar（`ForumImageHostClient` 里的
+    `ImageHostCookieJar`）——论坛的 `cQWy_2132_auth` 永远不能发给它（规则 14 的 host 作用域）。
+    令牌（`<meta name="csrf-token">`）**按会话签发**，只在图床域名下有效；上传是两步
+    `GET /` → `POST /upload`（multipart 单字段 `file` + `X-CSRF-TOKEN` / `X-Requested-With` /
+    `Accept: application/json` / `Referer`），成功返回的 `data.links.bbcode` 原样插入正文。
+    **419 = 令牌过期**：重新取页拿新令牌并**只重试一次**，第二次 419 判失败——绝不循环、
+    绝不自己再写一套令牌逻辑。`status:false` 的 200 要把服务端 `message` 原样抛给用户。
+    图床只收 `jpg/png/gif/webp`（HEIC 不收，准备阶段就拒绝并给原因）。日志只打
+    host/状态/字节数，令牌与 Cookie 一律不打（规则 10）。接口事实见
+    `docs/REVERSE_SPEC.md` §24，产品决策见 `docs/HANDOVER_CN.md` §21。
+    **两个编辑器共用**插入逻辑 `ComposerText`（插入到**光标处**，不是末尾）。
 
 ## Miuix 双风格（OS3 / OS4）
 

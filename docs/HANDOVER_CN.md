@@ -1790,6 +1790,11 @@ effect 已 armed 却再也不会触发 → 第 3 页永远到不了。新 helper
 `Filedata` 塞进同一个发帖表单；服务端存好后返回的正文 HTML 指向 `oos.binmt.cc` / `data/attachment/…`。
 客户端照同一条路走，所以「对接图床」= 这条附件上传链路，不是另调某个接口。
 
+> **修正（2026-11-27，§21）**：这一段当时只看了论坛本身。机主随后给出公告帖
+> `bbs.binmt.cc/thread-98890-1-1.html`：存在**独立的**图床服务 `https://img.binmt.cc/`（另一台主机、
+> 另一套会话、两步 CSRF 上传）。它才是「MT 图床」；上面说的附件链路仍然有效，只是不再是唯一选择。
+> 详见 **§21**（以及 `docs/REVERSE_SPEC.md` §24）。
+
 **按钮间距**：表情 / 添加图片 / 草稿 收进一条 `Row`，用 `Arrangement.spacedBy(8.dp)` 统一定距，
 不再各自加 padding。
 
@@ -1818,3 +1823,96 @@ BUILD SUCCESSFUL（`Lint found no new issues`）。
   铃铛已移除）
 - ⚠️ 无设备：顶栏覆盖层、消息四页签、编辑器图片/板块面板的实际观感未在真机确认；OS4 玻璃
   覆盖层在 Robolectric 下渲染不了（AGSL），只验证了接线。
+
+---
+
+## 21. MT 图床（img.binmt.cc）+ 私信 BBCode（2026-11-27）
+
+机主两句话：「mt 图床是这个 https://bbs.binmt.cc/thread-98890-1-1.html」「消息也支持 bbcode，可以加个添加图片」。
+接口事实全部记在 `docs/REVERSE_SPEC.md` **§24**；这里记**产品决策**和客户端接线。
+
+### 21.1 先说清楚：图床是**另一个服务**
+
+`https://img.binmt.cc/` 与 `bbs.binmt.cc` **不是同一个站点**：不同 host、不同会话、自己的 CSRF 令牌
+（按会话签发，过期返 419）。所以：
+
+- 它**不共用** `ForumCookieJar`——客户端给图床单独建了一个 jar（`ImageHostCookieJar`），论坛的
+  `cQWy_2132_auth` 永远不会发给它（规则 14 的 host 作用域，规则 33）。
+- 它**不经过** `AcwInterceptor`（那是论坛的反爬），也不需要论坛登录态——游客也能传图（但发帖/私信本身要登录）。
+- 之前文档里「站点没有独立图床 API」的说法**只对论坛本身成立**，已在 §16.7 修正。
+
+图床的存在意义就是：**论坛附件通道会把超过 1MB 的图重压缩，图床不会**。所以它面向的是「我要原图」。
+
+### 21.2 发帖编辑器：两条路，默认图床
+
+「添加图片」现在先弹一个两行面板（`ComposerImageSourceSheet`，OS4 `GlassBottomSheet` / OS3
+`WindowBottomSheet`，规则 8），**每次选图都问**，不静默替用户决定：
+
+| 行 | 文案 | 实际行为 |
+|---|---|---|
+| 1（默认） | 插入图床链接（清晰） | `ForumImageHostClient.upload` → 把返回的 `[img]…[/img]` **插入到光标处** |
+| 2 | 作为附件上传（≤1MB） | 老的 `Filedata` multipart：`ComposerImagePrep` 缩放/重编码到 1MB 内，随帖子一起 POST |
+
+- **默认是图床**，因为机主给的帖子讲的正是「避免论坛压缩」；面板底部还有一行
+  `composer_image_source_default_hint` 明说默认是谁、为什么，避免只靠排序暗示。
+- 附件那条路**完全没变**（`NewThreadViewModel.attachImages` / `uploadImages` / `submit` 原样）：
+  它是站点自己的存储，一次 POST 完成，仍然保留。
+- 两条路的反馈都在图上那行文字里：图床是「已插入 <文件名> 的图床链接」，附件是「已添加 <文件名>（<体积>）」；
+  失败一定带原因（图床失败走 `hostUploadError`，**正文一个字都不动**）。
+- 图床路径**不进**附件缩略图条（`state.images`）——它是正文里的链接，不是随帖附件。
+- 光标：`NewThreadState.messageCaret` 由页面在每次 `onValueChange` 写入；插入逻辑是纯函数
+  `ComposerText.insert(text, caret, snippet)`，越界光标会被 clamp。
+
+### 21.3 私信：BBCode + 添加图片
+
+私信正文存的是 BBCode，站点自己渲染。这次只做**最小可用**，不做完整富文本编辑器：
+
+- 工具栏一行（`BbcToolbarButton`）：`B` `I` `U` `引用` `链接` `添加图片` `预览`。
+  点 b/i/u/quote/url = 在光标处插入**成对空标签**、光标停在中间（`ComposerText.wrap`）。
+- **添加图片** = `ForumMessagesViewModel.uploadImageToHost` → 图床 → `[img]…[/img]` 插到光标处。
+  失败只把原因显示在输入框上方，**草稿不清空**。
+- **发送完全没变**：仍是 `home.php?mod=spacecp&ac=pm&op=send…`，字段仍是 `formhash` / `touid` / `message`
+  （+ 回复时的 `pmid`）。`[img]`/`[b]` 只是 `message` 里的文本，由**服务端**在显示时解析——客户端不做
+  任何 HTML 转换后再发。发送成功后草稿才清空；失败保留全文（新行为，之前是点了就清）。
+- **预览**（可选功能，做了）：`预览` 开关把草稿丢进现有的 `ForumHtmlText` / `ForumBodyParser` 管线渲染，
+  `[b]`/`[img]`/`[quote]` 大致等于站点显示的效果。它只读草稿，不发任何请求、不改草稿。
+  纯图片预览会真的走 Coil 加载图床 URL（真机才看得到，Robolectric 里不加载）。
+
+### 21.4 代码落点
+
+| 位置 | 内容 |
+|---|---|
+| `domain/forum/model/ForumImageHost.kt` | `ImageHostResult` / `ImageHostGateway` / `ForumImageHostPolicy`（格式表、上传文件名） |
+| `data/image/ForumImageHostClient.kt` | 两步上传、419 刷新重试一次、JSON 解析、**独立 client + 独立 cookie jar** |
+| `di/ForumModule.kt` | `singleOf(::ForumImageHostClient) { bind<ImageHostGateway>() }` |
+| `ui/page/forum/ComposerText.kt` | 光标插入纯逻辑（两个编辑器共用） |
+| `ui/page/forum/ComposerImageSourceSheet.kt` | 发帖的「图床 / 附件」两行面板 |
+| `ui/page/forum/ComposerImagePrep.kt` | 新增 `ImagePreparer.prepareForHost`（**原图字节**，只校验格式/可读性）+ `ImageRejectReason.UnsupportedFormat` |
+| `NewThreadViewModel.kt` / `NewThreadPage.kt` | `uploadImageToHost`、`messageCaret`、面板接线、`[img]` 反馈行 |
+| `ForumMessagesViewModel.kt` / `ForumConversationPage.kt` | 草稿入状态（`draft`/`draftCaret`）、工具栏、图床插图、预览、`sendDraft()` |
+
+### 21.5 日志与隐私
+
+图床客户端只打 `host / HTTP 状态 / 字节数 / 文件名`；**令牌、Cookie 一律不打**（规则 10）。
+429/419 的重试只恢复令牌，打印一行 `upload got 419 … refreshing token once`，也没有令牌值。
+
+### 21.6 验证
+
+- `:app:testStableDebugUnitTest` → BUILD SUCCESSFUL（见 §21.7 的计数）。
+- `:app:compileStableDebugKotlin`、`:app:lintVitalStableRelease` → BUILD SUCCESSFUL。
+- 新增测试：
+  - `ForumImageHostClientTest`（本机回环 `HttpServer`，**无外网**）：happy path（令牌→上传→`Success`
+    url+bbcode+thumbnail）、419→刷新→重试→成功、第二次 419→失败且只 POST 两次、`status:false` →
+    服务端文案、坏 JSON → 失败、缺 `<meta>` → 不上传、**论坛 Cookie 不会发给图床**。
+  - `ForumComposerImageHostTest`（fake repository/host/preparer）：图床插入落在光标处、失败不丢字、
+    私信插图 + 发送字段不变、失败保留草稿、工具栏成对标签、`ComposerText` 越界 clamp。
+- 三语字符串各 **334** 键（+22），数量一致。
+
+### 21.7 未验证 / 风险
+
+- ⚠️ **真实图床没有被客户端调过**：接口是机主用 Python 端到端验证的（1×1 PNG →
+  `https://icdn.binmt.cc/2611/6b094ea47a7a2.png`），客户端只对本机回环 server 跑过。真机的
+  令牌/Cookie/419 时序、图床对单文件的大小上限都还没实测。
+- 图床 URL 是 `icdn.binmt.cc`，与论坛 CDN 的图片加载走同一个 Coil 客户端；`[img]` 渲染不依赖论坛 Cookie
+  （公开 CDN），但**离线或无图床时**预览/正文只会有空图位。
+- 「作为附件上传」路径的老问题（1MB 上限）没有变，这正是默认选图床的原因。
