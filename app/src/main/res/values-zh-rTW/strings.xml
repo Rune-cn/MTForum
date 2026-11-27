@@ -170,6 +170,7 @@
     <string name="forum_tag_with_image">有圖</string>
     <string name="forum_tag_hot">熱門</string>
     <string name="forum_hot_ranking">熱帖排行</string>
+    <string name="forum_home_latest">最新主題</string>
     <string name="thread_action_more">更多操作</string>
     <string name="thread_action_like">推薦本帖</string>
     <string name="thread_action_follow_author">關注樓主</string>

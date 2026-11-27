@@ -86,6 +86,11 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
 16. **首页榜单 / 导读必须用站点数据**：热帖排行解析 `forum.php` 的
     `div.comiis_mh_txtlist_phb`（文档顺序 + `em` 名次 + `a[title]`），**禁止客户端重排**；
     导读走 `ForumUrls.guidePath(view, page)`（`newthread|hot|digest|new|sofa`），不要手拼 URL。
+    **服务器有序的列表禁止客户端截断**（`.take(n)` / `subList` / 固定 `TOP_N` / 解析时 cap）；
+    榜单本身是站点 top-10，所以**首页必须另有一条可分页的「最新主题」流**
+    （`getGuidePage(ForumGuideView.Latest, page)` + `ForumPagingFooter` + `ForumAppendEffect`），
+    否则「主页的帖子显示不完整」会反复出现（HANDOVER §20.3.1）。分页列表一律要
+    **滚动到底自动追加 + footer「加载第 N 页」手动入口** 两条路，append 必须单请求守卫 + tid 去重。
 17. **深链只有一个入口**：外部 URL 一律经 `ui/navigation/ForumDeepLink.kt` 的
     `forumDeepLinkFrom(Uri)` 解析；Manifest 的 intent-filter 与 Activity 的 `onNewIntent`
     都只调用它，不要再写第二套 intent 解析。

@@ -112,6 +112,9 @@ Compose 页面（Miuix 组件，OS3/OS4 自适应）
    `ThreadActionsGlassMenu` 之后，`enabled = expanded`）。
 10. **首页榜单与导读都是站点数据源**：热帖排行解析 `forum.php` 的 `comiis_mh_txtlist_phb`
    （站点顺序，不重排）；导读走 `ForumUrls.guidePath(view, page)`，五个 view 共用列表解析器。
+   **首页不只是 Top-10**：榜单是站点 top-10，永远只有 10 条，所以 `ForumHomePage` 在它下面还要渲染
+   可分页的「最新主题」流（同样走 `getGuidePage(ForumGuideView.Latest, page)`，服务端顺序 + 真实
+   `div.pg`），否则主页的帖子就"永远显示不完整"（HANDOVER §20.3.1）。
 11. **深链只有一个入口**：`ForumDeepLink.forumDeepLinkFrom(Uri)` + `ForumDeepLinkState`
    一次性 hand-off；Manifest filter 与 `onNewIntent` 不另写解析。
 12. **会员页必须先判登录**：搜索（`search.php`）、提醒（`do=notice`）、个人资料（`do=profile`）、
