@@ -3,6 +3,7 @@ package io.rune.mt.forum.data.forum.repository
 
 import io.rune.mt.forum.data.forum.network.ForumHtmlParser
 import io.rune.mt.forum.data.forum.network.ForumHttpClient
+import io.rune.mt.forum.data.forum.network.ForumHttpGateway
 import io.rune.mt.forum.data.forum.network.ForumUrls
 import io.rune.mt.forum.data.forum.network.MultipartPart
 import io.rune.mt.forum.domain.forum.model.DraftActionResult
@@ -20,7 +21,8 @@ import timber.log.Timber
 /**
  * [ForumDraftService] over the site's own draft feature (docs/REVERSE_SPEC.md §16.1).
  *
- * Measured flow, all through [ForumHttpClient] so the anti-bot interceptor applies:
+ * Measured flow, all through [ForumHttpGateway] (production: [ForumHttpClient]) so the anti-bot
+ * interceptor applies:
  *
  * | Action | Request |
  * |---|---|
@@ -39,15 +41,44 @@ import timber.log.Timber
  * the server answers with the draft's thread id (its thread page then carries the 草稿 badge).
  */
 class ForumDraftServiceImpl(
-    private val http: ForumHttpClient,
+    private val http: ForumHttpGateway,
 ) : ForumDraftService {
 
+    /**
+     * One page of the 草稿 list.
+     *
+     * Every load logs the request URL, the HTTP status, the final URL (a silent redirect to the
+     * login form shows up here), the body size, the raw `li.forumlist_li` count and the parsed row
+     * count. Nothing cookie-shaped is logged. Those five facts are what answers a device report
+     * like "草稿箱里明明有草稿但 App 是空的": 0 raw rows means the site served a page without
+     * drafts (wrong list, wrong account, or a login page), while N raw rows with 0 parsed means the
+     * row selectors need work.
+     */
     override suspend fun getDrafts(page: Int): ForumDraftPage = withContext(Dispatchers.IO) {
-        val html = http.getHtml(ForumUrls.draftListPath(page))
-        if (ForumHtmlParser.isLoginRequired(html)) throw ForumLoginRequiredException()
-        ForumHtmlParser.parseDraftPage(html, page).also {
-            Timber.tag(TAG).i("drafts page=%d rows=%d pages=%d", page, it.drafts.size, it.totalPages)
+        val path = ForumUrls.draftListPath(page)
+        val result = http.getHtmlResult(path)
+        // Only an actual page can prove "signed out": an error page is not evidence about the list.
+        val loginRequired = result.isSuccessful && ForumHtmlParser.isLoginRequired(result.body)
+        val rowCount = if (result.isSuccessful) ForumHtmlParser.draftRowCount(result.body) else 0
+        val parsed = if (result.isSuccessful && !loginRequired) {
+            ForumHtmlParser.parseDraftPage(result.body, page)
+        } else {
+            ForumDraftPage(page = page)
         }
+        Timber.tag(TAG).i(
+            "drafts page=%d url=%s http=%d finalUrl=%s bytes=%d rows=%d parsed=%d loginRequired=%s",
+            page,
+            path,
+            result.code,
+            result.url,
+            result.body.length,
+            rowCount,
+            parsed.drafts.size,
+            loginRequired,
+        )
+        if (!result.isSuccessful) error("HTTP ${result.code} for $path")
+        if (loginRequired) throw ForumLoginRequiredException()
+        parsed
     }
 
     override suspend fun saveNewThreadDraft(

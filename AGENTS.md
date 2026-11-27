@@ -160,6 +160,19 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
       `updateDraft`），列表解析在 `ForumHtmlParser.parseDraftPage`，编辑表单在
       `parseDraftEdit`。本机 `ForumDraftRepository`（DataStore `forum_drafts`，上限 20 条）
       **只在站点保存失败或提前离开页面时**写入，是离线兜底，不再是主存储。
+    - **拉到数据就显示，绝不用会话标志挡列表**：草稿页按 `ForumDraftsPhase`（`Rows / Loading /
+      LoginRequired / Error / Empty`）渲染，`drafts.isNotEmpty()` 永远排第一。cookie 恢复是**异步**的
+      （`App.restoreForumSession`），首帧 `session.isLoggedIn=false` 不代表用户没登录；把
+      `!session.isLoggedIn` 放在数据分支前面，就会出现「站点有草稿、App 一片空白」。
+    - **空 ≠ 错误 ≠ 需要登录**：三者必须长得不一样——加载中 / 已加载但 0 条（「草稿箱是空的」）/
+      失败（站点原文 + 重试）/ 站点回登录表单（登录卡片）。网络或 HTTP 失败**绝不能**渲染成
+      「没有草稿」。
+    - **登录后要重问**：`loaded` 只说明"这次请求拿到了结果"。上次结果是 `loginRequired` 而会话
+      已经登录（用户从登录卡片登录回来）时，`loadIfNeeded()` 必须再取一次，否则登录卡片永远粘住。
+      页面的 `LaunchedEffect` 要 key 在 `session.isLoggedIn` 上，而不是 `Unit`。
+    - **诊断日志**：`ForumDraftService` 每次加载打一行 `url / http / finalUrl / bytes / rows /
+      parsed`（不含 Cookie）。`rows` 是 `li.forumlist_li` 原始行数、`parsed` 是解析出的行数，
+      用来区分「站点没有草稿」和「选择器失配」；`finalUrl` 便于发现被 302 回登录页。
 27. **签到只有一条 GET，结果在 CDATA 里**：`plugin.php?id=k_misign:sign&operation=qiandao&format=text&formhash=…`
     返回 `<?xml version="1.0"?>\r\n<root><![CDATA[已签到]]></root>`；`formhash` 只能从签到页
     `k_misign-sign.html` 的**退出链接**取（`parseFormhash` 的 `formhash=` 兜底）。

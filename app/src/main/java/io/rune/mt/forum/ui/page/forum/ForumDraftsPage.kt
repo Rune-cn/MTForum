@@ -75,6 +75,9 @@ import top.yukonga.miuix.kmp.utils.scrollEndHaptic
  * fetches the draft's edit form); the trash icon asks for confirmation before the site's `delete=1`
  * is sent. Chrome is built here instead of through `MiuixPageScaffold` because the rows must live
  * inside `PullToRefresh`, which owns the scroll gesture.
+ *
+ * The body renders [ForumDraftsPhase], i.e. the **load result**, not a session flag: rows the site
+ * returned are always shown, and loading / empty / failed / login-required stay four distinct cards.
  */
 @Composable
 fun ForumDraftsPage(
@@ -97,7 +100,9 @@ fun ForumDraftsPage(
     // The dialog holds the row being deleted so the confirmation text can name it.
     var pendingDelete by remember { mutableStateOf<ForumDraft?>(null) }
 
-    LaunchedEffect(Unit) { viewModel.loadIfNeeded() }
+    // Re-runs when the session settles: a cookie restore that finishes after the first composition
+    // (or a sign-in from the login card) must re-ask the site instead of leaving the login card up.
+    LaunchedEffect(session.isLoggedIn) { viewModel.loadIfNeeded() }
 
     LaunchedEffect(state.deleteError) {
         val message = state.deleteError ?: return@LaunchedEffect
@@ -153,25 +158,10 @@ fun ForumDraftsPage(
                         .nestedScroll(chrome.scrollBehavior.nestedScrollConnection),
                     contentPadding = contentPadding,
                 ) {
-                    when {
-                        !session.isLoggedIn || state.loginRequired -> item {
-                            DraftsLoginCard(onLogin = { navigator.push(Route.Login) })
-                        }
-
-                        state.isLoading -> item { ForumLoadingCard() }
-
-                        state.error != null && state.drafts.isEmpty() -> item {
-                            ForumErrorCard(
-                                message = state.error.orEmpty(),
-                                onRetry = viewModel::refresh,
-                            )
-                        }
-
-                        state.drafts.isEmpty() -> item {
-                            ForumEmptyCard(text = stringResource(R.string.drafts_empty))
-                        }
-
-                        else -> {
+                    when (state.phase(signedIn = session.isLoggedIn)) {
+                        // Rows the site returned are rendered first, whatever the session flag says:
+                        // a restore that has not finished yet must never hide a fetched page.
+                        ForumDraftsPhase.Rows -> {
                             items(items = state.drafts, key = { "draft_${it.tid}" }) { draft ->
                                 DraftRow(
                                     draft = draft,
@@ -197,6 +187,27 @@ fun ForumDraftsPage(
                                     onLoadMore = viewModel::loadMore,
                                 )
                             }
+                        }
+
+                        ForumDraftsPhase.Loading -> item { ForumLoadingCard() }
+
+                        // The site itself answered with the login form: that is the only case where
+                        // the login card may stand in for the list.
+                        ForumDraftsPhase.LoginRequired -> item {
+                            DraftsLoginCard(onLogin = { navigator.push(Route.Login) })
+                        }
+
+                        // A failure keeps the site's wording and a retry, so it can never be
+                        // mistaken for an empty drafts box.
+                        ForumDraftsPhase.Error -> item {
+                            ForumErrorCard(
+                                message = state.error.orEmpty(),
+                                onRetry = viewModel::refresh,
+                            )
+                        }
+
+                        ForumDraftsPhase.Empty -> item {
+                            ForumEmptyCard(text = stringResource(R.string.drafts_empty))
                         }
                     }
                 }
@@ -291,7 +302,14 @@ private fun DraftRow(
     }
 }
 
-/** Login gate shown instead of the list when the session is absent or has expired. */
+/**
+ * Login gate shown instead of the list when the **site** answered with its login form.
+ *
+ * This is the only honest reason to replace the list: the pages are member-only, so a guest (or a
+ * cookie that expired server-side) gets the form instead of rows. A signed-out session flag alone
+ * is not enough — the cookie restore is asynchronous, so it may still be settling while the list
+ * has already been fetched.
+ */
 @Composable
 private fun DraftsLoginCard(onLogin: () -> Unit) {
     Card(

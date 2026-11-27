@@ -261,7 +261,7 @@
     <string name="draft_publish_confirm">發表</string>
     <string name="drafts_title">草稿</string>
     <string name="drafts_entry_desc">論壇為你儲存的草稿</string>
-    <string name="drafts_empty">還沒有草稿。在發帖頁點「儲存草稿」就會存到論壇。</string>
+    <string name="drafts_empty">站點草稿箱是空的。在發帖/回覆框裡點「儲存草稿」會把草稿存到站點。</string>
     <string name="drafts_delete_title">刪除這篇草稿？</string>
     <string name="drafts_delete_message_format">「%1$s」將從論壇刪除，且無法恢復。</string>
     <string name="drafts_delete_action">刪除</string>

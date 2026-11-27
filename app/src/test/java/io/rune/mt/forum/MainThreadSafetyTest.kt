@@ -2,6 +2,7 @@
 package io.rune.mt.forum
 
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -29,15 +30,15 @@ class MainThreadSafetyTest {
     fun `http client switches dispatcher around blocking calls`() {
         val source = sourceOf("src/main/java/io/rune/mt/forum/data/forum/network/ForumHttpClient.kt")
         assertTrue("ForumHttpClient must import Dispatchers", source.contains("Dispatchers.IO"))
-        // Both entry points must be wrapped, not just the first one.
-        assertTrue(
-            "every suspend fun in ForumHttpClient needs withContext(Dispatchers.IO)",
-            source.split("withContext(Dispatchers.IO)").size - 1 >= 2,
-        )
-        // A bare `execute()` outside withContext is exactly the bug that crashed the tabs.
-        assertTrue(
-            "blocking execute() must not run on the caller's dispatcher",
-            !source.contains("suspend fun getHtml(path: String): String {"),
+        // Every blocking call site must carry its own dispatcher switch. `getHtml` is now a thin
+        // wrapper over `getHtmlResult` (which owns the wrapped execute), so counting call sites
+        // against switches is what catches a future bare `execute()` — including inside `getHtml`.
+        val blockingSites = source.split("client.newCall").size - 1
+        assertTrue("expected the HTTP entry points, found $blockingSites", blockingSites >= 3)
+        assertEquals(
+            "every blocking call site needs its own withContext(Dispatchers.IO)",
+            blockingSites,
+            source.split("withContext(Dispatchers.IO)").size - 1,
         )
     }
 

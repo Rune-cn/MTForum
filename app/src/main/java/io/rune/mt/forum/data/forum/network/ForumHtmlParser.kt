@@ -659,6 +659,15 @@ object ForumHtmlParser {
         )
     }
 
+    /**
+     * Row candidates in a 草稿 page (`li.forumlist_li`), before any field is read.
+     *
+     * Diagnostics only. Logging this next to the parsed count separates the two failure shapes a
+     * device report can mean: "the site really served no drafts" (0 rows) and "the page had rows
+     * but the row selectors stopped matching" (N rows, 0 parsed).
+     */
+    fun draftRowCount(html: String): Int = Jsoup.parse(html).select("li.forumlist_li").size
+
     private fun parseDraftRow(li: Element): ForumDraft? {
         val titleLink = li.selectFirst("div.mmlist_li_box h2 a")
             ?: li.selectFirst("h2 a[href*=thread-]")

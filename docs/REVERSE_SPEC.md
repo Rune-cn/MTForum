@@ -210,6 +210,13 @@ subject, message, htmlon(=0), usesig(=1), save(=空)
 回复表单（`form#fastpostform`）带同样的隐藏 `postsave`/`save` 对，所以回复也能存草稿：
 把 `save=1` 加到 `replysubmit=yes` 的那个 POST 上即可。
 
+**但回复草稿的「列表」地址仍未证实**：2026-11-27 第二次抓取的
+`forum.php?mod=guide&view=my&type=thread&filter=save&fid=0&mobile=2` 只列主题草稿，
+页面里**没有**任何指向 `type=reply` 的 tab / 链接（`view=my&type=reply` 一次都没出现），
+仓库里也没有回复草稿列表的抓包。所以客户端**不**猜测第二个列表、也不拼 `type=reply`
+地址：先用真机日志（`ForumDraftService` 的 `rows` / `parsed`）确认这个列表里到底有没有行，
+确认没有再去抓一张回复草稿列表页，补选择器与 §16.1 的表格。
+
 #### 客户端结论
 
 草稿由站点保存，客户端通过 `ForumDraftService` 读写；本机 `ForumDraftRepository` 只在
