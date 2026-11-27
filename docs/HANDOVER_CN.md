@@ -1046,90 +1046,115 @@ render effect、或 SafeMode 命中）→ 面板走库的 opaque 兜底，这是
 
 ---
 
-## 16. 本地草稿（发帖 / 回复）— 2026-11-27
+## 16. 草稿（发帖 / 回复）— 2026-11-27
 
-用户反馈「发帖有草稿的你可以先测试保存草稿」，结论是**站点侧草稿不可用，草稿必须做在客户端本机**。
+用户一开始就说过「论坛有自带的草稿啊」，上一轮判断「站点没有草稿」**是错的**。复测后确认：
+站点有真·服务器草稿，本机存储只作为离线兜底保留。§16.1 是修正后的实测事实，
+§16.2 起是客户端的实现。
 
-### 16.1 站点「保存草稿」实测（真实会话，一次）
+### 16.1 站点「保存草稿」实测（修正后）
 
-`forum.php?mod=post&action=newthread&fid={fid}&mobile=2` 的表单里确实有保存草稿按钮：
+发帖/回复表单里都有这一对：
 
 ```html
 <input type="hidden" id="postsave" name="save" value="" />
-<button type="button" id="postsubmit" class="comiis_btn formdialog bg_a f_f" value="true"
-        onclick="document.getElementById('postsave').value=1;$('postsubmit').click();"><em>保存草稿</em></button>
+<button type="button" id="postsubmit" onclick="document.getElementById('postsave').value=1;$('postsubmit').click();"><em>保存草稿</em></button>
 ```
 
-它不是一个独立接口——只是把 `postsave` 的值改成 `1` 后提交**同一个 multipart 新帖 POST**
-（URL 仍是 `forum.php?mod=post&action=newthread&fid={fid}&extra=&topicsubmit=yes&mobile=2`，
-字段 `formhash/posttime/subject/message/htmlon=0/usesig=1/allownoticeauthor=1/save`）。
-带 `save=1` 的两种提交实测：
+「保存草稿」不是独立接口，只是把 `save` 设成 `1` 后提交**同一个表单**：
 
 | 请求 | 结果 |
 |---|---|
-| `save=1` **且** `topicsubmit=yes` | **主题被直接发布**（版面出现真实新帖），没有变成草稿 |
-| `save=1` **不带** `topicsubmit=yes` | 服务端重新渲染空白发帖表单，**没有草稿被持久化** |
+| `save=1`（带/不带 `topicsubmit=yes`） | **建立真实草稿** `thread-<tid>` |
+| `save` 为空 / 缺省 | **发表**（草稿变公开主题） |
 
-之后逐个核对，均为 0 条草稿：
+草稿与普通主题的可见性差异（这几条是判据，也是上一轮踩错的原因）：
+
+- **不进版面列表**：`forum-<fid>-1.html` 里搜不到该 tid；
+- **匿名看不到**：匿名 GET 该草稿的线程页返回空/拒绝页；
+- **作者本人可见**：登录作者打开正常渲染，且带 `<span class="top_jg bg_a f_f">草稿</span>` 徽标；
+- **出现在草稿列表**里。
+
+> 上一轮「`save=1` 会直接发布」的结论是**漏发 `save` 字段**造成的：只发了
+> `topicsubmit=yes`，于是走了发表分支。判据就是 `save` 有没有值。
+
+### 16.2 站点接口（客户端实现的全部地址）
 
 ```
-GET home.php?mod=space&do=thread&view=me&from=space       → 无草稿
-GET home.php?mod=space&do=thread&view=me&type=draft       → 无草稿
-GET home.php?mod=spacecp&ac=draft                         → 只是「资料设置」，没有草稿管理
-桌面版同地址                                               → 无草稿
+草稿列表    GET  forum.php?mod=guide&view=my&type=thread&filter=save&fid=0&mobile=2[&page=N]
+存新帖草稿  POST forum.php?mod=post&action=newthread&fid={fid}&extra=&topicsubmit=yes&mobile=2
+             字段：formhash, posttime, subject, message, htmlon=0, usesig=1, allownoticeauthor=1, save=1
+             附件：Filedata（multipart，可多个）
+存回复草稿  POST forum.php?mod=post&action=reply&fid={fid}&tid={tid}&extra=page%3D1&replysubmit=yes&mobile=2
+             字段：formhash, message, replysubmit=yes, save=1[, noticeauthor]
+打开草稿    GET  forum.php?mod=post&action=edit&fid={fid}&tid={tid}&pid={pid}&page=1&mobile=2
+发表        POST 编辑表单自己的 action，save=（空）, delete=0
+再存草稿    POST 同上，save=1
+删除草稿    POST 同上，delete=1
 ```
 
-结论：站点草稿插件处于关闭状态（`forum_guard` 插件在删除那条测试帖时还抛过 Discuz
-「System Error / 编辑数据不存在」）。**因此 `save=1` 不是保存草稿，禁止再尝试用它冒充草稿。**
+**编辑表单必须整份回放**：服务端会拒绝/静默忽略只手搓的最小字段集。客户端从
+`form#postform` 里把每个 input/textarea/select 都收进 `ForumEditForm.fields`（`htmlon` 虽然
+`disabled` 也保留，Discuz 需要它；未勾选的 checkbox 不收，浏览器也不会提交），再由
+`ForumDraftServiceImpl` 在 `fields` 的副本上改一个字段就发出。字段名：
+`formhash / posttime / delete / fid / tid / pid / page / editsubmit / subject / message /
+htmlon / usesig / save`（另有 `hiddenreplies`、`ordertype` 等可选 checkbox）。
 
-### 16.2 因此：草稿是客户端本地的
+### 16.3 客户端实现
 
-- 领域层：`domain/forum/model/ForumDraft.kt`（`ForumNewThreadDraft` / `ForumReplyDraft` /
-  `ForumDraftIndex`，`@Serializable`）+ `domain/forum/repository/ForumDraftRepository.kt`。
-- 实现：`data/forum/repository/ForumDraftRepositoryImpl.kt`，使用**独立的 Preferences DataStore**
-  文件 `files/datastore/forum_drafts.preferences_pb`（Koin 里 qualifier `ForumDraftDataStore`），
-  整份索引序列化成一个 JSON 字符串，一次 `edit` 原子写入。进程被杀、应用重启后仍在。
-- 容量：**总共最多 20 条**（`ForumDraftRepositoryImpl.MAX_DRAFTS`），新帖按 `fid`、回复按 `tid`
-  去重（同版块/同帖子只保留一条，覆盖旧的）；超过 20 条时按 `savedAt` 淘汰最旧的。
-  `savedAt` 由仓库自己的时钟盖章，调用方改不了。
-- 图片只存 content URI，**不存图片字节**；恢复时重新读取，读不到（文件被删/授权丢失）的
-  以「有 N 张图片已无法恢复」提示并跳过。发帖图片选择器从 `GetMultipleContents` 换成
-  `OpenMultipleDocuments` 并在选图时 `takePersistableUriPermission`，否则重启后 URI 授权
-  不保留、恢复必然丢图。
-
-### 16.3 交互（发帖页 + 回复框一致）
-
-- 显式「保存草稿」按钮：发帖页按钮行（`取消 / 保存草稿 / 发布`）、回复框页脚
-  （`取消 / 保存草稿 / 发送`）。只写本机 DataStore，**不发任何网络请求**，成功后 Toast
-  「草稿已保存在本机」。
-- 离开页面自动保存：发帖页在返回按钮与 `DisposableEffect.onDispose`（含预测式返回手势退出）
-  各调一次 `saveOnLeave()`，用内容签名去重；只保存非空白内容，**且当存在一条未被处理的旧草稿时
-  不覆盖**（不会静默丢数据）。回复框在 `dismissReply()` 时同样只保存非空白、未恢复旧草稿的内容。
-- 打开时若同一 `fid`/`tid` 有草稿：不静默填表，先弹「恢复草稿？」对话框
-  （`DraftRestoreDialog`，恢复 = 主按钮，丢弃 = 次按钮）。恢复会填入标题/正文/引用/图片；
-  丢弃删除本机草稿并保持空白；点对话框外部/返回只是关掉提示、**保留**草稿（防止误删）。
-- 发布成功 / 回复成功：删除对应草稿。
-
-**注**：自动保存用 `viewModelScope.launch(NonCancellable + Dispatchers.IO)`，因为页面退出后
-`viewModelScope` 会先被取消，普通 launch 可能丢写；这是「退场必须写完」的刻意选择。
+- **领域层**：
+  - `domain/forum/model/ForumDraft.kt` — `ForumDraft`（列表行）、`ForumDraftPage`、
+    `ForumEditForm`（编辑表单 + 全量字段）、`ForumDraftEdit`（打开发帖页后的subject/message）、
+    `DraftActionResult`（Success/Failure）；本机兜底模型 `ForumNewThreadDraft` / `ForumReplyDraft`
+    / `ForumDraftIndex` 仍在同一文件。
+  - `domain/forum/repository/ForumDraftRepository.kt` — `ForumDraftService`（站点草稿读写）+
+    `ForumDraftRepository`（本机兜底）。
+- **数据层**：`data/forum/repository/ForumDraftServiceImpl.kt`，所有阻塞调用包在
+  `withContext(Dispatchers.IO)`，HTTP 一律走 `ForumHttpClient`（含 multipart 的 POST 复用
+  `postMultipart`），因此 `AcwInterceptor` 反爬照常生效。
+- **解析**：`ForumHtmlParser.parseDraftPage`（列表行）、`parseDraftEdit`（编辑表单 + 字段收集）、
+  `draftThreadPid` / `isDraftThread`（线程页的 pid 与草稿徽标）。DOM 选择器只在这一个文件里。
+  URL 拼接在 `ForumUrls.draftListPath` / `draftEditPath`。
+- **本机兜底（`ForumDraftRepositoryImpl`，DataStore `forum_drafts`，上限 20 条）**：
+  **只在两种情况下写**——站点保存失败（把文字留住，并显示站点的原始错误）、以及提前离开页面
+  （`saveOnLeave()`，只写本机、**绝不发网络请求**）。站点保存成功后会删掉本机副本。
+  图片仍只存 content URI。
+- **页面**：
+  - `ui/page/forum/ForumDraftsPage.kt` + `ForumDraftsViewModel.kt` — 草稿列表（下拉刷新 + 翻页 +
+    登录卡片 + 删除确认）；行点击进发帖页编辑。
+  - `ui/page/forum/NewThreadPage.kt` / `NewThreadViewModel.kt` — 发帖页新增 `ComposerMode`：
+    新建模式（`保存草稿` = `save=1` 建草稿；`发布` = 正常发表）与草稿编辑模式
+    （`保存草稿` = 对同一草稿 `save=1` 再存，`发表` = `save` 空发布，`删除` = `delete=1`）。
+    草稿模式下两个破坏性动作（发表/删除）都走 `MiuixConfirmDialog` 二次确认。
+  - `ui/page/forum/ReplyComposer.kt` / `ForumViewModel.saveReplyDraft()` — 回复框的 `保存草稿`
+    改成 POST 站点（`save=1`），失败时保留文字 + 写本机兜底 + 显示错误。
+- **路由/入口**：`Route.Drafts`（`AppNavContainer` 注册 `ForumDraftsPage`，
+  `ViewModelModule` 注册 `ForumDraftsViewModel`）。入口放在**设置页「论坛」分组**、
+  「我的收藏」下面一行。理由：草稿和收藏一样是「登录账号自己的论坛数据」，设置页这一组正是这个
+  语义；发帖页顶栏再放一个会和「保存草稿」按钮语义重叠，反而是杂音，所以没加。
+- **服务端草稿优先**：发帖页打开时会拉一次草稿列表，同版块有站点草稿时用站点草稿（提示文案也会
+  说明来源），只有站点没有时才用本机兜底副本。回复框因为草稿列表是 `type=thread` 的
+  （不含回复草稿），仍以本机副本作为恢复路径。
 
 ### 16.4 验证
 
-- 合入 main 后（与 §15.9/§15.10、§3.5 正文渲染一起）复跑：
-  **41 suites / 222 tests / 0 failures / 0 errors / 0 skipped**；`:app:lintVitalStableRelease`
-  → BUILD SUCCESSFUL（`Lint found no new issues`，1 个既有错误由 baseline 过滤）。
-- 分支内单独验证（本次新增 2 个 suite / 15 个用例）：`:app:compileStableDebugKotlin` →
-  BUILD SUCCESSFUL；`:app:testStableDebugUnitTest` → **38 suites / 207 tests / 0 failures**。
-- 新增测试：`ForumDraftStoreTest`（5：字段/图片 URI 往返、同上下文覆盖、删除、20 条上限淘汰、
-  损坏 JSON 降级、回复引用字段往返；用内存版 `DataStore<Preferences>` 驱动，因为 DataStore 的
-  文件重命名在 Windows JVM 上无法覆盖已存在的 `.preferences_pb`）；`ForumDraftViewModelTest`
-  （10：发帖/回复各自的「提示 → 恢复 → 丢弃 → 保存不发请求 → 发布后清除 → 自动保存不覆盖旧草稿」）。
-- Robolectric 用英文串，新增 7 个字符串键三语同步（`draft_*`）。
+- `:app:compileStableDebugKotlin` → **BUILD SUCCESSFUL**
+- `:app:testStableDebugUnitTest` → **BUILD SUCCESSFUL，42 suites / 237 tests / 0 failures /
+  0 errors / 0 skipped**（基线 main 是 41/222，本次新增 1 个 suite：`ForumDraftParserTest` 10 个用例，
+  并把 `ForumDraftViewModelTest` 改写成 15 个用例覆盖站点草稿流程）
+- `:app:lintVitalStableRelease` → **BUILD SUCCESSFUL**（`Lint found no new issues`，
+  1 个既有错误由 `lint-baseline.xml` 过滤）；三语字符串各 **249** 键，数量一致。
+- ⚠️ 本机无设备/模拟器：**没有**在真机上点过草稿列表/发表/删除；也**没有**再对
+  `bbs.binmt.cc` 发真实请求（用户明确禁止，实测事实来自用户提供的一次验证）。
 
 ### 16.5 限制（如实）
 
-- **无跨设备/账号同步**：草稿只在本机，换手机/清数据即丢；站点没有可用的草稿 API。
-- 站点草稿功能不可用（§16.1），客户端也不会在站点上创建任何草稿。
-- 图片 URI 依赖系统授权；`OpenMultipleDocuments` 的持久授权在部分第三方文件提供者上不可靠，
-  这类图片恢复时会被计为「无法恢复」。
-- 草稿上限 20 条是硬编码常量，没有设置项；被淘汰的草稿不可恢复。
+- 草稿列表行**不含 pid**，所以「打开发帖页」是两步：先 GET 编辑页拿 pid 与字段集。多一次往返。
+- **回复草稿不出现在草稿列表里**（该列表是 `type=thread`），所以回复草稿一旦站点保存，
+  客户端目前没有「列表入口」能再次打开它——只有再次进入同一帖子的回复框时，仍靠本机副本恢复。
+  这是已知缺口。
+- 草稿正文按 BBCode 原样恢复（站点 textarea 里就是 BBCode），不做 HTML 反渲染。
+- 图片附件：新帖草稿的图片以 `Filedata` 一并 POST；草稿编辑页的既有附件不在客户端恢复
+  （只恢复文字），附件区块显示为服务端原样。
+- 本机兜底上限 20 条是硬编码常量，被淘汰的兜底副本不可恢复（站点草稿不受影响）。
+- 发表/删除是不可逆操作，客户端只做了二次确认，没有额外撤销。

@@ -86,12 +86,13 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
 17. **深链只有一个入口**：外部 URL 一律经 `ui/navigation/ForumDeepLink.kt` 的
     `forumDeepLinkFrom(Uri)` 解析；Manifest 的 intent-filter 与 Activity 的 `onNewIntent`
     都只调用它，不要再写第二套 intent 解析。
-18. **会员页先判登录**：搜索 / 提醒 / 个人资料 / 收藏只对登录态可见（匿名 302 登录页）。
+18. **会员页先判登录**：搜索 / 提醒 / 个人资料 / 收藏 / 草稿只对登录态可见（匿名 302 登录页）。
     仓库抛 `ForumLoginRequiredException` 或先用 `ForumHtmlParser.isLoginRequired()` 判，
     UI 显示登录卡片 + 跳 `Route.Login`，**不要**把登录页解析成“空结果”。
-    **设置页入口只留「我的收藏」**（`Route.Favorites`）；消息提醒从首页顶栏铃铛进，
+    **设置页「论坛」分组只留「我的收藏」+「草稿」两行**（`Route.Favorites` / `Route.Drafts`—
+    两者都是登录账号自己的论坛数据，放在这里最直觉）；消息提醒从首页顶栏铃铛进，
     我的主页从账号卡片点头像/昵称进（`AccountSection` 的 `onOpenProfile`），不要再往设置页
-    的「论坛」分组加回 Notices / UserProfile 行。
+    的「论坛」分组加回 Notices / UserProfile 行。发帖页顶栏**不另设**草稿入口（避免重复）。
 19. **搜索是 POST 流程**：`search.php?mod=forum&mobile=2` 先取 `formhash`，POST
     `srchtxt+searchsubmit=yes` 得 `searchid`，翻页必须保留 `searchid` 与 `kw`；
     结果行 fid 取自每行 `forum-<fid>-1.html`（`parseThreadRow(li, fid = null)`）。
@@ -117,11 +118,27 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     `&nbsp;` 缩进，必须整块取出行并保持等宽与对齐；标题（`font[size]`）、引用、表格、附件、
     `hr`、`i.pstatus`、`div.comiis_modact` 同理各自成块。真实正文是 HTML，切勿对其跑 BBCode
     正则转换（代码里合法含 `[b]` 等字面量）。
-26. **草稿只能是本地草稿**：站点发帖表单的 `save=1` **不是**保存草稿——2026-11-27 实测
-    `save=1` + `topicsubmit=yes` 会直接发布主题，去掉 `topicsubmit` 也不会落任何草稿
-    （`home.php?mod=space&do=thread&view=me&type=draft` 等地址均为 0 条）。发帖/回复草稿一律
-    存本机（`ForumDraftRepository`，DataStore `forum_drafts`，上限 20 条，按 `savedAt` 淘汰），
-    **禁止**再向站点发送 `save=1` 冒充草稿。
+26. **草稿由站点保存（服务器草稿），本机只做离线兜底**：发帖/回复表单里的隐藏域
+    `<input type="hidden" id="postsave" name="save" value="">` 就是「保存草稿」——那个按钮只是
+    `document.getElementById('postsave').value=1` 后提交**同一个表单**。
+    - **`save=1` = 存草稿**：服务端会建一个真实的 `thread-<tid>`，但它**不进版面列表**
+      （`forum-<fid>-1.html` 里没有）、**匿名看不到**、只有**作者本人**可见，并出现在草稿列表里；
+      它的帖子页带 `<span class="top_jg bg_a f_f">草稿</span>` 徽标。
+    - **`save` 为空（或缺省）= 发表**，这才把草稿变成公开主题——**必须**放在显式二次确认后面，
+      绝不能做成「离开页面」的副作用。
+    - 草稿列表：`forum.php?mod=guide&view=my&type=thread&filter=save&fid=0&mobile=2`
+      （桌面版去掉 `mobile=2`）。行与导读/版块列表同构（`li.forumlist_li`），标题取
+      `div.mmlist_li_box h2 a`、摘要取 `div.list_body a`、版块取 `div.comiis_xznalist_bk a`、
+      时间取 `div.forumlist_li_time span`。行里**没有 pid**，要打开发帖页才拿得到。
+    - 草稿编辑页：`forum.php?mod=post&action=edit&fid=<fid>&tid=<tid>&pid=<pid>&page=1&mobile=2`。
+      删除 = `delete=1`，发表 = `save` 空，保存草稿 = `save=1`。**必须整份回放该表单的隐藏域**
+      （`formhash/posttime/delete/fid/tid/pid/page/editsubmit/subject/message/htmlon/usesig/save`），
+      只手搓最小字段集会被服务端拒绝或静默忽略。
+    - 领域/数据层：`ForumDraftService` + `ForumDraftServiceImpl`（`getDrafts` /
+      `saveNewThreadDraft` / `saveReplyDraft` / `loadDraft` / `publishDraft` / `deleteDraft` /
+      `updateDraft`），列表解析在 `ForumHtmlParser.parseDraftPage`，编辑表单在
+      `parseDraftEdit`。本机 `ForumDraftRepository`（DataStore `forum_drafts`，上限 20 条）
+      **只在站点保存失败或提前离开页面时**写入，是离线兜底，不再是主存储。
 
 ## Miuix 双风格（OS3 / OS4）
 
