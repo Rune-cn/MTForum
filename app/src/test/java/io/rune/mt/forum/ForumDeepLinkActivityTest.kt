@@ -100,6 +100,18 @@ class ForumDeepLinkActivityTest {
     }
 
     @Test
+    fun `cold start home links reach the shell route`() {
+        launch("https://bbs.binmt.cc/forum.php").let { controller ->
+            assertEquals(Route.Main, controller.get().deepLinkState.route.value)
+            controller.destroy()
+        }
+        launch("mtforum://home").let { controller ->
+            assertEquals(Route.Main, controller.get().deepLinkState.route.value)
+            controller.destroy()
+        }
+    }
+
+    @Test
     fun `recreated activity does not replay the launch intent`() {
         val controller = Robolectric
             .buildActivity(SettingsActivity::class.java, viewIntent("https://bbs.binmt.cc/thread-171354-1-1.html"))

@@ -23,7 +23,7 @@
 | 发帖 | 标题+正文（BBCode/表情/图片）、服务器草稿（站点自带草稿，见交接 §16） |
 | 私信 | 会话列表、会话气泡、收发消息 |
 | 收藏 / 关注 / 顶 | 帖子页溢出菜单：收藏、关注楼主、推荐本帖，以及复制链接、在浏览器打开、系统分享 |
-| 深链 | `thread-*.html` / `forum-*.html` / `forum.php?mod=` / `mtforum://` 直接在应用内打开 |
+| 深链 | `thread-*.html` / `forum-*.html` / `forum.php?mod=` / **`forum.php` 与 `mtforum://home` 回首页「论坛」页签** / `mtforum://` 直接在应用内打开 |
 | 发新帖 | 标题 + 正文 + 表情 + 图片附件（1MB/张）、**服务器草稿**（`save=1`；列表/编辑/发表/删除，见 `docs/REVERSE_SPEC.md` §16.1） |
 | 图片查看 | 帖子内图片点击全屏，双指缩放、拖动 |
 | 主题 | OS3 / OS4 双风格、动态取色、模糊与玻璃效果、HyperOS 风格预测式返回；主题模式用示例应用的「浅色/深色预览卡片 + 跟随系统开关」 |
@@ -58,7 +58,7 @@
 
 ```bash
 bash tools/build.sh                              # debug APK
-bash tools/build.sh :app:testStableDebugUnitTest  # 239 tests
+bash tools/build.sh :app:testStableDebugUnitTest  # 361 tests
 bash tools/build.sh :app:assembleStableRelease
 bash tools/build.sh :app:lintVitalStableRelease
 ```
@@ -68,7 +68,7 @@ bash tools/build.sh :app:lintVitalStableRelease
 ## 验证
 
 ```
-:app:testStableDebugUnitTest    239 tests, 0 failures
+:app:testStableDebugUnitTest    361 tests, 0 failures
 :app:assembleStableRelease      BUILD SUCCESSFUL  (2.3 MB)
 :app:lintVitalStableRelease     BUILD SUCCESSFUL
 ```

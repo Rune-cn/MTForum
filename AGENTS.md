@@ -89,6 +89,13 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
 17. **深链只有一个入口**：外部 URL 一律经 `ui/navigation/ForumDeepLink.kt` 的
     `forumDeepLinkFrom(Uri)` 解析；Manifest 的 intent-filter 与 Activity 的 `onNewIntent`
     都只调用它，不要再写第二套 intent 解析。
+    **首页深链也是深链**：`https://bbs.binmt.cc/forum.php`（无 `mod` 或 `mod=index`）与
+    `mtforum://home` 解析成 `Route.Main`；`AppNavContainer` 收到它时先
+    `sharedViewModel.requestMainPage(MAIN_PAGE_FORUM)` 再导航（否则只会回到上次的页签，
+    `lastMainPageIndex` 会把它还原成消息/设置）；`Navigator.navigateToDeepLink(Route.Main)` 折叠成
+    `[Main]`，**不要**压出重复的 `Main`。shell 的第一页由
+    `resolveInitialMainPageIndex(last, requested, count)` 决定，`MiuixNavWrapper` 用
+    `mainPagerState.animateToPage` 兑现请求并 `consumeMainPageRequest()` 一次性清除。
 18. **会员页先判登录**：搜索 / 提醒 / 个人资料 / 收藏 / 草稿只对登录态可见（匿名 302 登录页）。
     仓库抛 `ForumLoginRequiredException` 或先用 `ForumHtmlParser.isLoginRequired()` 判，
     UI 显示登录卡片 + 跳 `Route.Login`，**不要**把登录页解析成“空结果”。

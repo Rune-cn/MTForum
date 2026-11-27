@@ -1874,3 +1874,40 @@ render-effect 路径不可用，和前几轮一致）；按宽度算式 4×90dp 
 
 **未验证**：切换后的深色/浅色**整页**观感没有截图（控件本身与页面接线已验证）；tile 的
 squircle 圆角在 Robolectric 下退化为普通圆角，真机是超椭圆。
+
+### 21.4 首页深链（2026-11-27）
+
+之前 `https://bbs.binmt.cc/forum.php`（无 `mod`）**能进 App 但不会导航**：`ForumDeepLink` 对空 `mod`
+返回 null，App 只是停在启动时恢复的页签（`SettingsSharedState.lastMainPageIndex`，可能是消息/设置）。
+本轮把「首页」做成真正的深链目标，仍然**只有一个入口**（规则 17）：
+
+| 形态 | 解析 | 落地 |
+|---|---|---|
+| `https://bbs.binmt.cc/forum.php`（无 `mod` / `mod=` / `mod=index`） | `Route.Main` | shell + 论坛页签 |
+| `mtforum://home`（大小写不敏感，允许尾部 `/`） | `Route.Main` | shell + 论坛页签 |
+| `thread-*.html` / `forum-*.html` / `mod=viewthread|forumdisplay` / `mtforum://thread|forum` | 各自路由 | 不变 |
+| 其他 `mod`（guide/search…） | `null` | 不导航（维持旧行为） |
+
+实现分三处，都在既有机制上：
+
+1. **解析**（`ForumDeepLink.kt`）：首页形态返回 `Route.Main`；Manifest 新增 `mtforum://home`
+   filter（`https://…/forum.php` 本来就被现有 forum.php 过滤器覆盖，不需要新 filter）。
+2. **导航**（`Navigator.navigateToDeepLink`）：`Route.Main` 折叠成 `[Main]`——**不是**
+   `[Main, Main]`；已经在 shell 时是 no-op，所以返回键仍然退出 App 而不是退回被链接替换的页面。
+3. **页签选择**（`AppNavContainer` + `SettingsSharedViewModel` + `MiuixNavWrapper`）：深链到达时
+   `requestMainPage(MAIN_PAGE_FORUM)` 发一次性请求；shell 的
+   `resolveInitialMainPageIndex(last, requested, count)` 让请求优先于恢复的页签（并夹在底栏范围内），
+   `LaunchedEffect` 用 `mainPagerState.animateToPage` 兑现，随后 `consumeMainPageRequest()` 清除，
+   下次重组回落到 `lastMainPageIndex`。冷启动时 pager 若已按旧页签建立，会动画到论坛页签；
+   `selectedPage` 在动画开始时就已是 0。
+
+**测试**：`ForumDeepLinkTest` 19（新增裸 `forum.php`/`mod=index`/`mtforum://home`/大小写、
+冷启动与热启动）、`ForumDeepLinkNavigationTest` 6（新增首页链接折叠成 `[Main]`、在 shell 上 no-op）、
+`ForumDeepLinkActivityTest` 7（新增两种首页冷启动）、`ForumDeepLinkManifestTest` 3（新增
+`mtforum://home` 能被系统解析）、新 `MainShellPageTest` 5（`resolveInitialMainPageIndex` 的优先级与
+夹取、`requestMainPage/consumeMainPageRequest` 一次性语义、以及 `AppNavContainer`/`MiuixNavWrapper`
+的接线源码检查）。
+
+**未验证**：无真机，无法验证浏览器点 `https://bbs.binmt.cc/forum.php` 时系统是否把链接交给 App
+（站点没有 `assetlinks.json`，Android 12+ 可能仍走浏览器 —— HANDOVER §14.5 的老限制）；冷启动时
+从恢复页签动画到论坛页签的观感也没在设备上看过。

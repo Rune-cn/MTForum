@@ -55,4 +55,26 @@ class ForumDeepLinkNavigationTest {
         assertEquals(listOf(Route.Main, Route.ForumThread(1, "")), navigator.backStack.toList())
         assertEquals(2, navigator.backStackSize())
     }
+
+    @Test
+    fun `home deep link collapses a deep stack to the bare shell`() {
+        val navigator = navigator(Route.Main, Route.ForumList(41, ""), Route.ForumThread(7, ""))
+
+        navigator.navigateToDeepLink(Route.Main)
+
+        // The home link's destination *is* the shell: no duplicate Main is pushed, and back from
+        // here exits the app instead of returning to the pages the link replaced.
+        assertEquals(listOf(Route.Main), navigator.backStack.toList())
+        assertEquals(Route.Main, navigator.current())
+    }
+
+    @Test
+    fun `home deep link on the bare shell is a no op`() {
+        val navigator = navigator(Route.Main)
+
+        navigator.navigateToDeepLink(Route.Main)
+
+        assertEquals(listOf(Route.Main), navigator.backStack.toList())
+        assertEquals(1, navigator.backStackSize())
+    }
 }

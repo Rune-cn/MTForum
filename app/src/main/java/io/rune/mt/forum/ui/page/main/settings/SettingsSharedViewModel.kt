@@ -17,4 +17,24 @@ class SettingsSharedViewModel : ViewModel() {
             currentState.copy(lastMainPageIndex = index)
         }
     }
+
+    /**
+     * Asks the shell to show pager [index] on its next composition.
+     *
+     * Used by a home deep link: the shell may currently be on 消息/设置, and the link must land on
+     * the 论坛 tab rather than merely reopening the app root. The request is one-shot — the shell
+     * clears it after animating ([consumeMainPageRequest]).
+     */
+    fun requestMainPage(index: Int) {
+        _state.update { currentState ->
+            currentState.copy(pendingMainPageIndex = index)
+        }
+    }
+
+    /** Called by the shell once it has honoured [requestMainPage]. */
+    fun consumeMainPageRequest() {
+        _state.update { currentState ->
+            currentState.copy(pendingMainPageIndex = null)
+        }
+    }
 }

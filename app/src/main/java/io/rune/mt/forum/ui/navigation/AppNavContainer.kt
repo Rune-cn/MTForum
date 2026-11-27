@@ -67,6 +67,12 @@ fun AppNavContainer(
     LaunchedEffect(deepLinkRoute) {
         val route = deepLinkRoute ?: return@LaunchedEffect
         Timber.tag("DeepLink").i("navigate to %s", route)
+        if (route == Route.Main) {
+            // A home link targets the shell itself: collapse the back stack to it and select the
+            // 论坛 pager page, so the app lands on the home tab rather than on whatever tab was
+            // last open (the shell restores `lastMainPageIndex` on its own).
+            sharedViewModel.requestMainPage(MAIN_PAGE_FORUM)
+        }
         navigator.navigateToDeepLink(route)
         onDeepLinkConsumed()
     }
