@@ -58,6 +58,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.rune.mt.forum.R
+import io.rune.mt.forum.data.forum.network.ForumAttachmentDownloader
+import io.rune.mt.forum.data.forum.network.ForumHttpClient
 import io.rune.mt.forum.domain.forum.model.ForumPost
 import io.rune.mt.forum.ui.navigation.LocalNavigator
 import io.rune.mt.forum.ui.navigation.Route
@@ -66,6 +68,7 @@ import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopAppBar
 import io.rune.mt.forum.ui.page.miuix.widgets.rememberMiuixPageChrome
 import io.rune.mt.forum.ui.theme.AppTheme
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 import timber.log.Timber
 import top.yukonga.miuix.kmp.basic.FloatingActionButton
 import top.yukonga.miuix.kmp.basic.Icon
@@ -93,6 +96,10 @@ fun ForumThreadPage(
     enableBlur: Boolean,
     outerPadding: PaddingValues,
     viewModel: ForumViewModel = koinViewModel(),
+    // Attachment downloads must go through the authenticated stack (cookies + acw solver); a plain
+    // browser hop of the same URL 403s. Resolved here rather than inside the controller so the
+    // dependency stays explicit and the controller is testable with a stub client.
+    forumHttpClient: ForumHttpClient = koinInject(),
 ) {
     val state by viewModel.threadState.collectAsStateWithLifecycle()
     val navigator = LocalNavigator.current
@@ -108,6 +115,22 @@ fun ForumThreadPage(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var viewerUrl by remember { mutableStateOf<String?>(null) }
+    // Attachment chooser: the card reports the block, the sheet owns the download/browser choice.
+    var attachmentTarget by remember { mutableStateOf<ForumBodyBlock.Attachment?>(null) }
+    val downloadScope = rememberCoroutineScope()
+    // The downloader rides the shared authenticated client (cookies + acw solver); a plain browser
+    // hop of the same cookie-gated URL would 403 or land on the challenge page.
+    val downloader = remember { ForumAttachmentDownloader(forumHttpClient.client) }
+    val downloadState = remember(downloader) {
+        AttachmentDownloadController(
+            downloader = downloader,
+            cacheDir = attachmentCacheDir(context),
+            scope = downloadScope,
+        )
+    }
+    val attachmentDone = stringResource(R.string.forum_attach_download_done)
+    val attachmentFailed = stringResource(R.string.forum_attach_download_failed, "")
+    val attachmentShareTitle = stringResource(R.string.forum_attach_share)
     val actionMessage by viewModel.actionMessage.collectAsStateWithLifecycle()
     LaunchedEffect(actionMessage) {
         actionMessage?.let {
@@ -248,6 +271,7 @@ fun ForumThreadPage(
                                                 }
                                             },
                                             onImageClick = { viewerUrl = it },
+                                            onAttachmentClick = { attachmentTarget = it },
                                         )
                                     }
                                 }
@@ -312,6 +336,39 @@ fun ForumThreadPage(
     )
 
     ForumImageViewer(url = viewerUrl, onDismiss = { viewerUrl = null })
+
+    // Attachment chooser. Composed at the page root (like the reply composer) so it is not clipped
+    // by the list item that owns the card; `WindowBottomSheet` is a real dialog window, so the
+    // sheet is also unaffected by the `SelectionContainer` around the body.
+    val finishedFile = downloadState.completedFile()
+    LaunchedEffect(downloadState.state?.error, finishedFile) {
+        downloadState.state?.error?.let { reason ->
+            snackbarHostState.showSnackbar(attachmentFailed + reason)
+        }
+        if (finishedFile != null) {
+            snackbarHostState.showSnackbar(attachmentDone)
+        }
+    }
+    AttachmentChoiceSheet(
+        target = attachmentTarget,
+        download = downloadState.state,
+        onDismissRequest = {
+            attachmentTarget = null
+            // A finished or failed row is cleared on dismiss; a running one keeps going so the
+            // sheet can be reopened from the card without losing the transfer.
+            if (downloadState.state?.error != null || finishedFile != null) downloadState.dismiss()
+        },
+        onDownload = { attachment -> downloadState.download(attachment) },
+        onCancelDownload = { downloadState.cancel() },
+        onOpenInBrowser = { attachment ->
+            attachmentTarget = null
+            openInBrowser(context, attachment.url)
+        },
+        onShareFile = { attachment ->
+            val file = downloadState.completedFile()
+            if (file != null) shareFile(context, file, attachment.name, attachmentShareTitle)
+        },
+    )
 }
 /**
  * One floor of a thread.
@@ -330,6 +387,7 @@ internal fun ForumPostCard(
     forumName: String? = null,
     onImageClick: (String) -> Unit = {},
     onAuthorClick: (ForumPost) -> Unit = {},
+    onAttachmentClick: ((ForumBodyBlock.Attachment) -> Unit)? = null,
 ) {
     val op = post.isOp
     val level = post.authorLevel?.takeIf { it.isNotBlank() }
@@ -430,6 +488,7 @@ internal fun ForumPostCard(
                 html = post.contentHtml,
                 modifier = Modifier.padding(horizontal = 16.dp),
                 onImageClick = onImageClick,
+                onAttachmentClick = onAttachmentClick,
             )
         }
         Spacer(Modifier.height(14.dp))

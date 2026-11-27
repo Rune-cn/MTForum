@@ -241,4 +241,18 @@
     <string name="draft_restore_confirm">Restore</string>
     <string name="draft_restore_discard">Discard</string>
     <string name="draft_images_skipped_format">%1$d image(s) could not be restored and were skipped.</string>
+    <!-- Body rendering: quote truncation + attachment download choice. -->
+    <string name="forum_body_quote_truncated">... (truncated on the site)</string>
+    <string name="forum_attach_download">Download to device</string>
+    <string name="forum_attach_download_detail">Uses your forum session; no browser needed</string>
+    <string name="forum_attach_open_browser">Open in browser</string>
+    <string name="forum_attach_open_browser_detail">Needs an already-signed-in browser</string>
+    <string name="forum_attach_copied">Link copied</string>
+    <string name="forum_attach_sheet_title">Attachment</string>
+    <string name="forum_attach_downloading">Downloading…</string>
+    <string name="forum_attach_download_done">Saved to the app cache</string>
+    <string name="forum_attach_download_failed">Download failed: %1$s</string>
+    <string name="forum_attach_cancel">Cancel</string>
+    <string name="forum_attach_retry">Close</string>
+    <string name="forum_attach_share">Save / share</string>
 </resources>

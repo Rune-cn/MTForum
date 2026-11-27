@@ -241,4 +241,18 @@
     <string name="draft_restore_confirm">恢復草稿</string>
     <string name="draft_restore_discard">丟棄</string>
     <string name="draft_images_skipped_format">有 %1$d 張圖片已無法恢復，已略過。</string>
+    <!-- Body rendering: quote truncation + attachment download choice. -->
+    <string name="forum_body_quote_truncated">……（站點已截斷）</string>
+    <string name="forum_attach_download">下載到本機</string>
+    <string name="forum_attach_download_detail">使用論壇登入狀態，無需瀏覽器</string>
+    <string name="forum_attach_open_browser">在瀏覽器開啟</string>
+    <string name="forum_attach_open_browser_detail">需瀏覽器已登入論壇</string>
+    <string name="forum_attach_copied">連結已複製</string>
+    <string name="forum_attach_sheet_title">附件</string>
+    <string name="forum_attach_downloading">正在下載…</string>
+    <string name="forum_attach_download_done">已儲存到應用快取</string>
+    <string name="forum_attach_download_failed">下載失敗：%1$s</string>
+    <string name="forum_attach_cancel">取消</string>
+    <string name="forum_attach_retry">關閉</string>
+    <string name="forum_attach_share">儲存 / 分享</string>
 </resources>
