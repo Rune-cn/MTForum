@@ -118,20 +118,6 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     `&nbsp;` 缩进，必须整块取出行并保持等宽与对齐；标题（`font[size]`）、引用、表格、附件、
     `hr`、`i.pstatus`、`div.comiis_modact` 同理各自成块。真实正文是 HTML，切勿对其跑 BBCode
     正则转换（代码里合法含 `[b]` 等字面量）。
-<<<<<<< HEAD
-26. **草稿只能是本地草稿**：站点发帖表单的 `save=1` **不是**保存草稿——2026-11-27 实测
-    `save=1` + `topicsubmit=yes` 会直接发布主题，去掉 `topicsubmit` 也不会落任何草稿
-    （`home.php?mod=space&do=thread&view=me&type=draft` 等地址均为 0 条）。发帖/回复草稿一律
-    存本机（`ForumDraftRepository`，DataStore `forum_drafts`，上限 20 条，按 `savedAt` 淘汰），
-    **禁止**再向站点发送 `save=1` 冒充草稿。
-27. **签到只有一条 GET，结果在 CDATA 里**：`plugin.php?id=k_misign:sign&operation=qiandao&format=text&formhash=…`
-    返回 `<?xml version="1.0"?>\r\n<root><![CDATA[已签到]]></root>`；`formhash` 只能从签到页
-    `k_misign-sign.html` 的**退出链接**取（`parseFormhash` 的 `formhash=` 兜底）。
-    `已签到` 是「今天已签」，**不是错误**；其余非错误文案按成功原样展示（服务器文字即结果），
-    权限/登录/限流文案必须判失败。接口不返回数字——签到后的排名/连续/累计只能**重新取页**，
-    不要自己 +1。游客按规则 18 走登录卡片。解析在 `ForumHtmlParser.parseSignInState` /
-    `parseSignInOutcome`，CDATA 抽取只此一处（见 REVERSE_SPEC §22）。
-=======
 26. **草稿由站点保存（服务器草稿），本机只做离线兜底**：发帖/回复表单里的隐藏域
     `<input type="hidden" id="postsave" name="save" value="">` 就是「保存草稿」——那个按钮只是
     `document.getElementById('postsave').value=1` 后提交**同一个表单**。
@@ -153,7 +139,13 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
       `updateDraft`），列表解析在 `ForumHtmlParser.parseDraftPage`，编辑表单在
       `parseDraftEdit`。本机 `ForumDraftRepository`（DataStore `forum_drafts`，上限 20 条）
       **只在站点保存失败或提前离开页面时**写入，是离线兜底，不再是主存储。
->>>>>>> feat/draft2
+27. **签到只有一条 GET，结果在 CDATA 里**：`plugin.php?id=k_misign:sign&operation=qiandao&format=text&formhash=…`
+    返回 `<?xml version="1.0"?>\r\n<root><![CDATA[已签到]]></root>`；`formhash` 只能从签到页
+    `k_misign-sign.html` 的**退出链接**取（`parseFormhash` 的 `formhash=` 兜底）。
+    `已签到` 是「今天已签」，**不是错误**；其余非错误文案按成功原样展示（服务器文字即结果），
+    权限/登录/限流文案必须判失败。接口不返回数字——签到后的排名/连续/累计只能**重新取页**，
+    不要自己 +1。游客按规则 18 走登录卡片。解析在 `ForumHtmlParser.parseSignInState` /
+    `parseSignInOutcome`，CDATA 抽取只此一处（见 REVERSE_SPEC §22）。
 
 ## Miuix 双风格（OS3 / OS4）
 

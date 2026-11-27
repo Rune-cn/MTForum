@@ -32,11 +32,8 @@ val viewModelModule = module {
     viewModelOf(::ForumSearchViewModel)
     viewModelOf(::ForumProfileViewModel)
     viewModelOf(::ForumFavoritesViewModel)
-<<<<<<< HEAD
     viewModelOf(::ForumSignInViewModel)
-=======
     viewModelOf(::ForumDraftsViewModel)
->>>>>>> feat/draft2
     viewModelOf(::NewThreadViewModel)
     viewModelOf(::LoginViewModel)
     viewModelOf(::AccountViewModel)

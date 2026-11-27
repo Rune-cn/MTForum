@@ -547,7 +547,6 @@ object ForumHtmlParser {
         return io.rune.mt.forum.domain.forum.model.ForumNewThreadForm(formhash, posttime, captcha)
     }
 
-<<<<<<< HEAD
     // ---- Daily sign-in (每日签到) -------------------------------------------
 
     /**
@@ -633,7 +632,7 @@ object ForumHtmlParser {
      */
     fun parseCdataMessage(raw: String): String? =
         CDATA.find(raw)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotBlank() }
-=======
+
     // ---- Drafts (草稿) -------------------------------------------------------
 
     /**
@@ -773,7 +772,6 @@ object ForumHtmlParser {
             .removePrefix("/")
         return if (path.contains("mobile=2")) path else "$path&mobile=2"
     }
->>>>>>> feat/draft2
 
     // ---- Action-result helpers ---------------------------------------------
 
@@ -924,7 +922,6 @@ object ForumHtmlParser {
     /** Label the site prints on the first 主题分类 tab, which is the unfiltered listing. */
     private const val CATEGORY_ALL_LABEL = "全部"
 
-<<<<<<< HEAD
     // ---- 每日签到 (k_misign) ------------------------------------------------
 
     /** `签到等级 Lv.8` → `Lv.8`; the page sometimes drops the space. */
@@ -944,11 +941,12 @@ object ForumHtmlParser {
 
     /** The XML/CDATA wrapper every plugin ajax endpoint answers with. */
     private val CDATA = Regex("""<!\[CDATA\[(.*?)\]\]>""", setOf(RegexOption.DOT_MATCHES_ALL))
-=======
+
+    // ---- Drafts -------------------------------------------------------------
+
     /** Edit-form action the mobile template prints; used when the form element itself is missing. */
     private const val EDIT_FALLBACK_ACTION =
         "forum.php?mod=post&action=edit&extra=&editsubmit=yes&mobile=2"
 
     private val DRAFT_WHITESPACE = Regex("""\s+""")
->>>>>>> feat/draft2
 }
