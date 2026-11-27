@@ -261,7 +261,7 @@
     <string name="draft_publish_confirm">Publish</string>
     <string name="drafts_title">Drafts</string>
     <string name="drafts_entry_desc">Drafts the forum keeps for you</string>
-    <string name="drafts_empty">No drafts yet. Tapping 保存草稿 in the composer saves one on the forum.</string>
+    <string name="drafts_empty">The draft box on the forum is empty. 保存草稿 in the composer stores a draft there.</string>
     <string name="drafts_delete_title">Delete this draft?</string>
     <string name="drafts_delete_message_format">“%1$s” will be removed from the forum. This cannot be undone.</string>
     <string name="drafts_delete_action">Delete</string>
