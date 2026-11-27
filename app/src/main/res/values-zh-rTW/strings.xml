@@ -271,6 +271,7 @@
     <string name="forum_body_quote_truncated">……（站點已截斷）</string>
     <string name="forum_attach_download">下載到本機</string>
     <string name="forum_attach_download_detail">使用論壇登入狀態，無需瀏覽器</string>
+    <string name="forum_attach_cost_hint">下載將扣除 %1$d 金幣</string>
     <string name="forum_attach_open_browser">在瀏覽器開啟</string>
     <string name="forum_attach_open_browser_detail">需瀏覽器已登入論壇</string>
     <string name="forum_attach_copied">連結已複製</string>
