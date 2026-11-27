@@ -3,7 +3,9 @@ package io.rune.mt.forum.ui.page.forum
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -57,14 +59,18 @@ internal object ForumBodyParser {
         "audio", "sub", "sup", "small", "big", "center", "dl", "dt", "dd",
     )
 
-    fun parse(html: String, linkColor: Color = Color(0xFF3482FF)): List<ForumBodyBlock> {
+    fun parse(
+        html: String,
+        linkColor: Color = Color(0xFF3482FF),
+        linkHandler: ((String) -> Unit)? = null,
+    ): List<ForumBodyBlock> {
         if (html.isBlank()) return emptyList()
         val document = runCatching { Jsoup.parseBodyFragment(prepare(html)) }
             .onFailure { e -> Timber.tag(TAG).w(e, "post html unparsable") }
             .getOrNull()
         if (document == null) return listOf(ForumBodyBlock.Paragraph(AnnotatedString(html.trim())))
 
-        val walker = Walker(linkColor)
+        val walker = Walker(linkColor, linkHandler)
         document.body().childNodes().forEach(walker::walkRoot)
         return walker.finish()
     }
@@ -74,9 +80,23 @@ internal object ForumBodyParser {
      *
      * A class (not a local closure) because the recursive visitor needs to reach the paragraph
      * and emoji buffers that the flush points also touch; Kotlin local functions cannot forward
-     * reference each other.
+     * reference each other. A second instance collects the *nested* blocks of a quote or of an
+     * `[align]` wrapper, so those constructs keep real structure instead of degrading to prose.
      */
-    private class Walker(private val linkColor: Color) {
+    private class Walker(
+        private val linkColor: Color,
+        /**
+         * Host handler for an inline `<a href>`.
+         *
+         * When null the link annotation carries no listener, which makes Compose fall back to its
+         * own `UriHandler` — the same ACTION_VIEW path the rest of the app uses for site URLs, so
+         * the site's deep-link intent filters still get a chance. A caller that wants its own
+         * routing (e.g. an in-app browser) passes a handler here instead of getting colour only.
+         */
+        private val linkHandler: ((String) -> Unit)? = null,
+        /** Elements whose subtree must be dropped (quote author/byline labels). */
+        private val skip: (Element) -> Boolean = { false },
+    ) {
 
         private val blocks = mutableListOf<ForumBodyBlock>()
         private val emoji = mutableListOf<String>()
@@ -84,6 +104,11 @@ internal object ForumBodyParser {
         private var paragraphAlign: TextAlign? = null
 
         fun walkRoot(node: Node) = walkBlock(node, style = null)
+
+        /** Walks [nodes] through this walker, so the caller can harvest the finished blocks. */
+        fun walkAll(nodes: List<Node>) {
+            nodes.forEach { walkBlock(it, style = null) }
+        }
 
         private fun flush() {
             if (emoji.isNotEmpty()) {
@@ -109,6 +134,8 @@ internal object ForumBodyParser {
                 is Element -> {
                     val tag = node.tagName().lowercase()
                     when {
+                        skip(node) -> Unit
+
                         tag in SKIP_TAGS -> Unit
 
                         tag == "br" -> text.append('\n')
@@ -140,16 +167,27 @@ internal object ForumBodyParser {
 
                         tag == "pre" -> emitPreCode(node)
 
+                        // An inline `<a>` inside a paragraph is the common case (every reference
+                        // link in a post). It must be routed through the link-aware inline walk
+                        // here too — otherwise only links inside quotes/list items/cells became
+                        // tappable, and the paragraph links stayed plain coloured text.
+                        tag == "a" -> {
+                            val href = ForumUrls.absolute(node.attr("href"))
+                            val start = text.length
+                            val next = inlineStyle(tag, node) ?: style
+                            node.childNodes().forEach { walkBlock(it, next) }
+                            if (href != null && text.length > start) {
+                                text.addLink(linkAnnotation(href), start, text.length)
+                            }
+                        }
+
                         isHeadingFont(node) -> emitHeading(node)
 
-                        (tag == "div" || tag == "p") && textAlignOf(node) != null -> {
-                            flush()
-                            paragraphAlign = textAlignOf(node)
-                            node.childNodes().forEach { walkBlock(it, style) }
-                            flush()
-                            paragraphAlign = null
-                            text.append('\n')
-                        }
+                        // `[align=center]` wraps a whole *block*, and the wrapper may hold a list,
+                        // a table or a run of paragraphs. Emitting an aligned group keeps that
+                        // structure instead of only recolouring each paragraph's own textAlign.
+                        (tag == "div" || tag == "p" || tag == "section") && blockAlignOf(node) != null ->
+                            emitAligned(node)
 
                         tag in BLOCK_TAGS -> {
                             flush()
@@ -212,18 +250,64 @@ internal object ForumBodyParser {
             }
         }
 
+        /**
+         * A quote keeps its *structure*: the Comiis template puts the whole quoted body inside
+         * `blockquote`, and that body can itself hold a list, a table, a rule or a code panel.
+         *
+         * The author byline (`font[color=#999999]…发表于…`) and the leading 「回复」 label are
+         * dropped from the body because the renderer shows the author as its own header. Discuz
+         * truncates long quotes server-side and appends a literal ` ...`; that marker is stripped
+         * and surfaced as [ForumBodyBlock.Quote.truncated] so the renderer can draw a real ellipsis
+         * instead of the raw ASCII dots.
+         */
         private fun emitQuote(quote: Element) {
             flush()
             val authorEl = quote.select("font").firstOrNull { it.text().contains("发表于") }
             val author = authorEl?.text()?.trim()?.takeIf { it.isNotBlank() }
-            val builder = AnnotatedString.Builder()
-            quote.childNodes().forEach { child ->
-                walkInline(child, builder, null) { el ->
-                    el === authorEl || el.text().trim() == "回复"
+            val replyLabel = quote.select("font[size=2]").firstOrNull { it.text().trim() == "回复" }
+
+            val inner = Walker(linkColor, linkHandler, skip = { el -> el === authorEl || el === replyLabel })
+            inner.walkAll(quote.childNodes())
+            val innerBlocks = inner.finish()
+
+            // The byline is gone, so the first paragraph is the start of the quoted body: it stays
+            // as the quote's own `text` (that is what the inset rule renders) and every later
+            // block — a list, table, picture, nested quote — rides along as a child.
+            val first = innerBlocks.firstOrNull()
+            val leading = (first as? ForumBodyBlock.Paragraph)?.text ?: AnnotatedString("")
+            var children: List<ForumBodyBlock> =
+                if (first is ForumBodyBlock.Paragraph) innerBlocks.drop(1) else innerBlocks
+
+            var truncated = false
+            val (body, leadingCut) = stripTruncationEllipsis(leading)
+            if (leadingCut) truncated = true
+
+            // Discuz truncates the *end* of a long quote; whichever block ends the body holds the
+            // marker. Handling only the leading paragraph would leave `...` glued to a list row or
+            // a trailing paragraph of a structured quote.
+            val lastIndex = children.indexOfLast { it is ForumBodyBlock.Paragraph }
+            if (lastIndex >= 0) {
+                val last = children[lastIndex] as ForumBodyBlock.Paragraph
+                val (trimmed, cut) = stripTruncationEllipsis(last.text)
+                if (cut) {
+                    truncated = true
+                    children = children.toMutableList().also { list ->
+                        list[lastIndex] = last.copy(text = trimmed)
+                    }
                 }
             }
-            val value = normalize(builder.toAnnotatedString())
-            blocks += ForumBodyBlock.Quote(value, author)
+            if (!truncated) {
+                // A quote whose whole body is one text run has no children; its own `body` already
+                // went through stripTruncationEllipsis above, so `leadingCut` covered it.
+                truncated = leadingCut
+            }
+
+            blocks += ForumBodyBlock.Quote(
+                text = body,
+                author = author,
+                truncated = truncated,
+                children = children,
+            )
         }
 
         private fun emitList(list: Element, ordered: Boolean, depth: Int) {
@@ -233,6 +317,13 @@ internal object ForumBodyParser {
             if (items.isNotEmpty()) blocks += ForumBodyBlock.BulletList(items)
         }
 
+        /**
+         * Collects `li` rows recursively, so nesting is not limited to two levels.
+         *
+         * A `li` may put its own text *after* the nested list as well as before it; both runs are
+         * appended to the same row. A `li` that carries nothing but a nested list does not get a
+         * bullet of its own — the site renders it as a pure container.
+         */
         private fun collectListItems(
             list: Element,
             ordered: Boolean,
@@ -254,8 +345,10 @@ internal object ForumBodyParser {
                     }
                 }
                 val value = normalize(builder.toAnnotatedString())
-                val marker = if (ordered) "$index." else "•"
-                out.add(ForumBodyBlock.ListItem(marker = marker, text = value, depth = depth))
+                if (value.isNotBlank() || nested.isEmpty()) {
+                    val marker = if (ordered) "$index." else "•"
+                    out.add(ForumBodyBlock.ListItem(marker = marker, text = value, depth = depth))
+                }
                 nested.forEach { nestedList ->
                     collectListItems(
                         nestedList,
@@ -267,32 +360,85 @@ internal object ForumBodyParser {
             }
         }
 
+        /**
+         * `table/tr/th|td` with header semantics and merge spans.
+         *
+         * Discuz's `[table]` has no header row concept, but the site's authors fake one: the first
+         * row is written as bold-only cells (`<td><div align="center"><strong>标题</strong></div></td>`
+         * in `rich_156696.html`). That row is marked as a header so it is rendered like one, and a
+         * real `<th>`/`<thead>` (other template variants) is honoured as well. `colspan`/`rowspan`
+         * are carried as a weight so a merged cell keeps its width and the remaining cells do not
+         * shift; no cell text is ever dropped.
+         */
         private fun emitTable(table: Element) {
             flush()
-            val rows = table.select("tr").mapNotNull { tr ->
-                val cells = tr.children()
+            val rowElements = table.select("tr")
+            val headerRows = rowElements.count { row ->
+                row.parents().any { it.tagName().equals("thead", ignoreCase = true) }
+            }
+            val rows = rowElements.mapIndexed { rowIndex, tr ->
+                tr.children()
                     .filter { it.tagName().lowercase() == "td" || it.tagName().lowercase() == "th" }
                     .map { cell ->
                         val builder = AnnotatedString.Builder()
                         cell.childNodes().forEach { walkInline(it, builder, null) }
-                        normalize(builder.toAnnotatedString())
+                        val value = normalize(builder.toAnnotatedString())
+                        ForumBodyBlock.TableCell(
+                            text = value,
+                            header = cell.tagName().equals("th", ignoreCase = true),
+                            align = blockAlignOf(cell) ?: blockAlignOf(cell.selectFirst("div[align]") ?: cell),
+                            span = cell.attr("colspan").trim().toIntOrNull()?.coerceIn(1, 8) ?: 1,
+                        )
                     }
-                cells.takeIf { it.isNotEmpty() }
+                    .takeIf { it.isNotEmpty() }
+            }.filterNotNull()
+
+            if (rows.isEmpty()) return
+
+            // A bold-only first row is the site's header idiom. Requiring *every* cell to be fully
+            // bold keeps a genuinely emphasised data row from being promoted by accident.
+            val alreadyHeader = headerRows > 0 || rows.first().any { it.header }
+            val boldOnlyFirstRow = rows.first().all { cell ->
+                cell.text.isNotBlank() && isFullyBold(cell.text)
             }
-            if (rows.isNotEmpty()) blocks += ForumBodyBlock.Table(rows)
+            val finalRows = if (!alreadyHeader && boldOnlyFirstRow) {
+                listOf(rows.first().map { it.copy(header = true) }) + rows.drop(1)
+            } else {
+                rows
+            }
+            blocks += ForumBodyBlock.Table(finalRows)
         }
 
         private fun emitAttachment(attach: Element) {
             flush()
-            val link = attach.selectFirst("a")
+            val link = attach.selectFirst("a[href]")
             val url = ForumUrls.absolute(link?.attr("href"))
             val name = attach.selectFirst("span.f_ok")?.text()?.trim()?.takeIf { it.isNotBlank() }
                 ?: link?.selectFirst("p.attach_tit")?.text()?.trim()?.substringBefore("上传")?.trim()
                     ?.takeIf { it.isNotBlank() }
                 ?: "附件"
             val caption = attach.selectFirst("p.attach_size")?.text()?.trim()?.takeIf { it.isNotBlank() }
+
+            // The card carries a *file-type* icon (`static/image/filetype/`) and, for image
+            // attachments, sometimes a real preview thumbnail. Conflating the two turned the icon
+            // into a giant picture block in earlier builds, so they are kept apart here.
+            val images = attach.select("img")
+            val iconUrl = images.firstOrNull { imageUrl(it)?.contains(FILETYPE_ICON_PATH) == true }
+                ?.let { imageUrl(it) }
+            val previewUrl = images.firstOrNull {
+                val resolved = imageUrl(it) ?: return@firstOrNull false
+                !resolved.contains(FILETYPE_ICON_PATH) && !isSmileySource(resolved)
+            }?.let { imageUrl(it) }
+
             if (url != null) {
-                blocks += ForumBodyBlock.Attachment(name = name, caption = caption, url = url)
+                blocks += ForumBodyBlock.Attachment(
+                    name = name,
+                    caption = caption,
+                    url = url,
+                    iconUrl = iconUrl,
+                    previewUrl = previewUrl,
+                    isImage = previewUrl != null || name.hasImageExtension(),
+                )
             } else {
                 blocks += ForumBodyBlock.Paragraph(AnnotatedString(name))
             }
@@ -310,6 +456,23 @@ internal object ForumBodyParser {
             if (value.isNotBlank()) blocks += ForumBodyBlock.EditNote(value)
         }
 
+        /**
+         * `[align=…]` as a **block-level** container: the wrapper's children are collected into
+         * their own block list and the whole group carries the alignment, so a centred list, table
+         * or picture is centred as a unit instead of losing the wrapper entirely.
+         */
+        private fun emitAligned(wrapper: Element) {
+            flush()
+            val align = blockAlignOf(wrapper) ?: return
+            val inner = Walker(linkColor)
+            inner.walkAll(wrapper.childNodes())
+            val innerBlocks = inner.finish().filterNot { it.isBlankParagraph() }
+            if (innerBlocks.isNotEmpty()) {
+                blocks += ForumBodyBlock.Aligned(align, innerBlocks)
+            }
+            text.append('\n')
+        }
+
         // ---- Inline walk (quotes, list items, table cells, headings) ----------
 
         private fun handleImage(node: Element) {
@@ -325,6 +488,10 @@ internal object ForumBodyParser {
         /**
          * Walks inline content into [out]. Block boundaries become line breaks so a quote or a
          * list item that wraps a table/list still degrades to readable text rows.
+         *
+         * `<a href>` becomes a [LinkAnnotation.Url] over its text run, which is what makes links
+         * tappable in the rendered paragraph; a non-navigable href (`javascript:`, `file:`, …)
+         * stays coloured text only.
          */
         private fun walkInline(
             node: Node,
@@ -344,6 +511,15 @@ internal object ForumBodyParser {
                         tag == "img" -> {
                             val alt = node.attr("alt")
                             if (alt.isNotBlank()) out.append(alt)
+                        }
+                        tag == "a" -> {
+                            val href = ForumUrls.absolute(node.attr("href"))
+                            val start = out.length
+                            val next = inlineStyle(tag, node) ?: style
+                            node.childNodes().forEach { walkInline(it, out, next, skip) }
+                            if (href != null && out.length > start) {
+                                out.addLink(linkAnnotation(href), start, out.length)
+                            }
                         }
                         tag in BLOCK_TAGS -> {
                             out.append('\n')
@@ -398,6 +574,21 @@ internal object ForumBodyParser {
             "font" -> parseHexColor(element.attr("color"))?.let { SpanStyle(color = it) }
             else -> null
         }
+
+        /** Link annotation carrying the destination; the renderer binds the click handler. */
+        private fun linkAnnotation(url: String): LinkAnnotation.Url = LinkAnnotation.Url(
+            url = url,
+            styles = TextLinkStyles(
+                style = SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline),
+            ),
+            linkInteractionListener = linkHandler?.let { handler ->
+                object : androidx.compose.ui.text.LinkInteractionListener {
+                    override fun onClick(link: LinkAnnotation) {
+                        (link as? LinkAnnotation.Url)?.url?.let(handler)
+                    }
+                }
+            },
+        )
     }
 
     /** Appends a node's text exactly as written, turning `<br>` into a newline (code blocks). */
@@ -459,15 +650,70 @@ internal object ForumBodyParser {
         return size in HEADING_SIZES
     }
 
-    private fun textAlignOf(element: Element): TextAlign? =
+    /** `<div align>`, `<p align>` and `<center>`-style alignment as a block-level value. */
+    private fun blockAlignOf(element: Element): ForumBodyBlock.BlockAlign? =
         when (element.attr("align").trim().lowercase()) {
-            "center" -> TextAlign.Center
-            "right" -> TextAlign.End
-            "left" -> TextAlign.Start
+            "center" -> ForumBodyBlock.BlockAlign.CENTER
+            "right" -> ForumBodyBlock.BlockAlign.END
+            "left" -> ForumBodyBlock.BlockAlign.START
             else -> null
         }
 
-    /** Collapses template whitespace while keeping deliberate line breaks. */
+    private fun textAlignOf(align: ForumBodyBlock.BlockAlign?): TextAlign? = when (align) {
+        ForumBodyBlock.BlockAlign.CENTER -> TextAlign.Center
+        ForumBodyBlock.BlockAlign.END -> TextAlign.End
+        ForumBodyBlock.BlockAlign.START -> TextAlign.Start
+        null -> null
+    }
+
+    /**
+     * Strips Discuz's server-side quote truncation marker.
+     *
+     * The template cuts a long quoted body and appends a literal ` ...` (see the quote in
+     * `sample_bbcode_thread.html`: 「正在迁移v3接口并继 ...」). Keeping those ASCII dots makes the
+     * quote look like the author typed them, so they are removed and reported separately.
+     */
+    private fun stripTruncationEllipsis(text: AnnotatedString): Pair<AnnotatedString, Boolean> {
+        val raw = text.text
+        val match = TRUNCATION_SUFFIX.find(raw) ?: return text to false
+        val cut = raw.substring(0, match.range.first).trimEnd()
+        if (cut.isEmpty()) return text to false
+        val rebuilt = buildAnnotatedString {
+            append(cut)
+            text.spanStyles.forEach { span ->
+                val end = span.end.coerceAtMost(cut.length)
+                if (span.start < end) addStyle(span.item, span.start, end)
+            }
+            text.getLinkAnnotations(0, text.length).forEach { link ->
+                val end = link.end.coerceAtMost(cut.length)
+                if (link.start >= end) return@forEach
+                when (val annotation = link.item) {
+                    is LinkAnnotation.Url -> addLink(annotation, link.start, end)
+                    is LinkAnnotation.Clickable -> addLink(annotation, link.start, end)
+                }
+            }
+        }
+        return rebuilt to true
+    }
+
+    /** `…  ...` at the very end, which is how the template marks a truncated quote. */
+    private val TRUNCATION_SUFFIX = Regex("""\s+(\.{3,}|…+)\s*$""")
+
+    /** True when the whole [text] is one bold run — the site's header-row idiom. */
+    private fun isFullyBold(text: AnnotatedString): Boolean {
+        val spans = text.spanStyles.filter { it.end - it.start > 0 }
+        return spans.any { it.item.fontWeight == FontWeight.Bold && it.start == 0 && it.end >= text.length } &&
+            spans.all { it.item.fontWeight == FontWeight.Bold }
+    }
+
+    /**
+     * Collapses template whitespace while keeping deliberate line breaks.
+     *
+     * Only whitespace is rewritten, so span styles and **link annotations** are remapped rather
+     * than recomputed. Dropping the annotations here would silently undo the tappable-link fix:
+     * every real body paragraph goes through this function, and a link whose run survived a
+     * collapse would otherwise lose its `LinkAnnotation` (the text stayed blue, taps did nothing).
+     */
     private fun normalize(value: AnnotatedString): AnnotatedString {
         val raw = value.text
         val collapsed = raw
@@ -477,8 +723,8 @@ internal object ForumBodyParser {
             .trim()
         if (collapsed == raw) return value
 
-        // Only whitespace changed, so spans are clamped rather than recomputed. `leadingTrim`
-        // is how much was cut from the front; every span shifts by it.
+        // `leadingTrim` is how much was cut from the front; every range shifts by it, and both
+        // ends are clamped to the collapsed text.
         val leadingTrim = raw.length - raw.trimStart().length
         return buildAnnotatedString {
             append(collapsed)
@@ -486,6 +732,18 @@ internal object ForumBodyParser {
                 val start = (span.start - leadingTrim).coerceAtLeast(0)
                 val end = (span.end - leadingTrim).coerceAtMost(collapsed.length)
                 if (start < end) addStyle(span.item, start, end)
+            }
+            value.getLinkAnnotations(0, raw.length).forEach { link ->
+                val start = (link.start - leadingTrim).coerceAtLeast(0)
+                val end = (link.end - leadingTrim).coerceAtMost(collapsed.length)
+                // ddLink is overloaded per concrete annotation kind, and the range item is the
+                // common supertype, so each kind is re-added explicitly.
+                if (start < end) {
+                    when (val annotation = link.item) {
+                        is LinkAnnotation.Url -> addLink(annotation, start, end)
+                        is LinkAnnotation.Clickable -> addLink(annotation, start, end)
+                    }
+                }
             }
         }
     }
@@ -506,7 +764,14 @@ internal object ForumBodyParser {
 
     private fun looksLikeHtml(source: String): Boolean {
         if (!source.contains('<')) return false
-        return HTML_TAG.findAll(source).any { match ->
+        // A `[code]` body is *displayed* text, not markup: a draft whose only HTML-looking token
+        // sits inside a code panel is still BBCode. Without this, `[code]<div>x</div>[/code]`
+        // took the HTML branch and rendered the code as a real element while leaving `[code]`
+        // itself on screen (proven by the code panels in `rich_166223.html`, whose lines carry
+        // literal `<font …>` / `[b]` fragments).
+        val withoutCode = CODE_BLOCK.replace(source, "")
+        if (!withoutCode.contains('<')) return false
+        return HTML_TAG.findAll(withoutCode).any { match ->
             match.groupValues[1].lowercase() in HTML_TAGS
         }
     }
@@ -612,9 +877,13 @@ internal object ForumBodyParser {
         Regex("""\[size=([1-7])]""", RegexOption.IGNORE_CASE) to "<font size=\"$1\">",
         Regex("""\[/size]""", RegexOption.IGNORE_CASE) to "</font>",
 
+        // `[align=…]` becomes a real block-level wrapper, not a stripped marker.
+        Regex("""\[align=(left|center|right)]""", RegexOption.IGNORE_CASE) to "<div align=\"$1\">",
+        Regex("""\[/align]""", RegexOption.IGNORE_CASE) to "</div>",
+
         // Wrappers with no visual equivalent: drop the markers, keep the text.
-        Regex("""\[(?:font=[^]]*|backcolor=[^]]*|align=[^]]*|indent|float(?:=[^]]*)?|p|md)]""", RegexOption.IGNORE_CASE) to "",
-        Regex("""\[/(?:font|backcolor|align|indent|float|p|md)]""", RegexOption.IGNORE_CASE) to "",
+        Regex("""\[(?:font=[^]]*|backcolor=[^]]*|indent|float(?:=[^]]*)?|p|md)]""", RegexOption.IGNORE_CASE) to "",
+        Regex("""\[/(?:font|backcolor|indent|float|p|md)]""", RegexOption.IGNORE_CASE) to "",
 
         // Id-only markers with nothing renderable behind them.
         Regex("""\[(?:postbg|groupid|rate|player|autolink|music)(?:=[^]]*)?]""", RegexOption.IGNORE_CASE) to "",
@@ -676,8 +945,20 @@ internal object ForumBodyParser {
             element.attr("file").contains(SMILEY_PATH) ||
             element.attr("comiis_loadimages").contains(SMILEY_PATH)
 
+    private fun isSmileySource(url: String): Boolean = url.contains(SMILEY_PATH)
+
     /** Transparent stubs the template uses in `src` while the real file sits in a lazy attribute. */
     private val PLACEHOLDER_SOURCES = listOf("none.png", "imageloading.gif", "about:blank")
+
+    /** Discuz's file-type badge path — an icon, never a picture of the attachment. */
+    private const val FILETYPE_ICON_PATH = "static/image/filetype"
+
+    private val IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "heif")
+
+    private fun String.hasImageExtension(): Boolean {
+        val ext = substringAfterLast('.', "").lowercase()
+        return ext.isNotEmpty() && ext in IMAGE_EXTENSIONS
+    }
 
     /**
      * Parses the `#RRGGBB` / `#RGB` / `rgb(…)` colour syntax Discuz emits.
@@ -712,3 +993,6 @@ internal object ForumBodyParser {
         }
     }
 }
+
+/** True for a paragraph that carries no text (dropped from aligned groups). */
+private fun ForumBodyBlock.isBlankParagraph(): Boolean = this is ForumBodyBlock.Paragraph && text.isBlank()

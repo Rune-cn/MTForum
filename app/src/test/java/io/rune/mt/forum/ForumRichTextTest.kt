@@ -208,14 +208,98 @@ class ForumRichTextTest {
     @Test
     fun `bbcode size align and table markers are stripped`() {
         val blocks = ForumBodyParser.parse("[align=center][size=4]标题[/size][/align][table][tr][td]单元格[/td][/tr][/table]")
-        val heading = blocks.filterIsInstance<ForumBodyBlock.Heading>().joinToString("|") { it.text.text }
-        val tableText = blocks.filterIsInstance<ForumBodyBlock.Table>()
-            .flatMap { it.rows }.flatten().joinToString("|") { it.text }
-        val all = heading + "|" + tableText
+        // `[align]` is a block container now, so the heading it wraps is a *child* of the
+        // aligned group rather than a sibling; collecting only top-level blocks would miss it.
+        val all = recursiveText(blocks)
         assertTrue("text must survive, got: $all", all.contains("标题") && all.contains("单元格"))
         assertFalse(
             "markers must not leak, got: $all",
             all.contains("[size=") || all.contains("[td]") || all.contains("[align="),
+        )
+        assertTrue(
+            "the align wrapper must become a real block group, got: $blocks",
+            blocks.any { it is ForumBodyBlock.Aligned },
+        )
+    }
+    /** Flattens every text run, descending into `[align]` groups and nested quote blocks. */
+    private fun recursiveText(blocks: List<ForumBodyBlock>): String = blocks.joinToString("|") { block ->
+        when (block) {
+            is ForumBodyBlock.Aligned -> recursiveText(block.blocks)
+            is ForumBodyBlock.Quote -> block.text.text + "|" + recursiveText(block.children)
+            is ForumBodyBlock.Paragraph -> block.text.text
+            is ForumBodyBlock.Heading -> block.text.text
+            is ForumBodyBlock.Table -> block.rows.flatten().joinToString("|") { it.text.text }
+            is ForumBodyBlock.BulletList -> block.items.joinToString("|") { it.text.text }
+            is ForumBodyBlock.CodeBlock -> block.text
+            is ForumBodyBlock.Attachment -> block.name
+            else -> ""
+        }
+    }
+    /**
+     * Inline `<a href>` must be **tappable**, not merely coloured.
+     *
+     * Rendering a link as a SpanStyle only produced blue underlined text; nothing happened on tap,
+     * which made every reference link in the fixture threads dead. The parser now attaches a
+     * [androidx.compose.ui.text.LinkAnnotation.Url] (optionally with the host's own handler), so
+     * this pins both halves: the annotation exists, and its destination is the normalised URL.
+     */
+    @Test
+    fun `inline links carry a link annotation for tapping`() {
+        val html = """<div>见 <a href="https://bbs.binmt.cc/thread-161119-1-1.html">论坛教程</a> 一节</div>"""
+        val paragraph = ForumBodyParser.parse(html, linkColor = Color(0xFF0000FF))
+            .filterIsInstance<ForumBodyBlock.Paragraph>()
+            .first()
+        val links = paragraph.text.getLinkAnnotations(0, paragraph.text.length)
+        assertEquals("expected exactly one link annotation, got $links", 1, links.size)
+        val destination = (links.first().item as? androidx.compose.ui.text.LinkAnnotation.Url)?.url
+        assertEquals("https://bbs.binmt.cc/thread-161119-1-1.html", destination)
+        // The styled run must still be coloured+underlined, so the visual cue does not regress.
+        assertTrue(
+            "the link run must stay coloured and underlined, got ${paragraph.text.spanStyles}",
+            paragraph.text.spanStyles.any {
+                it.item.color == Color(0xFF0000FF) &&
+                    it.item.textDecoration == TextDecoration.Underline
+            },
+        )
+    }
+
+    @Test
+    fun `non-navigable hrefs are not turned into links`() {
+        // The template uses `javascript:;` for image buttons; those must not become tappable URLs.
+        val paragraph = ForumBodyParser.parse("""<div><a href="javascript:;">按钮</a></div>""")
+            .filterIsInstance<ForumBodyBlock.Paragraph>()
+            .first()
+        assertTrue(
+            "a javascript: href must not produce a link annotation",
+            paragraph.text.getLinkAnnotations(0, paragraph.text.length).isEmpty(),
+        )
+    }
+
+    /**
+     * The real research thread's body is full of `<a href>` references; this pins that they all
+     * survive as links (the fixture is the proof, not a hand-written sample).
+     */
+    @Test
+    fun `real thread links are all tappable`() {
+        val posts = io.rune.mt.forum.data.forum.network.ForumHtmlParser
+            .parseThreadDetail(
+                java.io.File("src/test/resources/forum/rich_166223.html")
+                    .takeIf { it.exists() }
+                    ?.readText()
+                    ?: java.io.File("app/src/test/resources/forum/rich_166223.html").readText(),
+                tid = 166223,
+                page = 1,
+            )
+            .posts
+        val links = posts.flatMap { post ->
+            ForumBodyParser.parse(post.contentHtml)
+                .filterIsInstance<ForumBodyBlock.Paragraph>()
+                .flatMap { it.text.getLinkAnnotations(0, it.text.length) }
+        }
+        assertTrue("the fixture should carry inline links, got ${links.size}", links.isNotEmpty())
+        assertTrue(
+            "every link destination must be absolute http(s)",
+            links.all { it.item is androidx.compose.ui.text.LinkAnnotation.Url },
         )
     }
 }

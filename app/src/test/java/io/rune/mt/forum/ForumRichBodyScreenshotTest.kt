@@ -20,6 +20,8 @@ import io.rune.mt.forum.data.forum.network.ForumHtmlParser
 import io.rune.mt.forum.domain.settings.model.preferences.theme.PaletteStyle
 import io.rune.mt.forum.domain.settings.model.preferences.theme.ThemeColorSpec
 import io.rune.mt.forum.domain.settings.model.preferences.theme.ThemeMode
+import io.rune.mt.forum.ui.page.forum.AttachmentChoiceSheet
+import io.rune.mt.forum.ui.page.forum.ForumBodyBlock
 import io.rune.mt.forum.ui.page.forum.ForumHtmlText
 import io.rune.mt.forum.ui.theme.AppTheme
 import java.io.File
@@ -63,6 +65,26 @@ class ForumRichBodyScreenshotTest {
         <ul><li>条目一<li>条目二</ul>
         <hr class="l" />
         <i class="pstatus"> 本帖最后由 tester 于 2026-5-19 16:20 编辑 </i><br />
+        <font size="5"><strong>块级对齐</strong></font><br />
+        <div align="center"><strong>居中标题</strong></div>
+        <div align="center"><ul><li>居中列表一<li>居中列表二</ul></div>
+        <font size="5"><strong>表头与合并列</strong></font><br />
+        <table>
+          <tr><td colspan="2"><div align="center"><strong>合并的表头</strong></div></td></tr>
+          <tr><td>普通单元格</td><td><div align="center">居中单元格</div></td></tr>
+        </table>
+        <font size="5"><strong>嵌套列表</strong></font><br />
+        <ul><li>一级<ul><li>二级<ol><li>三级</ol></li></ol></ul></li></ul>
+        <font size="5"><strong>引用内的结构</strong></font><br />
+        <div class="comiis_quote bg_h f_c"><blockquote>
+        <font size="2">回复</font> <font color="#999999">alice 发表于 2026-5-8 17:31</font><br />
+        引用里还有列表和图片：<br />
+        <ul><li>引用内条目一<li>引用内条目二</ul>
+        <img src="https://icdn.binmt.cc/2509/quote-thumb.jpg" border="0" alt="" />
+        </blockquote></div>
+        <font size="5"><strong>可点击链接与附件</strong></font><br />
+        见 <a href="https://bbs.binmt.cc/thread-161119-1-1.html">论坛教程</a> 一节。<br />
+        <div class="comiis_attach bg_e b_ok cl"><a href="https://bbs.binmt.cc/forum.php?mod=attachment&amp;aid=IMG"><p class="attach_tit"><img src="https://cdn.binmt.cc/static/image/filetype/image.gif" border="0" class="vm" alt="" /><span class="f_ok">screenshot.png</span><em class="f_d">&nbsp;2026-5-8 17:31上传</em></p><p class="attach_size f_c">88.1 KB , 下载次数: 2</p></a></div>
     """.trimIndent()
 
     @Test
@@ -72,6 +94,75 @@ class ForumRichBodyScreenshotTest {
     fun `real bbcode reply fixture renders`() {
         val html = realReplyHtml()
         render(html, "07_rich_bbcode_reply.png")
+    }
+
+    /** The real `div.comiis_attach` block from the attachment thread, with its download affordance. */
+    @Test
+    fun `real attachment block renders with download affordance`() {
+        val html = realAttachmentHtml()
+        render(html, "08_attachment_download.png")
+    }
+
+    private fun realAttachmentHtml(): String {
+        val path = "src/test/resources/forum/sample_attach_thread.html"
+        val file = File(path).takeIf { it.exists() } ?: File("app/$path")
+        val posts = ForumHtmlParser.parseThreadDetail(file.readText(), tid = 166223, page = 1).posts
+        return posts.first { it.contentHtml.contains("comiis_attach") }.contentHtml
+    }
+
+    /**
+     * The attachment chooser itself: 「下载到本机」 / 「在浏览器打开」 / 「复制链接」.
+     *
+     * Task B is about the *choice*, so the sheet is the thing worth inspecting. It is a real
+     * `WindowBottomSheet` (a Dialog window), which is why this case renders it directly instead of
+     * going through the thread list.
+     */
+    @Test
+    fun `attachment chooser sheet renders both actions`() {
+        compose.setContent {
+            CompositionLocalProvider(LocalSquircleEnabled provides false) {
+                AppTheme(
+                    useMiuix = true,
+                    themeMode = ThemeMode.LIGHT,
+                    paletteStyle = PaletteStyle.TonalSpot,
+                    colorSpec = ThemeColorSpec.SPEC_2021,
+                    useDynamicColor = false,
+                    useMiuixMonet = false,
+                    seedColor = Color(0xFF2E9E5B),
+                    useMiuixOs4 = true,
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color(0xFFF2F3F5))
+                            .padding(16.dp),
+                    ) {
+                        AttachmentChoiceSheet(
+                            target = ForumBodyBlock.Attachment(
+                                name = "Converter-0.2-beta.26042415.mtp",
+                                caption = "67.99 KB , 下载次数: 4, 下载积分: 金币 -1",
+                                url = "https://bbs.binmt.cc/forum.php?mod=attachment&aid=MzYxMTM2",
+                            ),
+                            download = null,
+                            onDismissRequest = {},
+                            onDownload = {},
+                            onCancelDownload = {},
+                            onOpenInBrowser = {},
+                            onShareFile = {},
+                        )
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+        // Both actions must be present and visible on the sheet. This is an assertion-only test:
+        // a `WindowBottomSheet` is a separate dialog *window*, and neither `decorView.draw()` nor
+        // `captureToImage()` yields its pixels under Robolectric (both come back blank), so there
+        // is no honest screenshot to publish for the sheet itself. The rendered *card* that opens
+        // it is captured by `real attachment block renders with download affordance`.
+        compose.onNodeWithText("Download to device").assertIsDisplayed()
+        compose.onNodeWithText("Open in browser").assertIsDisplayed()
+        compose.onNodeWithText("Copy link").assertIsDisplayed()
     }
 
     private fun realReplyHtml(): String {
@@ -108,10 +199,18 @@ class ForumRichBodyScreenshotTest {
         }
         compose.waitForIdle()
 
-        // The "Code" label is the English default string; asserting it proves the code panel
-        // rendered with its affordance rather than being flattened into a paragraph.
-        compose.onNodeWithText("Code").assertIsDisplayed()
+        // Bodies that carry a code panel must render its "Code" label (English default under
+        // Robolectric), which proves the panel kept its affordance instead of becoming prose.
+        // The attachment-only fixture has no panel, so that assertion is applied conditionally.
+        if (html.contains("comiis_blockcode")) {
+            compose.onNodeWithText("Code").assertIsDisplayed()
+        }
 
+        capture(name)
+    }
+
+    /** Draws the current window into `app/build/ui-screenshots/<name>`. */
+    private fun capture(name: String) {
         runCatching {
             val view = compose.activity.window.decorView
             val width = view.width

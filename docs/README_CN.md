@@ -16,7 +16,7 @@
 | 帖子页 | 楼层卡片重做、正文可选取文字、显示所属版块、回复框重做 |
 | 导读 | 最新 / 热门 / 精华 / 回复 / 抢沙发 五个视图，各自分页 |
 | 版块列表 | 置顶/推荐/有图/热门标签、缩略图、作者头像、分页 |
-| 帖子详情 | 楼层（楼主/回复区分）、正文富文本渲染（代码块/标题/引用/表格/附件/表情）、楼层内引用回复 |
+| 帖子详情 | 楼层（楼主/回复区分）、正文富文本渲染（代码块/标题/引用/表格/附件/表情/块级对齐/表头与合并列/可点击链接）、**附件可选择「下载到本机 / 浏览器打开 / 复制链接」**、楼层内引用回复 |
 | 回复 | 右下角悬浮按钮、引用上一楼、论坛表情选择器（3 组 257 个）、服务器草稿（`save=1`） |
 | 发帖 | 标题+正文（BBCode/表情/图片）、服务器草稿（站点自带草稿，见交接 §16） |
 | 私信 | 会话列表、会话气泡、收发消息 |
@@ -44,7 +44,7 @@
 站点把帖子存成 BBCode、由 Comiis 模板在服务端渲染成 HTML，所以客户端拿到的是 HTML，任务是
 忠实还原它。渲染用 Compose `AnnotatedString`，无需 WebView：行内 `strong`/`i`/`u`/`s`/`a`/
 `font color` 映射为 `SpanStyle`；`font[size]` 变成标题层级；`div.comiis_blockcode` 整块保留
-行结构与等宽排版（可复制）；`div.comiis_quote` 带作者页眉；`ul/ol`、`table/tr/td`、附件卡片
+行结构与等宽排版（可复制）；`div.comiis_quote` 带作者页眉并保留体内列表/表格/图片；`ul/ol`（不限层数）、`table/tr/th|td`（表头 + `colspan`）、块级 `[align]` 容器、可点击 `<a>`、附件卡片（含下载选择）
 `div.comiis_attach`、`hr`、`i.pstatus`、`div.comiis_modact` 各有专属块；`[#xxx]` 表情 token
 解析成图片。
 
@@ -56,7 +56,7 @@
 
 ```bash
 bash tools/build.sh                              # debug APK
-bash tools/build.sh :app:testStableDebugUnitTest  # 201 tests
+bash tools/build.sh :app:testStableDebugUnitTest  # 239 tests
 bash tools/build.sh :app:assembleStableRelease
 bash tools/build.sh :app:lintVitalStableRelease
 ```
@@ -66,7 +66,7 @@ bash tools/build.sh :app:lintVitalStableRelease
 ## 验证
 
 ```
-:app:testStableDebugUnitTest    201 tests, 0 failures
+:app:testStableDebugUnitTest    239 tests, 0 failures
 :app:assembleStableRelease      BUILD SUCCESSFUL  (2.3 MB)
 :app:lintVitalStableRelease     BUILD SUCCESSFUL
 ```
