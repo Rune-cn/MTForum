@@ -83,6 +83,8 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     `ui/animation/predictiveback/MiuixOs4NavTransition.kt`，`appNavTransition(…, useMiuixOs4=…)`
     选择，圆角/压暗在 `AppNavContainer` 的 `NavDisplayEffects` 统一给。**entry 内禁止**注册
     常驻 `BackHandler`/`PredictiveBackHandler`（会抢走 NavDisplay 的手势驱动，表现为没有跟手预览）；
+    另一处同类例外是**灯箱**：`ForumImageViewer` 的 `PredictiveBackHandler` 注册在 Dialog 内部、
+    只在图片打开时存在（进度 → `imageViewerDismissVisuals`，缩小+淡出，提交才关闭）。
     唯一例外是菜单展开时的 `ThreadActionsBackHandler`：必须是 miuix
     `PredictiveBackHandler(enabled = expanded)`，组合在 `ThreadActionsGlassMenu` **之后**
     （最近组合的 enabled 处理器优先），进度写进 `ThreadActionsState.dismissProgress` 预览关闭。

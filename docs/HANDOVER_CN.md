@@ -2359,3 +2359,14 @@ API 24 起把 `file://` URI 交给别的应用会抛 `FileUriExposedException`�
 **Robolectric 限制**：它不展开 `@xml/file_paths` 元数据，`FileProvider.getUriForFile` 找不到根，
 所以 `content://` 的真实解析只能在真机验证——这正是改用源码契约 + manifest 契约的原因。
 
+### 26.5 灯箱预测式返回
+
+`ForumImageViewer` 加了 `PredictiveBackHandler`（miuix-nav 手势版），**注册在 Dialog 内部**、
+只在图片打开时存在——这正是规则 15 的例外形状（导航 entry 里不放常驻 handler）：灯箱关着时
+handler 不存在，`NavDisplay` 独占手势；打开时它接管，拖动进度写进 `dismissProgress`，
+图片按 `imageViewerDismissVisuals(progress)` 缩小/淡出、黑底同步变透明，提交才真正关闭。
+
+**测试**：`ImageViewerDismissTest`(4)——静止=恒等、提交=全淡出、进度单调且 clamp、
+源码契约（handler 在 `Dialog(` 之后、进度驱动而非布尔、变换经 `graphicsLayer`）。
+真机手势体感未验证（无设备）。
+
