@@ -1,14 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 13+ themed icon layer: the same cat geometry as ic_launcher_foreground.xml, drawn as
+  one solid white silhouette. The system tints this single colour to match the wallpaper, so it
+  must stay a flat shape with no second tone and no thin gaps.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Solid bubble silhouette with the glyph knocked out. -->
+
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M32,28h44a8,8 0 0 1 8,8v26a8,8 0 0 1 -8,8h-26l-10,10v-10h-8a8,8 0 0 1 -8,-8v-26a8,8 0 0 1 8,-8z" />
+        android:pathData="M37.6,52.6C34.4,55.6 32.6,60.6 32.2,65.4C31.7,70.2 33.2,74.6 37.0,76.2C41.2,78.0 46.4,78.3 49.9,77.9C52.1,77.6 53.3,76.1 53.3,73.7L53.4,66.0C53.5,61.6 51.2,57.6 47.8,56.0L49.6,52.6Z" />
     <path
-        android:fillColor="#FF000000"
-        android:pathData="M39,40h4v16h-4zM43,40h4v4h-4zM47,44h4v4h-4zM51,40h4v4h-4zM55,40h4v16h-4zM60,56h14v-4h-5v-12h-4v12h-5zM41,60h3v3h-3zM47,60h3v3h-3zM53,60h3v3h-3z" />
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M35.4,36.2L41.6,39.6L34.6,44.6Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M51.4,36.0L45.0,39.6L51.8,44.6Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M43.2,38.6C48.61,38.6 53.0,42.6 53.0,47.5C53.0,52.4 48.61,56.4 43.2,56.4C37.79,56.4 33.4,52.4 33.4,47.5C33.4,42.6 37.79,38.6 43.2,38.6Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="5.4"
+        android:strokeLineCap="round"
+        android:pathData="M33.0,71.4C28.6,68.2 27.0,61.8 29.8,57.2C30.2,56.6 30.5,56.2 31.0,55.8" />
 </vector>

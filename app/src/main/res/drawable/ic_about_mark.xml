@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The About-page logo. `MiuixAboutPage` uses this drawable as a *mask* for a blurred backdrop
+  (`BlendMode.DstIn`), so only the alpha channel shows — the fill colour is irrelevant.
+
+  Geometry is the launcher cat (same five paths as ic_launcher_monochrome.xml) wrapped in a
+  <group> translate: the launcher keeps the cat in the bottom-left corner on purpose, which would
+  look like a misaligned logo when the About page centres this mark in its 88dp header. The
+  translate moves the ink's mass centroid (41.4, 58.8) onto the canvas centre.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="13.0"
+        android:translateY="-4.0">
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M37.6,52.6C34.4,55.6 32.6,60.6 32.2,65.4C31.7,70.2 33.2,74.6 37.0,76.2C41.2,78.0 46.4,78.3 49.9,77.9C52.1,77.6 53.3,76.1 53.3,73.7L53.4,66.0C53.5,61.6 51.2,57.6 47.8,56.0L49.6,52.6Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M35.4,36.2L41.6,39.6L34.6,44.6Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M51.4,36.0L45.0,39.6L51.8,44.6Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M43.2,38.6C48.61,38.6 53.0,42.6 53.0,47.5C53.0,52.4 48.61,56.4 43.2,56.4C37.79,56.4 33.4,52.4 33.4,47.5C33.4,42.6 37.79,38.6 43.2,38.6Z" />
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="5.4"
+            android:strokeLineCap="round"
+            android:pathData="M33.0,71.4C28.6,68.2 27.0,61.8 29.8,57.2C30.2,56.6 30.5,56.2 31.0,55.8" />
+    </group>
+</vector>

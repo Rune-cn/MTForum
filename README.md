@@ -89,13 +89,24 @@ MT 图床两步上传（令牌 → 上传、419 刷新重试、`status:false`、
 `ThreadActionsPopupLayoutTest`（OS4 菜单）、`ForumImageScreenshotTest`（卡片+正文图片）、
 `ForumRichBodyScreenshotTest`（代码块/表格/附件/引用等富文本块），样例见 [docs/screenshots/](docs/screenshots/)。
 
+### 应用图标
+
+启动图标全在 vector 里（`res/drawable/ic_launcher_{background,foreground,monochrome}.xml` +
+`res/mipmap-anydpi-v26/ic_launcher{,_round}.xml`）：一只坐在**左下角**的简易猫，
+右侧留白，Android 13+ 主题图标复用同一份几何走 `<monochrome>`。预览由
+`python tools/render_app_icon.py` 直接渲染这些 XML 生成（不经过设计工具）：
+
+![应用图标](docs/screenshots/app-icon.png)
+![圆形遮罩](docs/screenshots/app-icon-round.png)
+![48 / 72 / 96 / 144dp](docs/screenshots/app-icon-sizes.png)
+
 ## 文档
 
 - [docs/HANDOVER_CN.md](docs/HANDOVER_CN.md) — 交接文档（架构、约定、已知问题）
 - [docs/REVERSE_SPEC.md](docs/REVERSE_SPEC.md) — 站点逆向规格
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 代码地图
 - [docs/BUILD_ENV.md](docs/BUILD_ENV.md) — 构建与测试环境
-- [docs/screenshots/](docs/screenshots/) — JVM 截图样例（OS4 菜单 / 图片渲染）
+- [docs/screenshots/](docs/screenshots/) — JVM 截图样例（OS4 菜单 / 图片渲染 / 应用图标）
 - [AGENTS.md](AGENTS.md) — 面向 AI 代理的开发约定
 
 ## 许可

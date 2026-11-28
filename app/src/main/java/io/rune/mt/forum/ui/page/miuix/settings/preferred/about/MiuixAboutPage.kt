@@ -495,7 +495,9 @@ private fun AboutContentBody(
             ) {
                 if (backdrop != null) {
                     Image(
-                        painter = painterResource(id = R.drawable.ic_launcher_monochrome),
+                        // Centred copy of the launcher cat: the icon keeps it in the bottom-left,
+                        // but a header logo must sit on the axis of the app name below it.
+                        painter = painterResource(id = R.drawable.ic_about_mark),
                         modifier = Modifier
                             .requiredSize(160.dp)
                             .textureBlur(

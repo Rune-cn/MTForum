@@ -2370,3 +2370,139 @@ handler 不存在，`NavDisplay` 独占手势；打开时它接管，拖动进�
 源码契约（handler 在 `Dialog(` 之后、进度驱动而非布尔、变换经 `graphicsLayer`）。
 真机手势体感未验证（无设备）。
 
+## 27. 应用图标：左下角一只简易猫（2026-11-28）
+
+机主要求「重绘图标」「图标就一个简易猫在左下角」。旧图标是深色对话气泡 + 「MT」字样，
+新图标只有一只猫：**坐在左下角，右上角留空**。
+
+### 27.1 为什么是左下角
+
+- 启动器把图标裁成圆 / squircle，**右上角**恰是角标、未读计数、工作资料小圆点的落点；
+  图形主体放那里迟早被压住。猫坐左下、尾巴沿左边向上卷，右上象限**一个像素都不占**。
+- 视觉重量压在左下，朝向与「新消息浮起」相反，桌面上读起来安静——论坛客户端不需要抢注意力。
+- 画面里从右下的前爪到左上的耳朵/尾巴是一条对角，与 squircle 的圆角同向，不顶边。
+
+### 27.2 安全区是量出来的，不是估的
+
+自适应图标的 foreground 会被裁到 **66dp 圆**（108dp 画布中心 `(54,54)`、半径 `33dp`）。
+把前景按 512px 渲染后逐像素求到中心的距离（`tools/render_app_icon.py` 打印、
+`LauncherIconTest` 断言），实测：
+
+| 关键点 | 坐标 (dp) | 到中心距离 (dp) |
+|---|---|---|
+| 尾巴外肩（**最远像素**） | (27.6, 69.6) | **30.6** |
+| 尾巴最左 | (25.5, 63.5) | 30.0 |
+| 臀部左下 | (33.1, 74.0) | 28.9 |
+| 耳尖 | (35.4, 35.9) | 25.9 |
+| 前爪右下 | (53.3, 78.3) | 24.3 |
+
+最远 **30.6dp < 33dp** ⇒ 余量 2.4dp，圆 / squircle / 水滴任何遮罩都不会切到尾巴。
+墨迹包围盒 `x 25.5–53.6 / y 35.9–78.3`：整只猫在中心线**左侧**（53.6 < 54），
+所以右上象限天然是空的。
+
+### 27.3 形状（5 条 path，3 团视觉）
+
+| 形状 | 类型 | 说明 |
+|---|---|---|
+| 身体 | 填充 | 坐姿楔形：左臀鼓、右胸收、底部一条平线（猫「坐稳」的那条线）|
+| 耳朵 ×2 | 填充 | 两个三角形，**底边塞进头部椭圆里**，于是轮廓是一个剪影、没有接缝 |
+| 头 | 填充 | 宽扁椭圆（rx 9.8 / ry 8.9），比正圆更像猫、48dp 更稳 |
+| 尾巴 | 描边 | 5.4dp 粗、圆头，从左臀往上卷；**尾尖不回到身体**，否则眼睛会读成「提手 / 甜甜圈」（第一版就踩过）|
+
+配色：前景 `#4ADE80`（品牌高亮绿），背景 `#0E2A20`（深绿场，沿用旧图标色系），
+单色层纯白。前景**只有一个色**，所以 Android 13+ 的 `<monochrome>` 直接复用同一份几何，
+系统取色时不会出现「两种绿糊在一起」。
+
+试过但否掉的两版背景：左下角青色圆盘（在圆形遮罩里「圆套圆」，很脏）、
+地面阴影椭圆（深色底上像一块脏印）。最终就是纯深绿场。
+
+### 27.4 文件（新增 / 替换）
+
+| 文件 | 变化 |
+|---|---|
+| `res/drawable/ic_launcher_foreground.xml` | **整份替换**：「对话气泡 + MT 字形 + 回复点」→ 猫（108dp，含安全区注释）|
+| `res/drawable/ic_launcher_background.xml` | 色值不变（`#0E2A20`），只更新注释 |
+| `res/drawable/ic_launcher_monochrome.xml` | **整份替换**：旧「气泡镂空 MT」→ 猫的单色剪影 |
+| `res/mipmap-anydpi-v26/ic_launcher.xml` | **移动**自 `res/mipmap-anydpi/`（minSdk 26，自适应 XML 走 v26 限定才是规范位置）|
+| `res/mipmap-anydpi-v26/ic_launcher_round.xml` | 同上 |
+| `tools/render_app_icon.py` | 新增：自己解析 vector `pathData`（M/L/H/V/C/S/Q/T/A/Z）光栅化**即将发布的** XML，出预览 + 安全区体检 |
+| `app/src/test/java/io/rune/mt/forum/LauncherIconTest.kt` | 新增 6 例 |
+| `docs/screenshots/app-icon*.png` | 新增 5 张（见 27.5）|
+| `res/drawable/ic_about_mark.xml` | 新增：同一只猫的**居中版**（`<group translateX="13" translateY="-4">`）|
+| `ui/page/miuix/settings/preferred/about/MiuixAboutPage.kt` | 一行：关于页 logo 从 `@drawable/ic_launcher_monochrome` 换成 `@drawable/ic_about_mark` |
+
+最后两行是这次图标改动的**涟漪**：关于页顶部的 logo 不是画一张图，而是拿单色层当
+**模糊遮罩**（`Image(ic_launcher_monochrome)` + `contentBlendMode = DstIn` +
+`requiredSize(160.dp)`，见 `MiuixAboutPage` 的 header 段）。单色层必须和启动图标几何一致，
+所以它不能为关于页单独居中；而 160dp 画布里的猫原本在左下，放进 88dp 居中 header 会
+**向左偏 ~21dp**，看起来像没对齐。于是给关于页一张 `translate(13, -4)` 的居中副本
+（把墨量重心 `(41.4, 58.8)` 挪到 `(54, 54)`），页面只改这一行的资源名。
+`LauncherIconTest` 最后一例钉住「关于页必须用居中版、不得复用角落版」。
+
+`AndroidManifest.xml` **未改**：`android:icon="@mipmap/ic_launcher"` /
+`android:roundIcon="@mipmap/ic_launcher_round"` 本来就指向这套资源名，目录搬家不影响引用。
+
+**没有重绘任何位图**：本仓库原本就不存在 `mipmap-*dpi/ic_launcher*.png`，
+`minSdk = 26` 下自适应图标全版本可用，位图 fallback 没有必要。所以第 4 条需求
+（从 vector 重新生成 raster 替代品）= **不适用，未生成**。反过来 `LauncherIconTest`
+钉住「启动图资源集合恰好是 3 个 vector + 2 个 adaptive XML」，防止哪天真塞进一张位图
+悄悄盖掉 vector。
+
+### 27.5 预览怎么来的
+
+`python tools/render_app_icon.py`（只用 Pillow，无网络、无设计工具）。它读的是
+**shipped 的那三个 XML**，所以预览不可能和发布物漂移。产物：
+
+- `docs/screenshots/app-icon.png` 512×512 全幅（108dp 画布整张）
+- `app-icon-round.png` 圆形遮罩 + 浅灰底（模拟桌面上的样子）
+- `app-icon-monochrome.png` 主题图标（系统取色 + squircle 遮罩，**模拟**）
+- `app-icon-safe-zone.png` 诊断图：108dp 边框 + 66dp 安全圆 + 中心十字 + 猫
+- `app-icon-sizes.png` 48 / 72 / 96 / 144dp 尺寸梯度（看 48dp 还认不认得出：认得出）
+
+### 27.6 验证
+
+`LauncherIconTest`（6 例，全绿）：
+
+1. 运行时 `@mipmap/ic_launcher` / `@mipmap/ic_launcher_round` 解析成 `AdaptiveIconDrawable`，
+   两个 XML 都含 background / foreground / **monochrome**；
+2. manifest 契约 + 启动图资源集合恰好是 3 个 vector + 2 个 adaptive XML（防位图、防旧名回流）；
+3. 渲染前景，最远像素 ≤ 33dp（实测 30.6，见 27.2）；
+4. 左侧占比 ≥ 90%、下方 > 55%、**右上象限 0 像素**；
+5. 单色层所有不透明像素同色且 ≥ `#F0`（系统只按 alpha 取色，不能出现第二种颜色）；
+6. 关于页 logo 必须用居中版 `ic_about_mark`，不得复用角落版单色层。
+
+构建 / 测试 / lint 结果见 §28。
+
+### 27.7 未验证（如实）
+
+- 没有真机也没有桌面：圆形遮罩下的实际观感、HyperOS 图标缩放、主题图标真实取色，
+  只按 Android 的 66dp 规则做了几何断言，没有在设备上「看」过。
+- squircle 各家 ROM 曲线不同，`app-icon-monochrome.png` 里的圆角是按 0.42 圆角率近似，
+  仅供预览，不是真实遮罩。
+- 启动器有没有做「图标自动缩放 / 立体投影」无法在本机验证。
+
+## 28. 图标这轮的验证（2026-11-28）
+
+全部离线（Windows，无模拟器；环境同 `docs/BUILD_ENV.md`）：
+
+```
+:app:assembleStableDebug
+:app:testStableDebugUnitTest     → 75 suites / 445 tests / 0 failures / 0 errors / 0 skipped
+                                   （基线 74 / 439；本轮 +1 suite = LauncherIconTest 6 例）
+:app:lintVitalStableRelease      → BUILD SUCCESSFUL
+                                   Lint found no new issues (and 1 error filtered by baseline)
+python tools/render_app_icon.py  → foreground safe-zone reach 30.60dp (< 33dp)
+                                   ink left 18931 / right 0，top 6551 / bottom 12380
+```
+
+如实说明：
+
+- `spotlessCheck` **在本仓库基线上就是红的**：181 个历史文件有格式违规（`App.kt` 的 import
+  顺序、`MiuixAboutPage.kt` 的 import 与折行等），与本轮无关。所以**没有**跑
+  `spotlessApply`——那会把 180+ 个无关文件一起重排。
+- 新增的 `LauncherIconTest.kt` 单独验过格式：用只指向这两个文件的 init script 跑
+  `spotlessKotlinCheck -I …` → 通过（首轮报的两处：`pixels()` 折行、缺文件末尾换行，
+  已按 ktlint 结果修正）。`MiuixAboutPage.kt` 改的那一行**不在**该文件的违规 hunk 里
+  （违规全在 import 与既有折行处），所以保持原样、不制造无关 diff。
+- 没有真机 / 桌面，图标观感与主题图标真实取色仍未在设备上看过（几何断言代替）。
+
