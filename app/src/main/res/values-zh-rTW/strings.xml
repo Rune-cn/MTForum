@@ -401,4 +401,26 @@
     <string name="forum_board_settings_error">板塊載入失敗：%1$s</string>
     <string name="forum_board_settings_hidden_hint">隱藏的板塊仍可透過連結開啟，只是不再出現在首頁宮格和發帖板塊選擇器裡。</string>
     <string name="forum_customization_section">論壇定製</string>
+    <string name="mcp_server_title">MCP 服務</string>
+    <string name="mcp_server_entry_desc">透過本機介面向 AI 用戶端提供唯讀的帖子與回覆</string>
+    <string name="mcp_server_enable">啟用 MCP 服務</string>
+    <string name="mcp_server_enable_desc">僅綁定 127.0.0.1，無鑑權</string>
+    <string name="mcp_server_endpoint">MCP 介面位址（Streamable HTTP）</string>
+    <string name="mcp_server_copy">複製</string>
+    <string name="mcp_server_copied">已複製介面位址</string>
+    <string name="mcp_server_port">連接埠</string>
+    <string name="mcp_server_port_range">連接埠範圍：1024–65535</string>
+    <string name="mcp_server_port_invalid">請輸入 1024 到 65535 之間的連接埠</string>
+    <string name="mcp_server_tools">曝露的工具（%1$d 個，唯讀）</string>
+    <string name="mcp_server_status_running">正在執行：127.0.0.1:%1$d</string>
+    <string name="mcp_server_status_stopped">已停止</string>
+    <string name="mcp_server_status_error">啟動失敗：%1$s</string>
+    <string name="mcp_server_transport_note">使用 JSON-RPC 2.0 向 /mcp 傳送 POST；GET /mcp 傳回 405（不提供 SSE 串流）。</string>
+    <string name="mcp_server_security_title">安全性</string>
+    <string name="mcp_server_security_loopback">僅本機可存取（127.0.0.1）</string>
+    <string name="mcp_server_security_no_auth">無鑑權：本機任何應用程式都能讀取這些工具</string>
+    <string name="mcp_server_security_readonly">唯讀：不含發文、私訊、登入或修改設定</string>
+    <string name="mcp_server_client_title">連線用戶端</string>
+    <string name="mcp_server_client_hint">在 MCP 用戶端中把 Streamable HTTP 傳輸指向這個位址</string>
+    <string name="mcp_server_client_example">例如：%1$s</string>
 </resources>

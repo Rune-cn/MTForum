@@ -16,6 +16,7 @@ import io.rune.mt.forum.data.forum.repository.ForumSessionStore
 import io.rune.mt.forum.data.forum.network.ForumCookieJar
 import io.rune.mt.forum.di.init.appModules
 import io.rune.mt.forum.domain.forum.repository.ForumRepository
+import io.rune.mt.forum.domain.mcp.McpServerController
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +36,7 @@ class App : Application(), KoinComponent {
     private val forumRepository by inject<ForumRepository>()
     private val forumSessionStore by inject<ForumSessionStore>()
     private val forumCookieJar by inject<ForumCookieJar>()
+    private val mcpServerController by inject<McpServerController>()
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(LocaleManager.wrap(newBase))
@@ -81,6 +83,11 @@ class App : Application(), KoinComponent {
         SingletonImageLoader.setSafe { ctx -> buildForumImageLoader(ctx, sessionJar) }
 
         restoreForumSession()
+
+        // Local MCP server (设置 → MCP 服务): the controller observes the persisted switch/port,
+        // so this line only arms the observer. With the switch off (the default) no socket is
+        // ever bound; turning it on later takes effect without restarting the app.
+        mcpServerController.start()
 
         // After Koin startup the file-logging tree is planted, so this entry
         // is captured both to logcat and to the on-disk run log.

@@ -17,6 +17,7 @@ enum class StringSetting {
 enum class IntSetting {
     ThemeSeedColor,
     ThemeWallpaperSeedColor,
+    McpServerPort,
 }
 
 enum class BooleanSetting {
@@ -29,6 +30,7 @@ enum class BooleanSetting {
     UiUseMiuixMonet,
     UiUseAppleFloatingBar,
     EnableFileLogging,
+    McpServerEnabled,
 }
 
 interface AppSettingsRepository {

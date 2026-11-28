@@ -38,6 +38,7 @@ import io.rune.mt.forum.R
 import io.rune.mt.forum.ui.page.miuix.settings.ForumBoardSettingsPage
 import io.rune.mt.forum.ui.page.miuix.settings.ForumCommentFilterPage
 import io.rune.mt.forum.ui.page.miuix.settings.preferred.about.MiuixAboutPage
+import io.rune.mt.forum.ui.page.miuix.settings.preferred.mcp.MiuixMcpSettingsPage
 import io.rune.mt.forum.ui.page.miuix.settings.preferred.theme.MiuixThemeSettingsPage
 import io.rune.mt.forum.ui.util.rememberDeviceCornerRadius
 import org.koin.androidx.compose.koinViewModel
@@ -156,6 +157,9 @@ fun AppNavContainer(
             }
             entry<Route.Theme>(swipeDismiss = swipeBackDirection) {
                 MiuixThemeSettingsPage()
+            }
+            entry<Route.Mcp>(swipeDismiss = swipeBackDirection) {
+                MiuixMcpSettingsPage(enableBlur = useBlur)
             }
             entry<Route.ForumHome>(swipeDismiss = swipeBackDirection) {
                 ForumHomePage(

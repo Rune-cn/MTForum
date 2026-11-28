@@ -19,6 +19,15 @@ sealed interface Route : NavKey {
     @Serializable
     data object Theme : Route
 
+    /**
+     * 设置 → MCP 服务: the local, read-only MCP server (loopback endpoint, port, exposed tools).
+     *
+     * Carries no arguments: the switch and port live in the app settings DataStore, and the
+     * controller reconciles the socket from there.
+     */
+    @Serializable
+    data object Mcp : Route
+
     @Serializable
     data object Login : Route
 

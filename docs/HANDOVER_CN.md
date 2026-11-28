@@ -2471,4 +2471,86 @@ handler 不存在，`NavDisplay` 独占手势；打开时它接管，拖动进�
 - 正则灾难性回溯在本机没有压测；上限与“单楼层、编译一次”的缓解见 27.2，真机遇到极慢页时可再收紧。
 - 隐藏板块通过深链进入仍可用（这是刻意行为），但没有自动提示“该板块已被隐藏”。
 
+---
+
+## 28. 应用内 MCP 服务：只读的帖子 / 回复（2026-11-28）
+
+### 28.1 需求与形态
+
+机主要求「MCP 添加到应用里可以查看帖子和回复」。做法是把 App 内置的
+`ForumRepository` 通过一个**本机回环的 MCP 服务器**暴露给 AI 客户端：
+
+- 传输：MCP **Streamable HTTP** 子集，单端点 `POST /mcp`，请求/响应式 JSON-RPC 2.0，
+  **不实现 SSE**（`GET /mcp` 明确 405）；
+- 只读：`list_boards` / `list_threads` / `get_thread` / `search_threads` 四个工具；
+- 绑定 `127.0.0.1`，绝不 `0.0.0.0`；
+- 设置页有开关、端口（默认 8765）、可复制端点、工具清单与安全说明；
+- 不引入任何新依赖：HTTP 层是 `ServerSocket` + 一个小 HTTP/1.1 reader
+  （`gradle/libs.versions.toml` 里没有 NanoHTTPD/Ktor）。
+
+规格细节、完整 JSON-RPC 示例、工具 schema、客户端配置见
+[docs/MCP.md](MCP.md)。
+
+### 28.2 分层
+
+- `domain/mcp/`：`McpEndpoint`（主机/端口/URL/协议版本）、`McpServerState` +
+  `McpServerController`、`McpPostContent`/`McpPostFormatter`、`McpToolCatalog`
+  （设置页与 `tools/list` 共用同一份工具元数据）。
+- `data/mcp/McpJsonRpcDispatcher`：纯 JSON-RPC 分发（无 socket、无 Android API），
+  suspend 调仓库；`McpHttpServer`：唯一 socket 代码（绑定/读请求/写响应/限流/上限）；
+  `McpServerControllerImpl`：观察设置流并对账 socket；`McpRequestThrottle`。
+- `ui/page/forum/ForumMcpPostFormatter`：正文纯文本 + 附件块，复用 `ForumBodyParser`
+  （规则 25：不在数据层另写 DOM 解析）。
+- `ui/page/miuix/settings/preferred/mcp/MiuixMcpSettingsPage` +
+  `ui/page/main/settings/preferred/mcp/McpSettingsViewModel`。
+
+线程：连接线程上 `runBlocking { dispatcher.handle(...) }`，仓库自身再用
+`withContext(Dispatchers.IO)`（规则 2）；主线程不参与任何网络/解析。
+
+### 28.3 关键决策（踩坑点）
+
+1. **Koin 默认参数**：`McpJsonRpcDispatcher` 有默认参数，所以 `di/McpModule.kt` 用
+   `single { McpJsonRpcDispatcher(...) }` 显式构造，不用 `singleOf`（规则 34）。
+2. **楼层编号**：沿用 App 内部约定 `floor = 0` 表示楼主；回复 1..N 由 `ForumHtmlParser`
+   按「每页 10 楼」跨页推导，MCP 不重新编号。
+3. **登录门禁**：`search_threads` 先看 `repository.session.value.isLoggedIn`，未登录直接
+   抛 `ForumLoginRequiredException` → `isError:true` 的可读文案，**不发请求**；仓库真抛
+   同一异常时也映射成相同结果，绝不渲染成空结果（规则 18）。
+4. **输出上限**：请求体 64 KB（`413`）、头 16 KB、120 请求/分钟（`429`）、单楼正文
+   4,000 字符、单结果 48,000 字符。列表工具**不截断行**（规则 16），超预算时只收紧
+   标题/描述字段；`get_thread` 把正文预算按楼层均分，被截断的楼层带 `"truncated": true`。
+5. **日志**：只打 method/path/status/字节数，不打请求体 / Cookie / 帖子内容（规则 10）。
+6. **生命周期**：开关/端口持久化在既有 app-settings DataStore
+   （`mcp_server_enabled` / `mcp_server_port`），控制器从 `preferencesFlow` 对账；UI 只写
+   偏好，不持有 socket。App 启动时 `McpServerController.start()` 只装配观察者，默认关闭时
+   不会绑任何端口。端口占用等绑定失败进 `McpServerState.error`，设置页显示原因，改端口重试。
+7. **无鉴权**：回环 + 只读 + 无写路径；设置页明写「本机任何应用都能读取这些工具」。
+
+### 28.4 测试（全部 fake / 本机 socket，无真实站点请求）
+
+- `McpJsonRpcDispatcherTest`(21)：initialize/通知/tools.list schema/四工具 happy path/
+  未知工具 -32601/缺参·错类型·越界 -32602/仓库异常与未登录搜索 isError/解析错误 -32700/
+  未知 method/非对象帧。
+- `McpHttpServerTest`(10)：`127.0.0.1:0` 真实 socket；绑定地址断言为 loopback；
+  initialize + tools.list 同一 keep-alive 连接；tools/call 纯文本楼层；通知 202；
+  GET /mcp 405 + Allow: POST；未知路径 404；>64KB 413（只看 Content-Length）；
+  关闭后端口拒绝连接；限流 429。
+- `McpSettingsStoreTest`(6)：默认关 + 8765；开关/端口跨仓库实例（模拟重启）持久化；
+  关闭持久化；特权端口 80 与 70000 规范化为默认；键落在既有 AppDataStore。
+- `McpSettingsPageTest`(5，Robolectric)：端点/开关/工具清单/安全说明渲染；
+  开关写设置；改端口写设置；运行/停止状态文案；设置页入口的源码契约（`Route.Mcp` +
+  `mcp_server_title`）。
+- `KoinGraphTest`：真实 `appModules` 下新模块可解析（控制器不会在测试里绑端口）。
+
+### 28.5 验证
+
+- `:app:compileStableDebugKotlin` → BUILD SUCCESSFUL
+- `:app:testStableDebugUnitTest` → BUILD SUCCESSFUL（全量 78 suites / 481 tests / 0 failures）
+- `:app:lintVitalStableRelease` → BUILD SUCCESSFUL（三语 374 键等量）
+
+### 28.6 已知边界
+
+- 不实现 SSE、会话状态、resources/prompts；`Mcp-Session-Id` 只发不回读。
+- 附件只给名字/URL/价格提示，不代下载（下载仍走 App 内 Cookie + acw 流程）。
+- 回环无 TLS、无鉴权：同一设备上的任意应用都能调用，这是本机自用工具的明确取舍。
 
