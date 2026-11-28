@@ -150,8 +150,11 @@ android {
             isIncludeAndroidResources = true
             all {
                 // Robolectric writes its dependency lock into $HOME, which the sandbox denies.
-                // Point both the home dir and the artifact cache at the workspace instead.
-                it.systemProperty("user.home", "C:/Users/Administrator/Documents/1/tools/robo-home")
+                // Point both the home dir and the artifact cache at a writable temp dir. It used to
+                // be a hard-coded Windows path, which made every Robolectric test fail on Linux
+                // (FileNotFoundException from the SDK jar lookup) - that is why CI could not run them.
+                val roboHome = java.io.File(System.getProperty("java.io.tmpdir"), "robo-home").apply { mkdirs() }
+                it.systemProperty("user.home", roboHome.absolutePath)
                 it.systemProperty("robolectric.offline", "false")
             }
         }
