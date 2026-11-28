@@ -106,6 +106,8 @@ data class ForumThreadState(
     val totalPages: Int = 1,
     val formhash: String? = null,
     val noticeAuthor: String? = null,
+    /** People who 推荐ed (顶) the thread; read from the OP's recommend strip, page 1 only. */
+    val recommendCount: Int = 0,
     val error: String? = null,
 ) {
     val canLoadMore: Boolean get() = page < totalPages
@@ -511,6 +513,9 @@ class ForumViewModel(
                         totalPages = detail.totalPages,
                         formhash = detail.formhash ?: it.formhash,
                         noticeAuthor = detail.noticeAuthor ?: it.noticeAuthor,
+                        // The recommend strip lives on the OP card, i.e. page 1 only: a page-2
+                        // response parses 0 and must not wipe the count already on screen.
+                        recommendCount = it.recommendCount,
                         isAppending = false,
                     )
                 }
@@ -655,7 +660,17 @@ class ForumViewModel(
         }
         viewModelScope.launch {
             runCatching { repository.recommendThread(thread.tid, formhash) }
-                .onSuccess { ok -> _actionMessage.value = if (ok) "已推荐本帖" else "推荐失败" }
+                .onSuccess { ok ->
+                    _actionMessage.value = if (ok) "已推荐本帖" else "推荐失败"
+                    if (ok) {
+                        // Move the OP chip immediately, then re-read page 1 so the number is the
+                        // site's own value instead of a client-side guess. The 推荐 endpoint is a
+                        // one-shot GET with no count in its response, so a refresh is the only
+                        // way to keep the count from going stale after the tap.
+                        _threadState.update { it.copy(recommendCount = it.recommendCount + 1) }
+                        refreshThread()
+                    }
+                }
                 .onFailure { e -> _actionMessage.value = e.message ?: "推荐失败" }
         }
     }
@@ -816,6 +831,7 @@ class ForumViewModel(
                         totalPages = detail.totalPages,
                         formhash = detail.formhash,
                         noticeAuthor = detail.noticeAuthor,
+                        recommendCount = detail.recommendCount,
                     )
                 }
                 Timber.tag(TAG).i(

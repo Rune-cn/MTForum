@@ -367,8 +367,26 @@ object ForumHtmlParser {
             totalPages = parseTotalPages(doc),
             formhash = parseFormhash(html),
             noticeAuthor = noticeAuthor,
+            recommendCount = parseRecommendCount(doc),
         )
     }
+
+    /**
+     * The OP's 推荐 (顶) count, or 0 when nobody has推荐ed.
+     *
+     * The template prints the count in the recommender list the OP card hydrates after 推荐:
+     * `ul.comiis_recommend_list_a em.comiis_recommend_num` (the same component the forum list's
+     * row can reuse). A thread with zero likes renders the list empty and the footer's
+     * recommend control without any number, so "no element" is 0, never an error. The footer
+     * (`span#comiis_recommend_num`) duplicates the value; scoping to the OP list keeps the
+     * selector independent of the footer's markup.
+     */
+    private fun parseRecommendCount(doc: Document): Int =
+        doc.selectFirst("ul.comiis_recommend_list_a em.comiis_recommend_num")
+            ?.text()
+            ?.filterDigits()
+            ?.toIntOrNull()
+            ?: 0
 
     private fun parsePost(el: Element, tid: Int): ForumPost? {
         val pid = PID_ID.find(el.id())?.groupValues?.get(1)?.toLongOrNull() ?: return null
