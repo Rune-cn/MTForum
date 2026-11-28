@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -15,7 +17,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.PersonAdd
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -68,6 +74,33 @@ fun ForumProfilePage(
         ?: fallbackName.takeIf { it.isNotBlank() }
         ?: stringResource(R.string.profile_title)
 
+    val context = LocalContext.current
+    val actionsState = rememberThreadActionsState()
+    val shareLabel = stringResource(R.string.profile_action_share)
+    val followLabel = stringResource(
+        if (state.profile?.isFollowing == true) R.string.profile_action_unfollow else R.string.profile_action_follow,
+    )
+    val actionMessage by viewModel.actionMessage.collectAsStateWithLifecycle()
+    LaunchedEffect(actionMessage) {
+        actionMessage?.let {
+            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
+            viewModel.consumeActionMessage()
+        }
+    }
+    val profileUrl = "https://bbs.binmt.cc/home.php?mod=space&uid=" + uid
+    val profileActions = listOf(
+        ThreadActionItem(shareLabel, Icons.Rounded.Share) {
+            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(android.content.Intent.EXTRA_SUBJECT, title)
+                putExtra(android.content.Intent.EXTRA_TEXT, title + "\n" + profileUrl)
+            }
+            context.startActivity(android.content.Intent.createChooser(intent, shareLabel))
+        },
+        ThreadActionItem(followLabel, Icons.Rounded.PersonAdd) { viewModel.toggleFollow() },
+    )
+
+    Box(Modifier.fillMaxSize()) {
     MiuixPageScaffold(
         title = title,
         chrome = chrome,
@@ -75,6 +108,7 @@ fun ForumProfilePage(
         horizontalPadding = gutter,
         verticalPadding = 12.dp,
         navigationIcon = { MiuixBackButton(onClick = { navigator.pop() }) },
+        actions = { ThreadActions(items = profileActions, state = actionsState) },
     ) {
         val profile = state.profile
         when {
@@ -129,6 +163,8 @@ fun ForumProfilePage(
                 item { Spacer(Modifier.height(8.dp)) }
             }
         }
+    }
+    ThreadActionsGlassMenu(items = profileActions, state = actionsState, backdrop = chrome.backdrop)
     }
 }
 

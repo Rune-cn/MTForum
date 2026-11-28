@@ -47,6 +47,8 @@ data class ForumUserProfile(
      * control at all (one's own profile), which is not the same as "not following".
      */
     val isFollowing: Boolean? = null,
+    /** Session formhash printed by this page; needed for the follow/unfollow POST. */
+    val formhash: String? = null,
     val recentThreads: List<ForumThread> = emptyList(),
     val recentThreadPage: Int = 1,
     val recentThreadTotalPages: Int = 1,

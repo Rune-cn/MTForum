@@ -214,6 +214,9 @@
     <string name="profile_login_required_desc">The forum shows space profiles to members only.</string>
     <string name="profile_login_action">Sign in</string>
     <string name="profile_empty">No profile information available.</string>
+    <string name="profile_action_share">Share</string>
+    <string name="profile_action_follow">Follow</string>
+    <string name="profile_action_unfollow">Unfollow</string>
     <string name="profile_stat_threads">Threads</string>
     <string name="profile_stat_replies">Replies</string>
     <string name="profile_stat_following">Following</string>

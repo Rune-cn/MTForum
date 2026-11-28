@@ -214,6 +214,9 @@
     <string name="profile_login_required_desc">站点仅向登录用户展示个人主页。</string>
     <string name="profile_login_action">去登录</string>
     <string name="profile_empty">暂无主页资料。</string>
+    <string name="profile_action_share">分享</string>
+    <string name="profile_action_follow">关注</string>
+    <string name="profile_action_unfollow">取消关注</string>
     <string name="profile_stat_threads">主题</string>
     <string name="profile_stat_replies">回帖</string>
     <string name="profile_stat_following">关注</string>

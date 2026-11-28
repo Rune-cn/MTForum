@@ -45,6 +45,9 @@ class ForumProfileViewModel(
     private val _state = MutableStateFlow(ForumProfileState())
     val state: StateFlow<ForumProfileState> = _state.asStateFlow()
 
+    private val _actionMessage = MutableStateFlow<String?>(null)
+    val actionMessage: StateFlow<String?> = _actionMessage.asStateFlow()
+
     private var job: Job? = null
 
     /** Loads [uid] once per target; re-entering the same profile keeps the loaded data. */
@@ -70,6 +73,44 @@ class ForumProfileViewModel(
             _state.value = ForumProfileState(uid = uid, fallbackName = fallbackName)
         }
         load(uid, refresh = false)
+    }
+
+    /** Consumes the one-shot toast emitted by [toggleFollow]. */
+    fun consumeActionMessage() {
+        _actionMessage.value = null
+    }
+
+    /**
+     * Follows or unfollows the profile owner. The follow POST needs the session formhash printed on
+     * this very page, so it is taken from the loaded profile instead of a second request.
+     */
+    fun toggleFollow() {
+        val profile = _state.value.profile ?: return
+        if (session.value.user == null) {
+            _actionMessage.value = FOLLOW_NEED_LOGIN
+            return
+        }
+        val formhash = profile.formhash
+        if (formhash.isNullOrBlank()) {
+            _actionMessage.value = FOLLOW_FAILED
+            return
+        }
+        val following = profile.isFollowing == true
+        viewModelScope.launch {
+            runCatching {
+                if (following) repository.unfollowUser(profile.uid, formhash) else repository.followUser(profile.uid, formhash)
+            }.onSuccess { ok ->
+                if (!ok) {
+                    _actionMessage.value = FOLLOW_FAILED
+                } else {
+                    _actionMessage.value = if (following) FOLLOW_UNFOLLOWED else FOLLOW_DONE
+                    refresh()
+                }
+            }.onFailure { error ->
+                Timber.tag(TAG).e(error, "follow uid=%d failed", profile.uid)
+                _actionMessage.value = FOLLOW_FAILED
+            }
+        }
     }
 
     fun refresh() {
@@ -127,5 +168,12 @@ class ForumProfileViewModel(
 
     private companion object {
         const val TAG = "ForumProfileVM"
+
+        // Follow feedback is a one-shot toast, not screen state; the wording mirrors the thread
+        // page's action messages (which are also plain strings, not resources).
+        const val FOLLOW_NEED_LOGIN = "请先登录"
+        const val FOLLOW_FAILED = "操作失败，请稍后重试"
+        const val FOLLOW_DONE = "已关注"
+        const val FOLLOW_UNFOLLOWED = "已取消关注"
     }
 }

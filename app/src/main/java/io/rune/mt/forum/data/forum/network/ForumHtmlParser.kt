@@ -551,6 +551,7 @@ object ForumHtmlParser {
             isFollowing = follow?.let {
                 it.attr("href").contains("op=del") || it.text().contains("取消关注")
             },
+            formhash = parseFormhash(html),
         )
     }
 

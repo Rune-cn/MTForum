@@ -6,7 +6,6 @@ package io.rune.mt.forum.ui.page.forum
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Link
-import androidx.compose.material.icons.rounded.OpenInBrowser
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.Reply
 import androidx.compose.material.icons.rounded.Share
@@ -148,7 +147,6 @@ fun ForumThreadPage(
     val likeLabel = stringResource(R.string.thread_action_like)
     val followLabel = stringResource(R.string.thread_action_follow_author)
     val copyLabel = stringResource(R.string.thread_action_copy_link)
-    val openBrowserLabel = stringResource(R.string.thread_action_open_browser)
     val threadUrl = "https://bbs.binmt.cc/thread-$tid-1-1.html"
     val shareLabel = stringResource(R.string.thread_action_share)
     val sharePrefix = stringResource(R.string.thread_share_prefix)
@@ -165,16 +163,6 @@ fun ForumThreadPage(
         ThreadActionItem(copyLabel, Icons.Rounded.Link) {
             clipboard?.setText(threadUrl)
             scope.launch { snackbarHostState.showSnackbar(copiedText) }
-        },
-        // Escape hatch to the site itself: some flows (attachments, login quirks) only work in
-        // the real browser. A device can have no activity for VIEW http(s) at all, so the launch
-        // is guarded — a menu entry must never be able to kill the app.
-        ThreadActionItem(openBrowserLabel, Icons.Rounded.OpenInBrowser) {
-            runCatching {
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(threadUrl)))
-            }.onFailure { error ->
-                Timber.tag("ForumThreadPage").w(error, "no activity to open %s", threadUrl)
-            }
         },
         // A real system share sheet, not a clipboard copy disguised as sharing.
         ThreadActionItem(shareLabel, Icons.Rounded.Share) {
