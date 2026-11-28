@@ -151,7 +151,6 @@ fun MiuixPreferredPage(
                     .padding(bottom = 12.dp),
             ) {
                 MiuixNavigationItemWidget(
-                    icon = AppIcons.Theme,
                     title = stringResource(R.string.mcp_server_title),
                     description = stringResource(R.string.mcp_server_entry_desc),
                     onClick = { navigator.push(Route.Mcp) },

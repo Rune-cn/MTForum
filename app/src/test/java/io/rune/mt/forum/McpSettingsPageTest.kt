@@ -30,7 +30,6 @@ import io.rune.mt.forum.ui.navigation.Route
 import io.rune.mt.forum.ui.page.main.settings.preferred.mcp.McpSettingsViewModel
 import io.rune.mt.forum.ui.page.miuix.settings.preferred.mcp.MiuixMcpSettingsPage
 import io.rune.mt.forum.ui.theme.AppTheme
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
@@ -221,9 +220,5 @@ private class FakeMcpServerController : McpServerController {
 
     override val state = MutableStateFlow(McpServerState())
 
-    private val started = AtomicBoolean(false)
-
-    override fun start() {
-        started.set(true)
-    }
+    override fun start() = Unit
 }

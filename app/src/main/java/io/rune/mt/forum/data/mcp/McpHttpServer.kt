@@ -12,6 +12,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.concurrent.thread
@@ -47,6 +48,9 @@ class McpHttpServer(
     private var serverSocket: ServerSocket? = null
     private var acceptThread: Thread? = null
     private var executor: ExecutorService? = null
+
+    /** Accepted, still-open client connections, so [close] cannot leave one behind. */
+    private val openClients: MutableSet<Socket> = ConcurrentHashMap.newKeySet()
 
     @Volatile
     private var running = false
@@ -84,6 +88,10 @@ class McpHttpServer(
         running = false
         runCatching { serverSocket?.close() }
         serverSocket = null
+        // A keep-alive connection may be parked in `readLine` for the read timeout; close the
+        // accepted sockets explicitly so stopping the server never leaks one.
+        openClients.forEach { client -> runCatching { client.close() } }
+        openClients.clear()
         executor?.shutdownNow()
         executor = null
         acceptThread?.let { worker ->
@@ -106,10 +114,13 @@ class McpHttpServer(
             }
             try {
                 pool.execute {
+                    openClients += client
                     try {
                         client.use { handleConnection(it) }
                     } catch (error: Exception) {
                         if (running) Timber.tag(TAG).w("MCP connection failed: %s", error.javaClass.simpleName)
+                    } finally {
+                        openClients -= client
                     }
                 }
             } catch (rejected: Exception) {
