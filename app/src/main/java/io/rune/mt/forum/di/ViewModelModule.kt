@@ -2,6 +2,8 @@
 package io.rune.mt.forum.di
 
 import io.rune.mt.forum.ui.page.forum.ForumDraftsViewModel
+import io.rune.mt.forum.ui.page.forum.ForumBoardSettingsViewModel
+import io.rune.mt.forum.ui.page.forum.ForumCommentFilterViewModel
 import io.rune.mt.forum.ui.page.forum.ForumFavoritesViewModel
 import io.rune.mt.forum.ui.page.forum.ForumMessagesViewModel
 import io.rune.mt.forum.ui.page.forum.ForumNoticesViewModel
@@ -36,6 +38,8 @@ val viewModelModule = module {
     viewModelOf(::ForumFavoritesViewModel)
     viewModelOf(::ForumSignInViewModel)
     viewModelOf(::ForumDraftsViewModel)
+    viewModelOf(::ForumCommentFilterViewModel)
+    viewModelOf(::ForumBoardSettingsViewModel)
     viewModelOf(::NewThreadViewModel)
     viewModelOf(::LoginViewModel)
     viewModelOf(::AccountViewModel)

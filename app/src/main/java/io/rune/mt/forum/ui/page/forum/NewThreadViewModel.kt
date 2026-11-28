@@ -7,10 +7,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.rune.mt.forum.domain.forum.model.DraftActionResult
 import io.rune.mt.forum.domain.forum.model.Forum
+import io.rune.mt.forum.domain.forum.model.ForumBoardPreferences
 import io.rune.mt.forum.domain.forum.model.ForumDraft
 import io.rune.mt.forum.domain.forum.model.ForumEditForm
 import io.rune.mt.forum.domain.forum.model.ForumNewThreadDraft
 import io.rune.mt.forum.domain.forum.model.ForumNewThreadForm
+import io.rune.mt.forum.domain.forum.model.arrangeForums
 import io.rune.mt.forum.domain.forum.model.ImageHostGateway
 import io.rune.mt.forum.domain.forum.model.ImageHostResult
 import io.rune.mt.forum.domain.forum.model.NewThreadImage
@@ -18,6 +20,9 @@ import io.rune.mt.forum.domain.forum.model.NewThreadResult
 import io.rune.mt.forum.domain.forum.repository.ForumDraftRepository
 import io.rune.mt.forum.domain.forum.repository.ForumDraftService
 import io.rune.mt.forum.domain.forum.repository.ForumRepository
+import io.rune.mt.forum.domain.forum.repository.ForumBoardPreferencesRepository
+import io.rune.mt.forum.domain.forum.repository.NoopForumBoardPreferencesRepository
+import kotlinx.coroutines.flow.first
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -183,6 +188,8 @@ class NewThreadViewModel(
     private val draftService: ForumDraftService,
     /** The MT image host (a separate service from the forum; see the class docs). */
     private val imageHost: ImageHostGateway,
+    /** Board order/hide preferences, applied to the composer's board picker. */
+    private val boardPreferences: ForumBoardPreferencesRepository = NoopForumBoardPreferencesRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(NewThreadState())
@@ -275,11 +282,17 @@ class NewThreadViewModel(
         boardsJob?.cancel()
         _state.update { it.copy(isLoadingBoards = true, boardsError = null) }
         boardsJob = viewModelScope.launch {
+            val prefs = runCatching { boardPreferences.preferences.first() }
+                .getOrDefault(ForumBoardPreferences())
             runCatching { repository.getHome() }
                 .onSuccess { home ->
                     Timber.tag(TAG).i("composer boards=%d", home.forums.size)
                     _state.update {
-                        it.copy(boards = home.forums, isLoadingBoards = false, boardsError = null)
+                        it.copy(
+                            boards = arrangeForums(home.forums, prefs),
+                            isLoadingBoards = false,
+                            boardsError = null,
+                        )
                     }
                 }
                 .onFailure { e ->

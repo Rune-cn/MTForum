@@ -35,6 +35,8 @@ import io.rune.mt.forum.ui.page.main.settings.SettingsSharedViewModel
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.res.stringResource
 import io.rune.mt.forum.R
+import io.rune.mt.forum.ui.page.miuix.settings.ForumBoardSettingsPage
+import io.rune.mt.forum.ui.page.miuix.settings.ForumCommentFilterPage
 import io.rune.mt.forum.ui.page.miuix.settings.preferred.about.MiuixAboutPage
 import io.rune.mt.forum.ui.page.miuix.settings.preferred.theme.MiuixThemeSettingsPage
 import io.rune.mt.forum.ui.util.rememberDeviceCornerRadius
@@ -225,6 +227,18 @@ fun AppNavContainer(
             }
             entry<Route.Favorites>(swipeDismiss = swipeBackDirection) {
                 ForumFavoritesPage(
+                    enableBlur = useBlur,
+                    outerPadding = PaddingValues(),
+                )
+            }
+            entry<Route.CommentFilter>(swipeDismiss = swipeBackDirection) {
+                ForumCommentFilterPage(
+                    enableBlur = useBlur,
+                    outerPadding = PaddingValues(),
+                )
+            }
+            entry<Route.BoardSettings>(swipeDismiss = swipeBackDirection) {
+                ForumBoardSettingsPage(
                     enableBlur = useBlur,
                     outerPadding = PaddingValues(),
                 )

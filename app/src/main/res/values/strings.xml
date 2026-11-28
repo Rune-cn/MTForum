@@ -385,6 +385,7 @@
     <string name="forum_comment_filter_error_too_long">Pattern is too long (max %1$d characters)</string>
     <string name="forum_comment_filter_error_invalid_regex">Invalid regular expression</string>
     <string name="forum_comment_filter_error_too_many">Too many rules (max %1$d)</string>
+    <string name="forum_comment_filter_error_storage">Could not save the rule</string>
     <string name="forum_comment_filter_blocked_format">%1$d blocked</string>
     <string name="forum_comment_filter_reveal">Show temporarily</string>
     <string name="forum_comment_filter_hide">Hide again</string>
@@ -399,4 +400,5 @@
     <string name="forum_board_settings_retry">Retry</string>
     <string name="forum_board_settings_error">Could not load boards: %1$s</string>
     <string name="forum_board_settings_hidden_hint">Hidden boards still open from links; they only leave the home grid and the board pickers.</string>
+    <string name="forum_customization_section">Forum filters</string>
 </resources>

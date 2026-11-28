@@ -58,6 +58,9 @@ enum class CommentFilterRuleError {
 
     /** The store already holds [MAX_COMMENT_FILTER_RULES] rules. */
     TOO_MANY_RULES,
+
+    /** The write itself failed (disk/DataStore); surfaced by the settings screen only. */
+    STORAGE_FAILED,
 }
 
 /** Thrown by the repository when a rule is rejected at **save time** (never at load time). */

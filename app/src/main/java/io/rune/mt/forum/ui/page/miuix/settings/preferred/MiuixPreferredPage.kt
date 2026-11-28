@@ -126,6 +126,27 @@ fun MiuixPreferredPage(
                 )
             }
         }
+        item { SmallTitle(stringResource(R.string.forum_customization_section)) }
+        item {
+            // Local forum customisation, kept out of the 论坛 group so that group stays the two
+            // account-owned shortcuts (收藏 / 草稿) rule 18 asks for.
+            Card(
+                modifier = Modifier
+                    .padding(horizontal = 12.dp)
+                    .padding(bottom = 12.dp),
+            ) {
+                MiuixNavigationItemWidget(
+                    title = stringResource(R.string.forum_comment_filter_title),
+                    description = stringResource(R.string.forum_comment_filter_section_desc),
+                    onClick = { navigator.push(Route.CommentFilter) },
+                )
+                MiuixNavigationItemWidget(
+                    title = stringResource(R.string.forum_board_settings_title),
+                    description = stringResource(R.string.forum_board_settings_desc),
+                    onClick = { navigator.push(Route.BoardSettings) },
+                )
+            }
+        }
         item { SmallTitle(stringResource(R.string.personalization)) }
         item {
             Card(

@@ -92,4 +92,12 @@ sealed interface Route : NavKey {
      */
     @Serializable
     data object Notices : Route
+
+    /** 评论屏蔽: manage the local keyword/regex comment-filter rules. */
+    @Serializable
+    data object CommentFilter : Route
+
+    /** 板块管理: reorder and hide boards on the home grid and the board pickers. */
+    @Serializable
+    data object BoardSettings : Route
 }
