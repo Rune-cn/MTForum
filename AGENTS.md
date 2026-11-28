@@ -190,6 +190,20 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     把服务端文案原样作为错误抛出，不要盲目重试。付费价格要在用户点「下载」**之前**显示
     （`Attachment.costCoins` → `forum_attach_cost_hint`），不得自动确认付费下载。
 
+    **按论坛自带 BBCode 教程（thread 161119）补的保真度**（样本
+    `bbcode_tutorial_161119.html`，审计见 `docs/BBCODE_TUTORIAL_AUDIT.md`）：
+    - 有序列表服务端产出 **`<ul type="1" class="litype_1">` / `<ul type="a" class="litype_2">`**，
+      **不是 `<ol>`**；`listMarkerStyle()` 按 `type`/`litype_*` 决定 `1.` / `a.`，不许把所有 `ul`
+      当圆点。嵌套列表按各自声明编号。
+    - `[email]` → `<a href="mailto:…">` 必须可点：链接走 `ForumUrls.navigable()`（保留
+      `mailto:`/`tel:`），不要用只认图片的 `ForumUrls.absolute()`。
+    - `[backcolor]` → `<font style="background-color:…">`：读 `style` 背景色，不能只读 `@color`。
+    - `[media]/[audio]/[flash]` → `<iframe>`/`<video>` 或 `ignore_js_op` 内脚本注入的播放器，
+      **绝不能被 `SKIP_TAGS` 静默丢掉**：`mediaUrlOf()` 恢复 URL，产出
+      `ForumBodyBlock.Media` 诚实卡（标签 + URL，点击外部打开），B 站播放器 URL 重写观看页。
+    - `[qq]` → 无文字的 `<a><img qq_big.gif></a>`，要变成可点「QQ <uin>」行，不是孤立图标图。
+    - `[size]` 包住整块（列表/表格）时保留块结构，不许压成一个标题（`isHeadingFont` 要求无块级子元素）。
+
 26. **发帖编辑器的图片、板块与三条硬约束**：图片选择用 `OpenMultipleDocuments` + 持久 URI，
     经 `ComposerImagePrep` 缩放/重编码到站点 1MB 限制内（仍超则**拒绝并给原因**，绝不静默丢弃
     ——「添加图片没有用」就是这么来的）；**附件**上传走站点自身的 multipart `Filedata`。另有

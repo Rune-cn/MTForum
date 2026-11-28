@@ -346,6 +346,7 @@
     <string name="pm_toolbar_underline">U</string>
     <string name="pm_toolbar_quote">Quote</string>
     <string name="pm_toolbar_link">Link</string>
+    <string name="composer_toolbar_list">List</string>
     <string name="pm_toolbar_image">Add image</string>
     <string name="pm_preview_show">Preview</string>
     <string name="pm_preview_hide">Hide preview</string>

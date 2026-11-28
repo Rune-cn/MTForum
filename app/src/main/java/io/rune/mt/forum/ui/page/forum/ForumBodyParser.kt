@@ -136,6 +136,14 @@ internal object ForumBodyParser {
                     when {
                         skip(node) -> Unit
 
+                        // Media embeds (`[media]`/`[audio]`/`[flash]`) render on the site as an
+                        // `<iframe>` or a script-injected player that a native renderer cannot
+                        // play. Dropping them (`iframe`/`script` are skip tags) left a silent hole
+                        // where the media was, so they become an honest card carrying the URL.
+                        isMediaContainer(node) -> emitMedia(node)
+
+                        isQqChatLink(node) -> emitQqLink(node)
+
                         tag in SKIP_TAGS -> Unit
 
                         tag == "br" -> text.append('\n')
@@ -163,7 +171,7 @@ internal object ForumBodyParser {
 
                         tag == "table" -> emitTable(node)
 
-                        tag == "ul" || tag == "ol" -> emitList(node, ordered = tag == "ol", depth = 0)
+                        tag == "ul" || tag == "ol" -> emitList(node, listMarkerStyle(node), depth = 0)
 
                         tag == "pre" -> emitPreCode(node)
 
@@ -172,7 +180,7 @@ internal object ForumBodyParser {
                         // here too — otherwise only links inside quotes/list items/cells became
                         // tappable, and the paragraph links stayed plain coloured text.
                         tag == "a" -> {
-                            val href = ForumUrls.absolute(node.attr("href"))
+                            val href = ForumUrls.navigable(node.attr("href"))
                             val start = text.length
                             val next = inlineStyle(tag, node) ?: style
                             node.childNodes().forEach { walkBlock(it, next) }
@@ -325,14 +333,14 @@ internal object ForumBodyParser {
          * trailing pictures, because a [ForumBodyBlock.BulletList] row is text-only and cannot
          * carry a block. Image-only `<li>` rows produce no empty bullet in that case.
          */
-        private fun emitList(list: Element, ordered: Boolean, depth: Int) {
+        private fun emitList(list: Element, style: ListMarkerStyle, depth: Int) {
             flush()
             if (isImageGallery(list)) {
                 list.select("img").forEach { handleImage(it) }
                 return
             }
             val items = mutableListOf<ForumBodyBlock.ListItem>()
-            collectListItems(list, ordered, depth, items)
+            collectListItems(list, style, depth, items)
             if (items.isNotEmpty()) blocks += ForumBodyBlock.BulletList(items)
             if (list.selectFirst("img") != null) {
                 // Mixed list: the rows stay, the images it carried come right after them.
@@ -363,7 +371,7 @@ internal object ForumBodyParser {
          */
         private fun collectListItems(
             list: Element,
-            ordered: Boolean,
+            style: ListMarkerStyle,
             depth: Int,
             out: MutableList<ForumBodyBlock.ListItem>,
         ) {
@@ -386,18 +394,44 @@ internal object ForumBodyParser {
                 // trailing Picture by [emitList] instead of leaving an empty marker behind.
                 val hasImage = child.selectFirst("img") != null
                 if (value.isNotBlank() || (nested.isEmpty() && !hasImage)) {
-                    val marker = if (ordered) "$index." else "•"
-                    out.add(ForumBodyBlock.ListItem(marker = marker, text = value, depth = depth))
+                    out.add(ForumBodyBlock.ListItem(marker = markerFor(style, index), text = value, depth = depth))
                 }
                 nested.forEach { nestedList ->
                     collectListItems(
                         nestedList,
-                        ordered = nestedList.tagName().lowercase() == "ol",
+                        style = listMarkerStyle(nestedList),
                         depth = depth + 1,
                         out = out,
                     )
                 }
             }
+        }
+
+        /**
+         * Orderedness of a `ul`/`ol` as the site actually renders it.
+         *
+         * Discuz's `[list=1]` / `[list=a]` do **not** become `<ol>`: the Comiis template emits
+         * `<ul type="1" class="litype_1">` and `<ul type="a" class="litype_2">`. Treating every
+         * `<ul>` as bulleted silently turned the tutorial's 「第一步/第二步」 and 「选项A/选项B」
+         * lists into dots. `type`/the `litype_*` class (and a genuine `<ol>`) carry the style, and
+         * nesting inherits whatever each inner list declares.
+         */
+        private fun listMarkerStyle(list: Element): ListMarkerStyle {
+            val type = list.attr("type").trim().lowercase()
+            val classes = list.className()
+            return when {
+                type == "a" || classes.contains("litype_2") -> ListMarkerStyle.ALPHA
+                type == "1" || classes.contains("litype_1") -> ListMarkerStyle.NUMERIC
+                list.tagName().equals("ol", ignoreCase = true) -> ListMarkerStyle.NUMERIC
+                else -> ListMarkerStyle.BULLET
+            }
+        }
+
+        private fun markerFor(style: ListMarkerStyle, index: Int): String = when (style) {
+            ListMarkerStyle.BULLET -> "•"
+            ListMarkerStyle.NUMERIC -> "$index."
+            // `a.`/`b.`/… cycling after `z`, which is what Discuz's `[list=a]` does.
+            ListMarkerStyle.ALPHA -> "${'a' + (index - 1) % 26}."
         }
 
         /**
@@ -509,6 +543,90 @@ internal object ForumBodyParser {
         }
 
         /**
+         * A media embed the native renderer cannot play (`[media]`, `[audio]`, `[flash]`).
+         *
+         * The site turns these into an `<iframe>`, a `<video>`/`<audio>`, or a player the template
+         * injects via an inline `<script>` (`document…innerHTML="<iframe src=…">`). All of those are
+         * skipped by [SKIP_TAGS], so the old walker left a silent gap. The card keeps the URL the
+         * user can still open, which is the honest fallback for content we cannot play inline.
+         */
+        private fun emitMedia(element: Element) {
+            val url = mediaUrlOf(element) ?: return
+            flush()
+            val label = when {
+                element.hasClass("media") || element.selectFirst("audio") != null -> "音频"
+                element.tagName().equals("video", ignoreCase = true) ||
+                    element.selectFirst("video") != null -> "视频"
+                isBilibili(url) -> "视频"
+                else -> "媒体"
+            }
+            blocks += ForumBodyBlock.Media(url = url, label = label)
+        }
+
+        /**
+         * A `[qq]` tag renders to `<a href="…wpa.qq.com…"><img …/qq_big.gif></a>` with no text.
+         * Walking it as a picture produced a stray QQ icon block; it is a chat link, so it becomes
+         * a tappable 「QQ <uin>」 line carrying the real href.
+         */
+        private fun emitQqLink(node: Element) {
+            val href = ForumUrls.navigable(node.attr("href")) ?: return
+            flush()
+            val uin = QQ_UIN.find(node.attr("href"))?.groupValues?.get(1)
+            val label = if (uin != null) "QQ $uin" else "QQ"
+            val builder = AnnotatedString.Builder()
+            val start = builder.length
+            builder.append(label)
+            builder.addLink(linkAnnotation(href), start, builder.length)
+            blocks += ForumBodyBlock.Paragraph(builder.toAnnotatedString())
+        }
+
+        /** A `[media]`/`[audio]`/`[flash]` container that carries a recoverable URL. */
+        private fun isMediaContainer(node: Element): Boolean = mediaUrlOf(node) != null
+
+        private fun isQqChatLink(node: Element): Boolean =
+            node.tagName().equals("a", ignoreCase = true) &&
+                node.attr("href").contains("wpa.qq.com")
+
+        /**
+         * Recovers the URL behind a media embed.
+         *
+         * Three shapes appear in real posts: an audio player's `div.media` with a
+         * 「如果无法播放，请点击此处…」 fallback `<a href>`; a `<video>`/`<audio>`/`<iframe>`/`<embed>`
+         * with a `src`/`data`; and the Comiis media shell (`ignore_js_op`) whose `<script>` assigns
+         * an `<iframe src='…'>` string. Order keeps the most specific source first.
+         */
+        private fun mediaUrlOf(element: Element): String? {
+            val tag = element.tagName().lowercase()
+            val direct = when (tag) {
+                "iframe", "video", "audio", "embed" -> element.attr("src").takeIf { it.isNotBlank() }
+                "object" -> element.attr("data").takeIf { it.isNotBlank() }
+                else -> null
+            }
+            if (direct != null) return ForumUrls.absolute(direct)
+            if (element.hasClass("media")) {
+                element.selectFirst("a[href]")?.let { return ForumUrls.navigable(it.attr("href")) }
+            }
+            if (tag == "ignore_js_op" || element.hasClass("media")) {
+                element.select("script").forEach { script ->
+                    MEDIA_EMBED_SRC.find(script.data())?.let { match ->
+                        return normalizeMediaUrl(match.groupValues[1])
+                    }
+                }
+            }
+            return null
+        }
+
+        private fun normalizeMediaUrl(raw: String): String? {
+            val absolute = ForumUrls.absolute(raw) ?: return null
+            // A bilibili player iframe can be rewritten to its watch page, which is what the
+            // author actually linked; anything else is shown as-is.
+            BILIBILI_BVID.find(absolute)?.let { return "https://www.bilibili.com/video/${it.groupValues[1]}" }
+            return absolute
+        }
+
+        private fun isBilibili(url: String): Boolean = BILIBILI_BVID.containsMatchIn(url) || "bilibili.com" in url
+
+        /**
          * `[align=…]` as a **block-level** container: the wrapper's children are collected into
          * their own block list and the whole group carries the alignment, so a centred list, table
          * or picture is centred as a unit instead of losing the wrapper entirely.
@@ -565,7 +683,7 @@ internal object ForumBodyParser {
                             if (alt.isNotBlank()) out.append(alt)
                         }
                         tag == "a" -> {
-                            val href = ForumUrls.absolute(node.attr("href"))
+                            val href = ForumUrls.navigable(node.attr("href"))
                             val start = out.length
                             val next = inlineStyle(tag, node) ?: style
                             node.childNodes().forEach { walkInline(it, out, next, skip) }
@@ -623,8 +741,24 @@ internal object ForumBodyParser {
             "u", "ins" -> SpanStyle(textDecoration = TextDecoration.Underline)
             "s", "strike", "del" -> SpanStyle(textDecoration = TextDecoration.LineThrough)
             "a" -> SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)
-            "font" -> parseHexColor(element.attr("color"))?.let { SpanStyle(color = it) }
+            "font" -> fontSpanStyle(element)
             else -> null
+        }
+
+        /**
+         * `[color]` → `color`, `[backcolor]` → `style="background-color:…"`.
+         *
+         * The template writes a background as an inline CSS declaration, not an attribute, so
+         * reading only `@color` silently dropped `[backcolor]`. Both survive on one `SpanStyle`.
+         */
+        private fun fontSpanStyle(element: Element): SpanStyle? {
+            val color = parseHexColor(element.attr("color"))
+            val background = cssColor(element.attr("style"), "background-color")?.let { parseHexColor(it) }
+            if (color == null && background == null) return null
+            return SpanStyle(
+                color = color ?: Color.Unspecified,
+                background = background ?: Color.Unspecified,
+            )
         }
 
         /** Link annotation carrying the destination; the renderer binds the click handler. */
@@ -699,7 +833,11 @@ internal object ForumBodyParser {
     private fun isHeadingFont(element: Element): Boolean {
         if (element.tagName().lowercase() != "font") return false
         val size = element.attr("size").trim().toIntOrNull() ?: return false
-        return size in HEADING_SIZES
+        if (size !in HEADING_SIZES) return false
+        // `[size=…]` may wrap a whole block (a list, a table, a rule). Promoting that to a single
+        // heading flattens its structure into one text run, so a font with block descendants is
+        // left as a generic container: the walker then keeps the inner blocks.
+        return element.selectFirst("ul, ol, table, blockquote, pre, div, hr, iframe") == null
     }
 
     /** `<div align>`, `<p align>` and `<center>`-style alignment as a block-level value. */
@@ -743,6 +881,14 @@ internal object ForumBodyParser {
         ForumBodyBlock.BlockAlign.END -> TextAlign.End
         ForumBodyBlock.BlockAlign.START -> TextAlign.Start
         null -> null
+    }
+
+    /** Reads one `name: value` declaration out of an inline `style` attribute. */
+    private fun cssColor(style: String, property: String): String? {
+        if (style.isBlank()) return null
+        val match = Regex("""(?:^|;)\s*${Regex.escape(property)}\s*:\s*([^;]+)""", RegexOption.IGNORE_CASE)
+            .find(style)
+        return match?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
     }
 
     /**
@@ -955,9 +1101,13 @@ internal object ForumBodyParser {
                 out.append(if (stack.isNotEmpty()) "</${stack.removeLast()}>" else "</ul>")
             } else {
                 val marker = match.groupValues[2]
-                val tag = if (marker == "1" || marker.equals("a", true) || marker.equals("A", true)) "ol" else "ul"
+                val (tag, typeAttr) = when {
+                    marker == "1" -> "ol" to " type=\"1\""
+                    marker.equals("A", true) -> "ol" to " type=\"a\""
+                    else -> "ul" to ""
+                }
                 stack.addLast(tag)
-                out.append("<$tag>")
+                out.append("<$tag$typeAttr>")
             }
             last = match.range.last + 1
         }
@@ -977,11 +1127,16 @@ internal object ForumBodyParser {
         Regex("""\[quote]([\s\S]*?)\[/quote]""", RegexOption.IGNORE_CASE) to "<blockquote>$1</blockquote>",
         Regex("""\[hide]([\s\S]*?)\[/hide]""", RegexOption.IGNORE_CASE) to "<blockquote>此内容已隐藏</blockquote>",
         Regex("""\[free]([\s\S]*?)\[/free]""", RegexOption.IGNORE_CASE) to "$1",
-        Regex("""\[(?:media|audio|flash)(?:=[^]]*)?]([\s\S]*?)\[/(?:media|audio|flash)]""", RegexOption.IGNORE_CASE) to "$1",
+        // Media the client cannot play: keep the URL in an <iframe> so the walker's honest media
+        // card is produced (a bare "$1" used to leave the URL as plain prose).
+        Regex("""\[(?:media|audio|flash)(?:=[^]]*)?]([\s\S]*?)\[/(?:media|audio|flash)]""", RegexOption.IGNORE_CASE) to
+            "<iframe src=\"$1\"></iframe>",
         Regex("""\[attachimg](\d+)\[/attachimg]""", RegexOption.IGNORE_CASE) to " [附件] ",
         Regex("""\[attach](\d+)\[/attach]""", RegexOption.IGNORE_CASE) to " [附件] ",
         Regex("""\[email=([^]]+)]([\s\S]*?)\[/email]""", RegexOption.IGNORE_CASE) to "<a href=\"mailto:$1\">$2</a>",
         Regex("""\[email]([\s\S]*?)\[/email]""", RegexOption.IGNORE_CASE) to "<a href=\"mailto:$1\">$1</a>",
+        Regex("""\[qq](\d+)\[/qq]""", RegexOption.IGNORE_CASE) to
+            "<a href=\"http://wpa.qq.com/msgrd?v=3&uin=$1\">QQ $1</a>",
         Regex("""\[url=([^]]+)]([\s\S]*?)\[/url]""", RegexOption.IGNORE_CASE) to "<a href=\"$1\">$2</a>",
         Regex("""\[url]([\s\S]*?)\[/url]""", RegexOption.IGNORE_CASE) to "<a href=\"$1\">$1</a>",
         Regex("""\[color=([^]]+)]([\s\S]*?)\[/color]""", RegexOption.IGNORE_CASE) to "<font color=\"$1\">$2</font>",
@@ -1020,7 +1175,7 @@ internal object ForumBodyParser {
 
     /** Last-resort scrub for unbalanced or unsupported Discuz tags left in the body. */
     private val RESIDUAL_TAG = Regex(
-        """\[/?(?:attach|attachimg|hide|free|size|font|backcolor|align|indent|float|p|list|table|tr|td|media|audio|flash|postbg|groupid|rate|player|email|md|quote|b|i|u|s|url|img|color|code|hr)(?:=[^]]*)?]""",
+        """\[/?(?:attach|attachimg|hide|free|size|font|backcolor|align|indent|float|p|list|table|tr|td|media|audio|flash|postbg|groupid|rate|player|email|md|quote|b|i|u|s|url|img|color|code|hr|qq)(?:=[^]]*)?]""",
         RegexOption.IGNORE_CASE,
     )
 
@@ -1086,6 +1241,18 @@ internal object ForumBodyParser {
      * deduction; the parsed cost is its absolute value.
      */
     private val ATTACH_COST = Regex("""下载积分\s*[:：]\s*金币\s*([-+]?\d+)""")
+
+    /** `[qq]123456789[/qq]` renders a chat URL carrying the account in `uin=`. */
+    private val QQ_UIN = Regex("""[?&]uin=(\d+)""")
+
+    /** `src='…'` inside a template media-injection `<script>` (`[media]`/`[flash]`). */
+    private val MEDIA_EMBED_SRC = Regex("""(?:src|file)=['"]([^'"]+)['"]""", RegexOption.IGNORE_CASE)
+
+    /** A bilibili player URL (`…/player.html?bvid=…`), rewritten to its watch page. */
+    private val BILIBILI_BVID = Regex("""bvid=([A-Za-z0-9]+)""")
+
+    /** How a `ul`/`ol` numbers its rows. */
+    private enum class ListMarkerStyle { BULLET, NUMERIC, ALPHA }
 
     private val IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "heif")
 

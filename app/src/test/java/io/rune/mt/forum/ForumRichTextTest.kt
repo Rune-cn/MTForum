@@ -188,12 +188,18 @@ class ForumRichTextTest {
 
     @Test
     fun `attachment and media markers degrade to readable text`() {
-        val text = ForumBodyParser.parse("[attach]123[/attach][media=x]https://example.com/a.mp4[/media]")
-            .filterIsInstance<ForumBodyBlock.Paragraph>()
+        val blocks = ForumBodyParser.parse("[attach]123[/attach][media=x]https://example.com/a.mp4[/media]")
+        val text = blocks.filterIsInstance<ForumBodyBlock.Paragraph>()
             .joinToString("|") { it.text.text }
         assertTrue("attachment placeholder expected, got: $text", text.contains("附件"))
-        assertTrue("media URL should stay readable, got: $text", text.contains("https://example.com/a.mp4"))
-        assertFalse("raw markers must not leak, got: $text", text.contains("[attach]") || text.contains("[media]"))
+        // Media the client cannot play is an honest card carrying the URL, not a dropped block.
+        val media = blocks.filterIsInstance<ForumBodyBlock.Media>()
+        assertTrue(
+            "the media URL must stay reachable on a media card, got $blocks",
+            media.any { it.url == "https://example.com/a.mp4" },
+        )
+        val all = text + media.joinToString("|") { it.url }
+        assertFalse("raw markers must not leak, got: $all", all.contains("[attach]") || all.contains("[media]"))
     }
 
     @Test

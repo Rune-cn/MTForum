@@ -18,7 +18,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -113,6 +115,9 @@ fun NewThreadPage(
     var imageTarget by remember { mutableStateOf(ComposerImageTarget.ImageHost) }
     var publishConfirm by remember { mutableStateOf(false) }
     var deleteConfirm by remember { mutableStateOf(false) }
+    // The preview toggle renders the draft through the same ForumBodyParser/ForumHtmlText pipeline
+    // a received post uses; it never sends or mutates the draft.
+    var previewOpen by remember { mutableStateOf(false) }
     val draftSavedText = stringResource(R.string.draft_saved_toast)
     val publishedText = stringResource(R.string.composer_published_toast)
     val draftDeletedText = stringResource(R.string.composer_draft_deleted_toast)
@@ -251,6 +256,36 @@ fun NewThreadPage(
                             singleLine = false,
                             minLines = 8,
                         )
+
+                        // The same BBCode toolbar the PM composer has, inserting paired tags at the
+                        // caret (wrappers leave the caret in the middle, [list]/[code] get
+                        // skeletons). The dedicated 添加图片 row below keeps the 图床/附件 choice,
+                        // so the toolbar carries no image button here.
+                        Spacer(Modifier.height(8.dp))
+                        ComposerBbcToolbar(
+                            onWrapTag = viewModel::insertTag,
+                            onInsertList = viewModel::insertList,
+                            onInsertCode = viewModel::insertCode,
+                            previewOpen = previewOpen,
+                            onTogglePreview = { previewOpen = !previewOpen },
+                        )
+                        if (previewOpen && state.message.isNotBlank()) {
+                            Spacer(Modifier.height(6.dp))
+                            // Preview: the same ForumBodyParser/ForumHtmlText pipeline a received
+                            // post goes through, so [b]/[img]/[quote] show roughly how the site
+                            // will render them. Toggle only — never sends, never mutates the draft.
+                            Card(modifier = Modifier.fillMaxWidth()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 220.dp)
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(10.dp),
+                                ) {
+                                    ForumHtmlText(html = state.message, modifier = Modifier.fillMaxWidth())
+                                }
+                            }
+                        }
 
                         if (state.images.isNotEmpty()) {
                             Spacer(Modifier.height(10.dp))

@@ -346,6 +346,7 @@
     <string name="pm_toolbar_underline">U</string>
     <string name="pm_toolbar_quote">引用</string>
     <string name="pm_toolbar_link">連結</string>
+    <string name="composer_toolbar_list">列表</string>
     <string name="pm_toolbar_image">新增圖片</string>
     <string name="pm_preview_show">預覽</string>
     <string name="pm_preview_hide">隱藏預覽</string>

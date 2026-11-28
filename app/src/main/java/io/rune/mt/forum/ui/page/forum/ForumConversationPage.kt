@@ -197,46 +197,33 @@ fun ForumConversationPage(
                 }
                 Spacer(Modifier.height(6.dp))
             }
-            // Minimal BBCode toolbar (no rich-text engine): the site renders these tags server-side.
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                BbcToolbarButton(stringResource(R.string.pm_toolbar_bold)) { viewModel.insertBbcTag("b") }
-                BbcToolbarButton(stringResource(R.string.pm_toolbar_italic)) { viewModel.insertBbcTag("i") }
-                BbcToolbarButton(stringResource(R.string.pm_toolbar_underline)) { viewModel.insertBbcTag("u") }
-                BbcToolbarButton(stringResource(R.string.pm_toolbar_quote)) { viewModel.insertBbcTag("quote") }
-                BbcToolbarButton(stringResource(R.string.pm_toolbar_link)) { viewModel.insertBbcTag("url") }
-                TextButton(
-                    text = stringResource(R.string.pm_toolbar_image),
-                    onClick = { pickImage.launch(arrayOf("image/*")) },
-                    modifier = Modifier.testTag(PM_COMPOSER_IMAGE_TAG),
-                    minHeight = 40.dp,
-                )
-                if (state.isUploadingImage) {
-                    InfiniteProgressIndicator(modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = stringResource(R.string.pm_image_uploading),
-                        fontSize = 11.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            // The shared BBCode toolbar (same buttons as the new-thread editor): the site renders
+            // these tags server-side, so the box only inserts markup at the caret.
+            ComposerBbcToolbar(
+                onWrapTag = viewModel::insertBbcTag,
+                onInsertList = viewModel::insertBbcList,
+                onInsertCode = viewModel::insertBbcCode,
+                previewOpen = previewOpen,
+                onTogglePreview = { previewOpen = !previewOpen },
+                image = {
+                    TextButton(
+                        text = stringResource(R.string.pm_toolbar_image),
+                        onClick = { pickImage.launch(arrayOf("image/*")) },
+                        modifier = Modifier.testTag(PM_COMPOSER_IMAGE_TAG),
+                        minHeight = 40.dp,
                     )
-                }
-                Spacer(Modifier.width(6.dp))
-                TextButton(
-                    text = if (previewOpen) {
-                        stringResource(R.string.pm_preview_hide)
-                    } else {
-                        stringResource(R.string.pm_preview_show)
-                    },
-                    onClick = { previewOpen = !previewOpen },
-                    modifier = Modifier.testTag(PM_COMPOSER_PREVIEW_TAG),
-                    minHeight = 40.dp,
-                )
-            }
+                    if (state.isUploadingImage) {
+                        InfiniteProgressIndicator(modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.pm_image_uploading),
+                            fontSize = 11.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                    }
+                    Spacer(Modifier.width(6.dp))
+                },
+            )
             Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TextField(
@@ -275,12 +262,6 @@ fun ForumConversationPage(
             }
         }
     }
-}
-
-/** One toolbar chip. Compact by design: the box is a message field, not a full editor. */
-@Composable
-private fun BbcToolbarButton(label: String, onClick: () -> Unit) {
-    TextButton(text = label, onClick = onClick, minHeight = 40.dp)
 }
 
 /** Inner gutter shared by the lazy list and the pinned composer so they line up. */

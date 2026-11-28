@@ -176,6 +176,7 @@ HTML，任务是**忠实渲染这段 HTML**——不引 WebView、不引第三�
 | `ModeratorNote` | `div.comiis_modact` | 蓝色信息 chip |
 | `EditNote` | `i.pstatus`（「本帖最后由…编辑」） | 12sp 暗色说明，非斜体 |
 | `Picture` / `EmojiRow` | `<img>`（懒加载属性）/ `[#xxx]` token / **`ul.comiis_img_list` 相册列表** | 全宽图片 / 小表情行（引用内降为 96dp 缩略图） |
+| `Media(url, label)` | `[media]/[audio]/[flash]` → `<iframe>`/`<video>`/`ignore_js_op` 内脚本注入的播放器 | **诚实媒体卡**：标签 + URL，点击外部打开（客户端不能内嵌播放，但绝不丢内容） |
 | `Aligned(align, blocks)` | `<div align>` / `<p align>` / BBCode `[align=…]` | **块级对齐容器**：内部段落按容器对齐，列表/表格/图片整体按容器对齐 |
 
 服务端实测事实（Comiis 模板对单个 BBCode 标签的输出）：
@@ -184,7 +185,12 @@ HTML，任务是**忠实渲染这段 HTML**——不引 WebView、不引第三�
 |---|---|
 | `[b]` `[i]` `[u]` `[s]` | `<strong>` `<i>` `<u>` `<strike>` |
 | `[color=#ff0000]` / `[color=blue]` | `<font color="#ff0000">` / `<font color="blue">` |
-| `[size=5]` | **服务端丢弃**，文本无样式；正文里的 `font[size]` 来自 `size` 或旧渲染 |
+| `[size=5]` | `<font size="5">`（标题层级；教程 161119 实测；早前「服务端丢弃」的说法与教程样本不符，已按样本更正） |
+| `[backcolor=green]` | `<font style="background-color:green">` |
+| `[list=1]` / `[list=a]` | **`<ul type="1" class="litype_1">` / `<ul type="a" class="litype_2">`**（不是 `<ol>`） |
+| `[media]` / `[audio]` / `[flash]` | `<iframe src=…>` / `div.media`（兜底 `<a href>`）/ `ignore_js_op` 内脚本注入播放器 |
+| `[email=…]` | `<a href="mailto:…">` |
+| `[qq]` | `<a href="…wpa.qq.com…"><img qq_big.gif></a>`（无文字） |
 | `[align=center]` | `<div align="center">…</div>` |
 | `[quote]`（普通回复里） | 纯文本 + `<br>`，无 blockquote |
 | `[quote]`（真正的引用回复） | `div.comiis_quote > blockquote` + `font color=#999999` 作者行 |
@@ -316,6 +322,32 @@ jsoup；只有纯 BBCode（客户端外发回复 / 预览响应）才走 `bbcode
 `decorView.draw()` 与 `captureToImage()` 都取不到它的像素（两者都是空白）。面板的可见性由
 `ForumRichBodyScreenshotTest` 的断言（「Download to device」「Open in browser」「Copy link」
 三个节点均可见）保证，而不是靠一张假截图。
+
+**bbc4（2026-11-28）：按论坛自带教程 thread 161119 补保真度缺口**。教程样本
+`bbcode_tutorial_161119.html` 的「使用示例」是 BBCode、「➽渲染效果」是服务端 HTML，逐条对照后：
+
+- **有序列表不是 `<ol>`**：Discuz 的 `[list=1]` / `[list=a]` 渲染成
+  `<ul type="1" class="litype_1">` / `<ul type="a" class="litype_2">`。旧实现把每个 `ul` 当无序，
+  教程的「第一步/第二步」「选项A/选项B」全变成圆点。现在 `listMarkerStyle()` 读 `type`/`litype_*`
+  （真 `<ol>` 仍数字），`markerFor()` 产出 `1.` / `a.`，嵌套列表各按自身声明。
+- **`[email]` 点不动**：`<a href="mailto:…">` 走 `ForumUrls.absolute()` 被判空（它只认图片的
+  http(s)）。新增 `ForumUrls.navigable()`：`mailto:`/`tel:` 原样保留，其余仍走 `absolute()`。
+- **`[backcolor]` 被丢**：服务端写 `<font style="background-color:green">`，旧 `inlineStyle` 只读
+  `@color`。`fontSpanStyle()` 现在解析 `style` 的 `background-color`，与前景色共存于一个 `SpanStyle`。
+- **`[media]`/`[audio]`/`[flash]` 整块消失**：服务端把媒体渲染成 `<iframe>`/`<video>` 或
+  由内联 `<script>` 注入的播放器（B 站）；这些都在 `SKIP_TAGS` 里，旧 walker 直接跳过。现在
+  `isMediaContainer()`/`mediaUrlOf()` 从 `<iframe src>`、`<video>`/`<audio>`/`<embed>`、以及
+  `ignore_js_op` 内脚本的 `src='…'` 取真实 URL，产出**诚实媒体卡** `ForumBodyBlock.Media`（标签 +
+  URL，点击外部打开）；B 站播放器 URL 重写成 `bilibili.com/video/<bvid>` 观看页。
+- **`[qq]` 渲染成孤立图标图**：`<a href="…wpa.qq.com…"><img qq_big.gif></a>` 无文字，旧逻辑只剩一张
+  QQ 图标 `Picture`。`emitQqLink()` 改为可点的「QQ <uin>」行。
+- **`[size]` 包住整块时被拍平**：`isHeadingFont()` 现在要求 font **没有块级子元素**，`[size=4]`
+  包住列表/表格时保留块结构而不是压成一个标题。
+- **`[free]`** 服务端渲染成 `div.comiis_quote > blockquote`（「免费内容」框）→ 走引用块，已支持。
+
+教程列出但**客户端未实现/无真实样本**的为诚实缺口：`[font=]` 自定义字族（Compose 只有通用族，
+只保留文字）、`[md]`（服务端转 HTML，草稿预览不跑 Markdown）、`[rate]`/`[postbg]`/`[groupid]`
+（教程未演示、无正文样本，草稿链只剥标记）。完整审计表见 `docs/BBCODE_TUTORIAL_AUDIT.md`。
 
 ### 3.6 表情
 
@@ -1878,6 +1910,19 @@ BUILD SUCCESSFUL（`Lint found no new issues`）。
   `[b]`/`[img]`/`[quote]` 大致等于站点显示的效果。它只读草稿，不发任何请求、不改草稿。
   纯图片预览会真的走 Coil 加载图床 URL（真机才看得到，Robolectric 里不加载）。
 
+**bbc4（2026-11-28）：工具栏抽成共享组件，发帖编辑器也用它。** 之前只有私信框有 BBCode 工具栏，
+新帖编辑器只有「表情 / 添加图片 / 保存草稿 / 发布」。现在两个编辑器共用
+`ui/page/forum/ComposerBbcToolbar.kt`（`B I U 引用 链接 列表 代码 预览`）：
+
+- 成对标签在**光标处**插入、光标停在中间（`ComposerText.wrapTag`）；`列表` 插 `[list]` + `[*]`
+  skeleton、光标停在 `[*]` 后（`ComposerText.wrapList`）；`代码` 独占若干行、光标停在中间空行
+  （`ComposerText.wrapCode`）。
+- **预览** 开关把草稿丢进 `ForumBodyParser`/`ForumHtmlText`（与真实帖子同一管线），只读不发。
+- 新帖编辑器保留原有的 表情 / 添加图片（图床·附件）/ 保存草稿 / 发布 不变；工具栏的图片按钮只在
+  私信框出现（发帖已有带「图床/附件」选择的添加图片行，避免两个入口）。
+- `预览` 标签复用私信的 `pm_preview_show/hide`，`代码` 复用 `forum_body_code_label`，只新增
+  `composer_toolbar_list` 一个键（三语各 +1）。
+
 ### 21.4 代码落点
 
 | 位置 | 内容 |
@@ -1885,7 +1930,8 @@ BUILD SUCCESSFUL（`Lint found no new issues`）。
 | `domain/forum/model/ForumImageHost.kt` | `ImageHostResult` / `ImageHostGateway` / `ForumImageHostPolicy`（格式表、上传文件名） |
 | `data/image/ForumImageHostClient.kt` | 两步上传、419 刷新重试一次、JSON 解析、**独立 client + 独立 cookie jar** |
 | `di/ForumModule.kt` | `singleOf(::ForumImageHostClient) { bind<ImageHostGateway>() }` |
-| `ui/page/forum/ComposerText.kt` | 光标插入纯逻辑（两个编辑器共用） |
+| `ui/page/forum/ComposerText.kt` | 光标插入纯逻辑（两个编辑器共用：`insert`/`wrap`/`wrapTag`/`wrapList`/`wrapCode`） |
+| `ui/page/forum/ComposerBbcToolbar.kt` | 两个编辑器共用的 BBCode 工具栏（B/I/U/引用/链接/列表/代码/预览 + 可选图片槽） |
 | `ui/page/forum/ComposerImageSourceSheet.kt` | 发帖的「图床 / 附件」两行面板 |
 | `ui/page/forum/ComposerImagePrep.kt` | 新增 `ImagePreparer.prepareForHost`（**原图字节**，只校验格式/可读性）+ `ImageRejectReason.UnsupportedFormat` |
 | `NewThreadViewModel.kt` / `NewThreadPage.kt` | `uploadImageToHost`、`messageCaret`、面板接线、`[img]` 反馈行 |

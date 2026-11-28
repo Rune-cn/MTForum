@@ -50,4 +50,35 @@ object ComposerText {
         val (open, close) = pair(name)
         return wrap(text, caret, open, close)
     }
+
+    /**
+     * Inserts a `[list]` skeleton with one `[*]` row and puts the caret **after** the marker, so the
+     * user types the first item straight away. A `[list]` with no item is not valid BBCode, which is
+     * why this is not a bare open/close pair like [wrapTag].
+     */
+    fun wrapList(text: String, caret: Int): ComposerEdit {
+        val at = caret.coerceIn(0, text.length)
+        val open = "[list]\n[*]"
+        val snippet = "$open\n[/list]"
+        return ComposerEdit(
+            text = text.substring(0, at) + snippet + text.substring(at),
+            caret = at + open.length,
+        )
+    }
+
+    /**
+     * Inserts a `[code]` block **on its own lines** (a code block mid-sentence reads badly), with
+     * the caret on the blank line between the tags so the user types the code immediately.
+     */
+    fun wrapCode(text: String, caret: Int): ComposerEdit {
+        val at = caret.coerceIn(0, text.length)
+        val prefix = if (at > 0 && text[at - 1] != '\n') "\n" else ""
+        val suffix = if (at < text.length && text[at] != '\n') "\n" else ""
+        val block = "[code]\n\n[/code]"
+        val snippet = prefix + block + suffix
+        return ComposerEdit(
+            text = text.substring(0, at) + snippet + text.substring(at),
+            caret = at + prefix.length + "[code]\n".length,
+        )
+    }
 }
