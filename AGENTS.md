@@ -126,8 +126,10 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     「搜索 “关键词”」确认行、最近搜索行与 OS3 的输入法搜索键必须走**同一个**提交函数：trim →
     记录历史 → `onSubmit` → `Route.ForumSearch(keyword)`，绝不允许提交空串。最近搜索由
     `ForumSearchHistoryRepository`（DataStore `forum_search_history`，上限 10 条、忽略大小写
-    去重、可清除）保存。`ForumSearchPage` 收到带关键词的路由要**立即**执行搜索（不再要求用户
-    再按一次「搜索」），字段保留该关键词以便原地改写重搜（`ForumSearchViewModel.prepare`）。
+    去重、可清除）保存。`ForumSearchPage` 收到带关键词的路由要**立即**执行搜索（不再要求用户再按一次「搜索」）。结果页
+    **不放常驻输入框**：关键词只以只读形式出现在顶栏标题（`forum_search_submit_format`），
+    原地改词靠顶栏放大镜把**同一个** `ForumSearchOverlay` 就地打开，提交回灌本页 ViewModel
+    （不再 push 新路由）；空关键词路由显示起始卡片而不是空白页（`ForumSearchViewModel.prepare`）。
     **每日签到从首页顶栏最右侧的 `Tasks` 图标进**（`ForumSignInSheet` 底部面板，OS4 玻璃/OS3
     窗口；面板内容 `ForumSignInCard`，游客仍是登录卡片），签到**不进**设置页；
     我的主页从账号卡片点头像/昵称进（`AccountSection` 的 `onOpenProfile`），不要再往设置页
@@ -330,8 +332,9 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
       楼层文本用 `ForumBodyParser.plainText` 解析并按 pid 缓存，**过滤在 `ForumViewModel.threadDisplay`
       里做，不在 LazyColumn 的 item 循环里**（UI 列表路径只读已算好的结果）。正则可能灾难性回溯，
       但单楼层匹配 + 200 字符上限把影响限定在“某个帖子页稍慢”，规则详情见 HANDOVER §27。
-    - **默认保留楼主**（`filterOp=false`）；打开“也过滤楼主”才连 OP 一起判。被屏蔽条数用页脚
-      “N 条被屏蔽” + 临时显示开关呈现（`revealHidden`，换帖子自动复位）。
+    - **默认保留楼主**（`filterOp=false`）；打开“也过滤楼主”才连 OP 一起判。**被屏蔽楼层永久隐藏**：
+      页脚只显示「N 条被屏蔽」（`hiddenCount == 0` 时不出现），**没有**临时显示/收屏蔽开关
+      （机主要求去掉；`ThreadDisplayState` 只有 `posts` + `hiddenCount`）。
     - **板块排序/隐藏**应用到**首页宫格**（`ForumViewModel.homeBoards`）与**发帖板块选择器**
       （`NewThreadViewModel.loadBoards`）；搜索是站点级 POST、没有板块筛选，不适用（已注明）。
       隐藏板块只从宫格/选择器消失，仍可通过深链/直接 URL 进入。
@@ -371,6 +374,16 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     改图后跑 `python tools/render_app_icon.py` 重生 `docs/screenshots/app-icon*.png`，
     它读的就是 shipped XML，别手画 PNG。**关于页 logo 用 `ic_about_mark`**（同一轮廓的居中副本，
     `<group translate>`），不要把角落版拉大当居中 logo（会偏左 ~21dp）。
+
+40. **NavDisplay 的 contentKey 必须每个 entry 唯一**：`NavDisplay` 用
+    `require(seenContentKeys.add(contentKey))` 校验，默认 contentKey 就是 `Route` 值本身，
+    所以同一个 `Route.ForumThread`（tid/title 相同）被压两次就会
+    `IllegalArgumentException: Duplicate contentKey on the back stack` 崩溃。
+    可重复入栈的路由（`ForumThread` / `ForumList` / `UserProfile` / `PrivateConversation` /
+    `ForumSearch` / `NewThread`）实现 `RepeatableRoute`（`instanceId`，默认 0），
+    **只由 `Navigator.push` 分配**递增实例号；单例路由重复 push 会 `popUntil` 揭示已有副本。
+    新增可重复路由时必须同时改 `Routes.kt` 的 `withNavigationInstance` / `isSameDestinationAs`，
+    且**不要**绕过 `Navigator` 直接 `backStack.add`（会跳过 instance 分配）。见 HANDOVER §34。
 
 ## Miuix 双风格（OS3 / OS4）
 

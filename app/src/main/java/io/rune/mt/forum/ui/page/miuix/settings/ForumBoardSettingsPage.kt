@@ -150,9 +150,11 @@ fun ForumBoardSettingsPage(
         dragOffsetX += dx
         dragOffsetY += dy
         val current = draggingIndex
+        // A tile has not been measured yet on the very first frame: without a real cell size the
+        // step math would be meaningless, so ignore the event until it has.
+        if (current !in boards.indices || tileWidthPx <= 0f || tileHeightPx <= 0f) return
         val stepX = tileWidthPx + gapPx
         val stepY = tileHeightPx + gapPx
-        if (current !in boards.indices || stepX <= 0f || stepY <= 0f) return
         val currentRow = current / BOARD_GRID_COLUMNS
         val currentColumn = current % BOARD_GRID_COLUMNS
         // Round to the nearest cell (half a step of travel = "crossed into the neighbour").

@@ -2468,8 +2468,9 @@ handler 不存在，`NavDisplay` 独占手势；打开时它接管，拖动进�
     `ForumHomePage` 的宫格与发帖板块选择器都读它；设置变更即时生效（无需重新拉取）。
   - 发帖板块选择器：`NewThreadViewModel.loadBoards` 读一次偏好后 `arrangeForums`，选择器只列未隐藏板块。
   - **搜索没有板块筛选**（站点搜索是 POST、无 fid 维度），因此不适用；已在本文件与 AGENTS 规则 37 注明。
-- **设置页**：新增「论坛定制」分组，两行分别进「评论屏蔽」「板块管理」。板块管理页每行显式
-  **上移 / 下移 / 隐藏开关**（**没有**做拖拽排序——需求允许跳过；显式按钮对无障碍更友好）。
+- **设置页**：新增「论坛定制」分组，两行分别进「评论屏蔽」「板块管理」。板块管理页在 §35 改成
+  **3 列宫格**：长按格子拖动实时换位、右上角眼睛点选隐藏/显示，「第 N / M 位」标在格子上；
+  格子底部保留 ▲/▼ 显式按钮作为无障碍兜底（早期版本只有上移/下移按钮、没有拖拽）。
 - **隐藏板块的可达性**：只从**首页宫格**与**发帖板块选择器**消失；它们仍是正常站点版块，
   通过帖子/深链/直接 URL（`forum-<fid>-1.html`）依旧能进入。设置页始终展示它们（开关关掉即为隐藏），
   所以可以随时取消隐藏。
@@ -2930,3 +2931,48 @@ python tools/render_app_icon.py  → foreground safe-zone reach 30.60dp (< 33dp)
 - 几何断言由 `LauncherIconTest` 在 CI 上跑（按机主要求**不做本地 Gradle 构建**）。
 - **未在真机看过**：最终观感、各家启动器的遮罩形状、Android 13 主题图标的实际取色，
   仍只有几何与像素断言兜底。
+
+---
+
+## 34. 修复 Duplicate contentKey 崩溃（2026-11-28）
+
+真机崩溃：`IllegalArgumentException: Duplicate contentKey on the back stack: ForumThread(tid=…)`。
+
+根因（对照 miuix-nav 0.9.5-beta03 源码）：`NavDisplay` 在 reconcile 前用
+`require(seenContentKeys.add(contentKey))` 校验，**contentKey 默认就是 Route 值本身**，还要求
+`contentKey.toString()` 不同（rememberSaveable 的名字空间）。旧 `Navigator.push` 只在「与栈顶
+完全相等」时忽略，所以「帖子 → 作者主页 → 该作者的另一个帖子」「引用链接」「历史/提醒列表」都会
+把两份**相等**的 `Route.ForumThread` 压栈 → 崩溃。
+
+做法：
+- `Routes.kt` 新增 `interface RepeatableRoute { val instanceId: Long }`，给
+  `ForumThread / ForumList / UserProfile / PrivateConversation / ForumSearch / NewThread` 加
+  `override val instanceId: Long = 0L`（位置参数不变，调用点零改动；旧存档缺字段取默认 0）。
+- `Navigator` 成为唯一分配 instanceId 的地方：栈顶同目的地 → 忽略；单例路由重复 push →
+  `popUntil` 揭示已有副本；可重复路由 → 压**新实例**。`instanceHighWater` 只增不减，避免 pop 后
+  立刻重开命中仍在退场的 entry。恢复出来的旧栈用 `dropDuplicateDestinations()` 去重（在
+  `remember(backStack)` 里、NavDisplay 首次读 key 之前做，否则已经先崩）。
+- 新增 `NavigatorBackStackTest`（8 例，纯栈/纯函数）：非相邻重复入栈 key 不同、栈顶重复被忽略、
+  标题变化仍算同页、单例被揭示、instanceId 序列化往返、恢复栈去重、pop 后重开不复用 id、目的地
+  身份真值表。
+
+代价：Route 的 `toString()` 带上 `instanceId=0`，升级后各页 rememberSaveable 的命名空间变一次，
+滚动位置等会重置一次（不影响正确性）。降级到旧版本仍会复现旧崩溃。
+
+## 35. 第十一轮真机反馈（2026-11-28）
+
+1. **回复的 BBCode 污染**：`requestReply` 把被引用楼层 `plainText` 直接塞进 `[quote]`，被引用内容里
+   只要出现 `[/quote]`/`[b]` 就会提前闭合引用块，其后的用户文字被站点当 BBCode 重新解析。
+   修法：引用摘要 `replyQuoteExcerpt()` —— 实体还原 → 剥残留 HTML → 空白折叠 → **ASCII 方括号换成
+   全角 ［］** → trim → 120 字上限；`replyMessageBody()` 只拼「[quote][b]作者[/b] + 摘要 + [/quote] +
+   用户原文（逐字）」。用户输入不进 quote、不转义；引用 chip 显示的即真正上送的内容。
+2. **去掉「临时显示」**：`ThreadDisplayState` 只剩 `posts` + `hiddenCount`，页脚只显示「N 条被屏蔽」；
+   删掉 `toggleBlockedReveal` 与 `_revealHidden`；`ForumThreadFilterViewModelTest` 改为「刷新后仍隐藏」。
+3. **板块管理改成宫格**：3 列宫格（与首页同视觉），长按拖动实时换位，点选隐藏/显示（管理页保留
+   全部、首页不显示隐藏项），上/下移保留在长按菜单里做无障碍兜底。
+4. **搜索结果页不再有第二个搜索框**：关键词只读进顶栏标题（`forum_search_submit_format`），改词靠
+   顶栏放大镜就地打开**同一个** `ForumSearchOverlay`，提交回灌本页 ViewModel（不再 push）；
+   空关键词路由显示起始卡片。顺带修了「快速连续改词被 `isSearching` 吞掉」的竞态。
+5. **个人主页签名可选中**：`ProfileSignatureCard` 用 `SelectionContainer` 包住正文，标题不参与选区；
+   字号/颜色/内边距/最小高度逐项对齐 `BasicComponent`（headline1 Medium / body2）。
+6. 三语删除两个废弃键：`forum_comment_filter_reveal` / `forum_comment_filter_hide`。
