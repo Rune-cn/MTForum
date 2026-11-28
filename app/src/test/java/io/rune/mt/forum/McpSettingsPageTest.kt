@@ -30,6 +30,7 @@ import io.rune.mt.forum.ui.navigation.Route
 import io.rune.mt.forum.ui.page.main.settings.preferred.mcp.McpSettingsViewModel
 import io.rune.mt.forum.ui.page.miuix.settings.preferred.mcp.MiuixMcpSettingsPage
 import io.rune.mt.forum.ui.theme.AppTheme
+import java.io.File
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
@@ -135,6 +136,25 @@ class McpSettingsPageTest {
         controller.state.value = McpServerState(running = true, port = McpEndpoint.DEFAULT_PORT)
         compose.waitForIdle()
         compose.onNodeWithText("Running on 127.0.0.1:${McpEndpoint.DEFAULT_PORT}").assertExists()
+    }
+
+    /**
+     * The entry row itself lives in the settings page's `LazyListScope` (which needs the whole
+     * Koin graph); like `SettingsAccountEntryTest`, a source contract keeps the 设置 entry from
+     * silently disappearing while the sub-page tests still cover what it opens.
+     */
+    @Test
+    fun `settings page keeps the MCP entry row`() {
+        val page = File(
+            "src/main/java/io/rune/mt/forum/ui/page/miuix/settings/preferred/MiuixPreferredPage.kt",
+        ).also { assertTrue("settings page source not found at ${it.absolutePath}", it.isFile) }
+            .readText()
+
+        assertTrue("the settings entry must navigate to Route.Mcp", page.contains("Route.Mcp"))
+        assertTrue(
+            "the settings entry must use the MCP title string",
+            page.contains("R.string.mcp_server_title"),
+        )
     }
 
     private fun render() {

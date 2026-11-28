@@ -214,8 +214,9 @@ App 内跑一个只绑定回环地址的 **MCP（Model Context Protocol）服务
   未知路径 404、>64 KB 请求体 413、关闭后端口拒绝连接、限流 429。
 - `McpSettingsStoreTest`（6 例）：默认关 + 8765；开关/端口跨仓库实例持久化；
   关闭持久化；特权端口与越界端口的规范化。
-- `McpSettingsPageTest`（4 例，Robolectric）：设置页渲染端点/开关/工具清单/安全说明；
-  打开开关写入设置；改端口写入设置；运行/停止状态文案。
+- `McpSettingsPageTest`（5 例，Robolectric）：设置页渲染端点/开关/工具清单/安全说明；
+  打开开关写入设置；改端口写入设置；运行/停止状态文案；设置页入口的源码契约
+  （`Route.Mcp` + `mcp_server_title`）。
 
 ## 已知边界
 

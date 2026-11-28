@@ -59,7 +59,7 @@
 
 ```bash
 bash tools/build.sh                              # debug APK
-bash tools/build.sh :app:testStableDebugUnitTest  # 480 tests
+bash tools/build.sh :app:testStableDebugUnitTest  # 481 tests
 bash tools/build.sh :app:assembleStableRelease
 bash tools/build.sh :app:lintVitalStableRelease
 ```
@@ -69,7 +69,7 @@ bash tools/build.sh :app:lintVitalStableRelease
 ## 验证
 
 ```
-:app:testStableDebugUnitTest    480 tests, 0 failures
+:app:testStableDebugUnitTest    481 tests, 0 failures
 :app:assembleStableRelease      BUILD SUCCESSFUL  (2.3 MB)
 :app:lintVitalStableRelease     BUILD SUCCESSFUL
 ```

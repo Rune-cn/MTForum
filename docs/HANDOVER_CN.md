@@ -2434,14 +2434,15 @@ handler 不存在，`NavDisplay` 独占手势；打开时它接管，拖动进�
   关闭后端口拒绝连接；限流 429。
 - `McpSettingsStoreTest`(6)：默认关 + 8765；开关/端口跨仓库实例（模拟重启）持久化；
   关闭持久化；特权端口 80 与 70000 规范化为默认；键落在既有 AppDataStore。
-- `McpSettingsPageTest`(4，Robolectric)：端点/开关/工具清单/安全说明渲染；
-  开关写设置；改端口写设置；运行/停止状态文案。
+- `McpSettingsPageTest`(5，Robolectric)：端点/开关/工具清单/安全说明渲染；
+  开关写设置；改端口写设置；运行/停止状态文案；设置页入口的源码契约（`Route.Mcp` +
+  `mcp_server_title`）。
 - `KoinGraphTest`：真实 `appModules` 下新模块可解析（控制器不会在测试里绑端口）。
 
 ### 27.5 验证
 
 - `:app:compileStableDebugKotlin` → BUILD SUCCESSFUL
-- `:app:testStableDebugUnitTest` → BUILD SUCCESSFUL（全量 78 suites / 480 tests / 0 failures）
+- `:app:testStableDebugUnitTest` → BUILD SUCCESSFUL（全量 78 suites / 481 tests / 0 failures）
 - `:app:lintVitalStableRelease` → BUILD SUCCESSFUL（三语 374 键等量）
 
 ### 27.6 已知边界
