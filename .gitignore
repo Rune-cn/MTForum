@@ -34,3 +34,7 @@ keystore/
 .DS_Store
 /.agents
 /logs
+
+# Python bytecode from tools/ scripts
+__pycache__/
+*.pyc
