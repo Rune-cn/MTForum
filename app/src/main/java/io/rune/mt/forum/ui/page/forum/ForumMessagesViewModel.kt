@@ -217,6 +217,24 @@ class ForumMessagesViewModel(
         }
     }
 
+    /** Inserts a `[list]` + `[*]` skeleton at the caret (shared composer toolbar). */
+    fun insertBbcList() {
+        val state = _conversation.value
+        val edit = ComposerText.wrapList(state.draft, state.draftCaret)
+        _conversation.update {
+            it.copy(draft = edit.text, draftCaret = edit.caret, imageHostError = null)
+        }
+    }
+
+    /** Inserts a `[code]` block on its own lines at the caret (shared composer toolbar). */
+    fun insertBbcCode() {
+        val state = _conversation.value
+        val edit = ComposerText.wrapCode(state.draft, state.draftCaret)
+        _conversation.update {
+            it.copy(draft = edit.text, draftCaret = edit.caret, imageHostError = null)
+        }
+    }
+
     /**
      * Uploads one picked picture to the MT image host and inserts its `[img]…[/img]` at the caret.
      *

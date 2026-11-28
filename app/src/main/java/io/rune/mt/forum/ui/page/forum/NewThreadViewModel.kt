@@ -408,6 +408,12 @@ class NewThreadViewModel(
     /** Inserts an empty BBCode pair at the caret, leaving the caret between the tags. */
     fun insertTag(name: String) = insertEdit(ComposerText.wrapTag(_state.value.message, _state.value.messageCaret, name))
 
+    /** Inserts a `[list]` + `[*]` skeleton at the caret, caret after the first marker. */
+    fun insertList() = insertEdit(ComposerText.wrapList(_state.value.message, _state.value.messageCaret))
+
+    /** Inserts a `[code]` block on its own lines at the caret, caret on the blank inner line. */
+    fun insertCode() = insertEdit(ComposerText.wrapCode(_state.value.message, _state.value.messageCaret))
+
     private fun insertEdit(edit: ComposerEdit) = _state.update {
         it.copy(message = edit.text, messageCaret = edit.caret, hostUploadError = null)
     }
