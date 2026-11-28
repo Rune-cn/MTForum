@@ -1,7 +1,7 @@
 # MT论坛 客户端
 
 <p align="center">
-  <img src="docs/screenshots/app-icon.png" alt="应用图标" width="120" />
+  <img src="docs/screenshots/app-icon.png" alt="应用图标" width="128" />
 </p>
 
 <p align="center">
@@ -14,13 +14,8 @@
 加 `res/mipmap-anydpi-v26/ic_launcher{,_round}.xml`。图案是一只坐在**左下角**的简易猫，
 右上留白给角标；猫的最远像素压在 33dp 安全区半径内（实测 30.6dp），Android 13+ 的主题图标
 复用同一份几何走 `<monochrome>`。预览由 `python tools/render_app_icon.py` 直接渲染这些 XML
-生成，不经过任何设计工具：
+生成，不经过任何设计工具（上面那张就是它渲染出来的启动图标本身）。
 
-<p align="center">
-  <img src="docs/screenshots/app-icon.png" alt="应用图标" width="96" />
-  <img src="docs/screenshots/app-icon-round.png" alt="圆形遮罩" width="96" />
-  <img src="docs/screenshots/app-icon-sizes.png" alt="48 / 72 / 96 / 144dp" width="240" />
-</p>
 
 ## 简介
 

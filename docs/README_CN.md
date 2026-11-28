@@ -1,7 +1,7 @@
 # MT论坛 客户端
 
 <p align="center">
-  <img src="screenshots/app-icon.png" alt="应用图标" width="120" />
+  <img src="screenshots/app-icon.png" alt="应用图标" width="128" />
 </p>
 
 <p align="center">
@@ -14,13 +14,8 @@
 加 `res/mipmap-anydpi-v26/ic_launcher{,_round}.xml`。图案是一只坐在**左下角**的简易猫，
 右上留白给角标；猫的最远像素压在 33dp 安全区半径内（实测 30.6dp），Android 13+ 的主题图标
 复用同一份几何走 `<monochrome>`。预览由 `python tools/render_app_icon.py` 直接渲染这些 XML
-生成，不经过任何设计工具：
+生成，不经过任何设计工具（上面那张就是它渲染出来的启动图标本身）。
 
-<p align="center">
-  <img src="screenshots/app-icon.png" alt="应用图标" width="96" />
-  <img src="screenshots/app-icon-round.png" alt="圆形遮罩" width="96" />
-  <img src="screenshots/app-icon-sizes.png" alt="48 / 72 / 96 / 144dp" width="240" />
-</p>
 
 ## 简介
 
@@ -148,7 +143,7 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串 / 资源后必
 当前基线：**78 个 suite / 481 个用例**，覆盖 acw 签名（与 JS 参考实现交叉验证）、页面解析、
 登录表单、正文富文本、Compose 真实渲染、主线程安全、图片会话隔离、图床两步上传、MCP JSON-RPC 等。
 本机跑不了模拟器，UI 用 Robolectric 截成 PNG 验证（产物在 `app/build/ui-screenshots/`），
-样例见 [screenshots/](screenshots/)。环境要求见 [BUILD_ENV.md](BUILD_ENV.md)
+样例见 [screenshots/](screenshots/)。环境要求见 [docs/BUILD_ENV.md](BUILD_ENV.md)
 （JDK 25、Android SDK 37.2、Gradle 9.8.1）。
 
 ### 文档
