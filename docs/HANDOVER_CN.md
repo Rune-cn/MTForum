@@ -2427,7 +2427,7 @@ OP 条，避免页脚模板漂移。**零赞页面没有这个元素**：`thread
 | `MiuixDialog.kt`（`ErrorDisplaySheet`） | OS3 死代码 | 无条件 `WindowBottomSheet`，无调用方 | 删除文件 |
 | `MiuixSmallTitleDropDown.kt`（`MiuixDropdown`） | OS3 死代码 | 无条件 `WindowListPopup`，无调用方 | 删除文件 |
 | `MiuixConfirmDialog` / `MiuixBlockingLoadingDialog` / `DraftRestoreDialog` / `LoginRequiredDialog` / `MiuixBadge` 详情层 / About 更新提示 / Preferred 更新提示 | OS3 → OS4 | 无条件 `WindowDialog` | 新增 `ui/page/miuix/widgets/MiuixStyleDialog`（OS4 `GlassDialog` / OS3 `WindowDialog`），全部迁移 |
-| `ui/navigation/MiuixNavWrapper.kt` | render effect | `FloatingBottomBarMode.LiquidGlass` 只看 `SDK_INT >= 33`，漏 `isRenderEffectSupported()` | 改 `isOs4PlatformSupported` |
+| `ui/navigation/MiuixNavWrapper.kt` | render effect | `FloatingBottomBarMode.LiquidGlass` 只看 `SDK_INT >= 33`，绕开了 `AppTheme`/宿主共用的平台守卫 | 改 `isOs4PlatformSupported`（与主题/宿主同一守卫） |
 | ComposerBoardPicker / ComposerImageSourceSheet / ForumBoardPickerSheet / MiuixBottomSheet / MiuixPreferences / MiuixTopAppBar / ForumSearchOverlay / ThreadActions | 正常 | 已有 `if (AppTheme.useMiuixOs4)` 或 `MiuixComponentScope` 分支 | 无需改动，契约测试锁定 |
 
 **共享助手**：`MiuixBottomSheet` 继续统一所有底部面板；对话框新增 `MiuixStyleDialog`，
@@ -2444,7 +2444,7 @@ OS4 `GlassBottomSheet` 仍是内联 overlay（宿主 `MiuixComponentHost` + `bac
 | `ui/page/miuix/widgets/MiuixPageScaffold.kt` | 经 `rememberMiuixBlurBackdrop` ✓ |
 | `ui/page/miuix/settings/preferred/about/MiuixAboutPage.kt` | `rememberMiuixBlurBackdrop(blurSupported)`；`textureBlur` 只在拿到的 backdrop 上 ✓ |
 | `ui/page/miuix/widgets/MiuixTopAppBar.kt` | `rememberLayerBackdrop()` 只在 OS4 玻璃分支（`useOs4` 已平台门控）✓ |
-| `ui/navigation/MiuixNavWrapper.kt` | **修复**：悬浮栏模式改 `isOs4PlatformSupported`；`rememberLayerBackdrop()` 本身只登记图层，真正的 `drawBackdrop` 在 mode 分支 |
+| `ui/navigation/MiuixNavWrapper.kt` | **修复**：悬浮栏模式改 `isOs4PlatformSupported`（与 `AppTheme`/`MiuixComponentHost` 同一守卫）；`rememberLayerBackdrop()` 本身只登记图层，真正的 `drawBackdrop` 在 mode 分支 |
 | `ui/library/FloatingBottomBar.kt` | `drawBackdrop` 只在 `isLiquidGlassMode` / `isBlurMode` 分支；模式由调用方传入（上面的 wrapper 已修） |
 | `ui/page/forum/ThreadActions.kt` | `threadMenuBackdrop` + `SafeMode.blurDisabled`，拒绝 `pageBackdrop`（规则 23/29）✓ |
 

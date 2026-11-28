@@ -39,10 +39,9 @@ fun MiuixMainPageWrapper(uiState: ThemeState, sharedViewModel: SettingsSharedVie
     val useOs4 = isOs4PlatformSupported && uiState.useMiuixOs4
     val useFloatingBottomBar = useOs4 || uiState.useAppleFloatingBar
     val floatingBottomBarMode = when {
-        // `isOs4PlatformSupported` is the runtime AGSL check (SDK >= 33 *and*
-        // isRenderEffectSupported()); an SDK-only check would select the liquid-glass draw on a
-        // device that cannot compile the shader, i.e. the same "glass without the guard" bug the
-        // backdrop helpers avoid.
+        // `isOs4PlatformSupported` is the platform half of the OS4 decision owned by
+        // `AppTheme`/`MiuixComponentHost` (SDK floor + `isRenderEffectSupported()`). Re-deriving
+        // it from the SDK constant alone is how the navigation layer drifts from the theme layer.
         useBlur && isOs4PlatformSupported -> FloatingBottomBarMode.LiquidGlass
         useBlur -> FloatingBottomBarMode.Blur
         else -> FloatingBottomBarMode.None
