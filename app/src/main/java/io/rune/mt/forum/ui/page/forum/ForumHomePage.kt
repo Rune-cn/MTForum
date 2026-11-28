@@ -71,7 +71,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * the server's order with the server's rank numbers — never re-sorted client-side.
  *
  * The top bar carries three actions: the search magnifier, 发帖 and 每日签到 at the far right.
- * The magnifier opens the search screen (`Route.ForumSearch` with a blank keyword); it is the only search
+ * The magnifier opens [`ForumSearchOverlay`] instead of navigating; it is the app's **only** search
  * entry (the board listing's icon is gone, rule 18). Confirming a keyword — or tapping a recent
  * search — lands on the existing `Route.ForumSearch` result page. 发帖 asks for a board with
  * [`ForumBoardPickerSheet`] and then pushes `Route.NewThread`; a guest is sent to the login page
@@ -101,6 +101,9 @@ fun ForumHomePage(
 
     var showSignIn by rememberSaveable { mutableStateOf(false) }
     var showBoardPicker by rememberSaveable { mutableStateOf(false) }
+    // The search surface is a page-level overlay, not a route: closing it (Back) returns to the
+    // exact same home scroll position, and submitting pushes the existing result page.
+    var showSearch by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         Timber.tag("ForumHomePage").i("home shown")
@@ -134,10 +137,11 @@ fun ForumHomePage(
             listState = listState,
             verticalPadding = 12.dp,
             actions = {
-                // Search lives at the leading edge of the actions (left of 发帖). The magnifier
-                // now opens the full search screen (field + recent searches + results) instead of
-                // a top-bar overlay: the owner asked for a real page after tapping search.
-                MiuixTopBarIconButton(onClick = { navigator.push(Route.ForumSearch("")) }) {
+                // Search lives at the leading edge of the actions (left of 发帖): a magnifier that
+                // opens the overlay surface, following the Miuix example's search interaction
+                // (`GlassPage.kt` opens `GlassSearchOverlay` from a top-bar action) instead of the
+                // old in-list card.
+                MiuixTopBarIconButton(onClick = { showSearch = true }) {
                     Icon(
                         imageVector = Icons.Rounded.Search,
                         contentDescription = stringResource(R.string.forum_search),
@@ -265,6 +269,17 @@ fun ForumHomePage(
             backdrop = chrome.backdrop,
         )
 
+        ForumSearchOverlay(
+            expanded = showSearch,
+            enableBlur = enableBlur,
+            onDismissRequest = { showSearch = false },
+            onSubmit = { keyword ->
+                if (keyword.isNotBlank()) {
+                    showSearch = false
+                    navigator.push(Route.ForumSearch(keyword))
+                }
+            },
+        )
     }
 }
 /** The grid stays three columns wide on phones, matching the site's shortcut block. */

@@ -401,6 +401,7 @@
     <string name="forum_board_settings_move_down">下移</string>
     <string name="forum_board_settings_hide">隱藏</string>
     <string name="forum_board_settings_shown">顯示</string>
+    <string name="forum_board_settings_position">第 %1$d / %2$d 位</string>
     <string name="forum_board_settings_empty">未載入到板塊</string>
     <string name="forum_board_settings_retry">重試</string>
     <string name="forum_board_settings_error">板塊載入失敗：%1$s</string>
