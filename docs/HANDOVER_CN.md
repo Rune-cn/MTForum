@@ -2864,3 +2864,18 @@ python tools/render_app_icon.py  → foreground safe-zone reach 30.60dp (< 33dp)
   （违规全在 import 与既有折行处），所以保持原样、不制造无关 diff。
 - 没有真机 / 桌面，图标观感与主题图标真实取色仍未在设备上看过（几何断言代替）。
 
+---
+
+## 32. 第十轮合入后的总体验证（2026-11-28）
+
+五条分支（评论关键词/正则屏蔽 + 板块顺序隐藏、应用内只读 MCP、BBCode 教程保真 + 共享编辑器工具栏、
+点赞数 + OS3/OS4 样式守卫、左下角猫图标）全部合入 main 后：
+
+- `:app:testStableDebugUnitTest` → **88 suites / 544 tests / 0 failures / 0 errors / 0 skipped**
+- `:app:lintVitalStableRelease` → BUILD SUCCESSFUL（`Lint found no new issues`）
+- 三语字符串各 **413** 键，数量一致
+- 合并中被新加的 `MiuixStyleGuardTest` 抓到一处真实泄漏：`ForumCommentFilterPage` 直接用
+  `WindowDialog`（OS3 组件）——已改走 `MiuixStyleDialog`。这条守卫测试是有效的。
+- 发布：**26.11.11**（versionCode 23），并按机主要求**删除 GitHub 上此前全部 release 与 tag**
+  （26.11 … 26.11.10），仓库现在只保留这一个版本。
+
