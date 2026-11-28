@@ -295,6 +295,27 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
       `sealed interface UpdateCheckResult { Checked | Skipped | Failed(reason) }`，失败必须带原因。
     - 成功后要**重新问站点**（草稿删除），本地移除行只是断言，不是事实。
 
+37. **应用内 MCP 服务只读、只绑回环、工具目录单一来源**：MCP 是「AI 客户端查看帖子和回复」的
+    本机接口，不是第二套论坛 API。
+    - 传输：`POST /mcp`（`POST /` 别名）JSON-RPC 2.0，Streamable HTTP 子集；**不实现 SSE**，
+      `GET /mcp` 返回 405 并带 `Allow: POST`。客户端拿 `Mcp-Session-Id` 可以回传，但服务端
+      不保存会话。不要为了 MCP 引入 NanoHTTPD/Ktor（`ServerSocket` 足够）。
+    - 绑定地址只能是 `McpEndpoint.HOST`（`127.0.0.1`），**永远不要** `0.0.0.0`/局域网；
+      无鉴权是明确的取舍，设置页必须把「本机任何应用都能读」写出来。
+    - 工具只能来自 `ForumRepository` 的读方法，并且是只读的四个：
+      `list_boards` / `list_threads` / `get_thread` / `search_threads`。**不要**把发帖、回复、
+      私信、登录、收藏、签到、改设置接进 MCP；新工具必须同时加进 `McpToolCatalog`
+      （设置页与 `tools/list` 共用）、`docs/MCP.md` 与分发器测试。
+    - 协议错误码固定：解析 `-32700`、非法请求 `-32600`、未知方法/工具 `-32601`、参数 `-32602`；
+      工具执行失败与未登录搜索是 `result.isError = true`，**不是** JSON-RPC error。
+    - 上限：请求体 64 KB（`413`）、头 16 KB、120 请求/分钟（`429`）、单楼正文 4,000 字符、
+      单结果 48,000 字符。列表行**不截断**（规则 16），只收紧字段；截断必须有
+      `truncated`/`…(truncated)` 标记。日志只打 method/path/status/字节数，请求体/帖子/Cookie
+      一律不打（规则 10）。
+    - 开关与端口写进既有 app-settings DataStore（`mcp_server_enabled` / `mcp_server_port`），
+      **不要**新建 DataStore；socket 生命周期只属于 `McpServerControllerImpl`（观察设置流），
+      UI/ViewModel 只写偏好。正文纯文本化复用 `ForumBodyParser`（规则 25），不要另写 DOM 解析。
+
 ## Miuix 双风格（OS3 / OS4）
 
 - **唯一开关**：`ThemeState.useMiuixOs4` → `AppTheme.useMiuixOs4`（CompositionLocal）。

@@ -25,6 +25,12 @@ app/src/main/java/io/rune/mt/forum/
 │   │   └── ForumImageHostClient.kt    MT 图床 `img.binmt.cc`：GET 令牌 → POST 上传，
 │   │                                  419 刷新重试一次，独立 client + 独立 CookieJar（不发论坛 Cookie）
 │   ├── settings/                     设置项仓库
+│   ├── mcp/                          应用内 MCP 服务（只读，回环）
+│   │   ├── McpJsonRpcDispatcher.kt   JSON-RPC 2.0 分发（纯函数，无 socket；4 个只读工具）
+│   │   ├── McpHttpServer.kt          ServerSocket HTTP/1.1（仅 127.0.0.1；POST /mcp；GET 405）
+│   │   ├── McpRequestThrottle.kt     120 请求/分钟滑动窗口（429）
+│   │   ├── McpLimits.kt              64KB body / 16KB 头 / 4k 单楼 / 48k 单结果
+│   │   └── McpServerControllerImpl.kt  观察设置流 → 启动/停止/重绑 socket
 │   └── updater/                      更新检查（指向本仓库 Releases）
 │       ├── OnlineUpdateRepositoryImpl.kt   HTTP + 缓存 + `checkState`（Idle/Checking/Settled）生命周期
 │       ├── UpdateCheckEngine.kt            纯决策管线：策略 → feed → 选 asset → 版本比较 → 确定结果
@@ -35,9 +41,11 @@ app/src/main/java/io/rune/mt/forum/
 │   │   │                             / ForumImageHost（图床结果、网关接口、格式与上传文件名策略）
 │   │   └── repository/               ForumRepository.kt / ForumDraftRepository.kt（含 ForumDraftService）
 │   ├── settings/                     偏好模型与用例
+│   ├── mcp/                          McpEndpoint / McpServerController / McpToolCatalog（设置页共用）
 │   └── updater/
 ├── di/
 │   ├── ForumModule.kt                论坛 Koin 模块
+│   ├── McpModule.kt                  应用内 MCP 服务（dispatcher / controller / body formatter）
 │   ├── ViewModelModule.kt            所有 VM 注册
 │   └── init/app_modules.kt           模块汇总
 ├── core/
@@ -46,7 +54,7 @@ app/src/main/java/io/rune/mt/forum/
 │   ├── crash/ · i18n/ · device/ · env/ · reflection/
 ├── ui/
 │   ├── navigation/
-│   │   ├── Routes.kt                 Main / About / Theme / Login / ForumList / ForumThread
+│   │   ├── Routes.kt                 Main / About / Theme / Mcp / Login / ForumList / ForumThread
 │   │   │                             / PrivateConversation / NewThread / Favorites / Drafts
 │   │   └── AppNavContainer.kt        NavDisplay + entry 注册
 │   ├── page/
@@ -77,7 +85,7 @@ app/src/main/java/io/rune/mt/forum/
 │   │   ├── login/                    登录页 / VM / 状态
 │   │   ├── main/forum/               论坛 VM 与 State（旧位置，保留兼容）
 │   │   ├── miuix/
-│   │   │   ├── settings/             设置页（账号区块、主题入口、关于）
+│   │   │   ├── settings/             设置页（账号区块、主题入口、MCP 服务入口、关于）
 │   │   │   └── widgets/              共享组件（页面脚手架、顶栏、滚动条、分组卡片、底部面板 `MiuixBottomSheet` 等）
 │   │   └── theme/ · library/ · animation/
 └── App.kt

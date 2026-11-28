@@ -27,6 +27,7 @@
 | 发新帖 | 标题 + 正文 + 表情 + 图片（**MT 图床** `img.binmt.cc`：原图直传并插入 `[img]…[/img]`，默认；或站点附件 multipart `Filedata`，1MB/张）、**服务器草稿**（`save=1`；草稿列表、编辑、发表、删除，见 `docs/REVERSE_SPEC.md` §16.1 与 §24） |
 | 图片查看 | 帖子内图片点击全屏，双指缩放、拖动、双击复位 |
 | 主题 | OS3 / OS4 双风格、动态取色、模糊与玻璃效果、HyperOS 风格预测式返回；主题模式用示例应用的「浅色/深色预览卡片 + 跟随系统开关」 |
+| MCP 服务 | 设置里开关的本机回环 MCP 服务器（`POST /mcp`，JSON-RPC 2.0）：向 AI 客户端提供**只读**的版块 / 主题列表 / 帖子楼层（纯文本 + 附件）/ 搜索；无鉴权、无任何写操作，见 [docs/MCP.md](docs/MCP.md) |
 
 ## 技术要点
 
@@ -64,7 +65,7 @@ UI 对齐 Miuix 官方示例应用（`example/`）：OS4 玻璃顶栏只采样�
 
 ```bash
 bash tools/build.sh                              # debug APK
-bash tools/build.sh :app:testStableDebugUnitTest  # 361 tests
+bash tools/build.sh :app:testStableDebugUnitTest  # 480 tests
 bash tools/build.sh :app:assembleStableRelease
 bash tools/build.sh :app:lintVitalStableRelease
 ```
@@ -74,7 +75,7 @@ bash tools/build.sh :app:lintVitalStableRelease
 ## 验证
 
 ```
-:app:testStableDebugUnitTest    361 tests, 0 failures
+:app:testStableDebugUnitTest    480 tests, 0 failures
 :app:assembleStableRelease      BUILD SUCCESSFUL  (2.3 MB)
 :app:lintVitalStableRelease     BUILD SUCCESSFUL
 ```
@@ -83,7 +84,8 @@ bash tools/build.sh :app:lintVitalStableRelease
 登录表单与失败响应、正文富文本、帖子卡片 Compose 真实渲染、主线程安全、
 私信会话/收藏/发帖表单解析、图片 URL 规范化/解码器路由/会话 Cookie 隔离、
 MT 图床两步上传（令牌 → 上传、419 刷新重试、`status:false`、坏 JSON，均对本机回环 server）、
-两个编辑器的图床插入（光标位置/失败不丢字）、OS4 玻璃菜单像素级锚定。
+两个编辑器的图床插入（光标位置/失败不丢字）、OS4 玻璃菜单像素级锚定、
+应用内 MCP 服务（JSON-RPC 分发、回环 socket 往返/405/413/429、设置持久化与设置页渲染）。
 
 无模拟器时可以直接「看」UI（Robolectric 截图，产物在 `app/build/ui-screenshots/`）：
 `ThreadActionsPopupLayoutTest`（OS4 菜单）、`ForumImageScreenshotTest`（卡片+正文图片）、
@@ -94,6 +96,7 @@ MT 图床两步上传（令牌 → 上传、419 刷新重试、`status:false`、
 - [docs/HANDOVER_CN.md](docs/HANDOVER_CN.md) — 交接文档（架构、约定、已知问题）
 - [docs/REVERSE_SPEC.md](docs/REVERSE_SPEC.md) — 站点逆向规格
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 代码地图
+- [docs/MCP.md](docs/MCP.md) — 应用内 MCP 服务（端点、JSON-RPC、工具、安全边界）
 - [docs/BUILD_ENV.md](docs/BUILD_ENV.md) — 构建与测试环境
 - [docs/screenshots/](docs/screenshots/) — JVM 截图样例（OS4 菜单 / 图片渲染）
 - [AGENTS.md](AGENTS.md) — 面向 AI 代理的开发约定
