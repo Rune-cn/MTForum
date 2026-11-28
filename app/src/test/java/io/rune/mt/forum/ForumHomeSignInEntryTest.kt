@@ -114,6 +114,12 @@ class ForumHomeSignInEntryTest {
                     single<ForumRepository> { repository }
                     single<ForumDraftRepository> { HomeFakeDraftRepository() }
                     single<ForumDraftService> { HomeFakeDraftService() }
+                    single<io.rune.mt.forum.domain.forum.repository.CommentFilterRepository> {
+                        io.rune.mt.forum.domain.forum.repository.NoopCommentFilterRepository
+                    }
+                    single<io.rune.mt.forum.domain.forum.repository.ForumBoardPreferencesRepository> {
+                        io.rune.mt.forum.domain.forum.repository.NoopForumBoardPreferencesRepository
+                    }
                     // The home page always mounts the search overlay, whose recent list comes from
                     // this view model; the sheet tests never open it.
                     single<ForumSearchHistoryRepository> { HomeFakeSearchHistory() }
