@@ -4,6 +4,8 @@ package io.rune.mt.forum.data.settings.repository
 import android.os.Build
 import androidx.datastore.preferences.core.Preferences
 import io.rune.mt.forum.data.settings.local.datastore.AppDataStore
+import io.rune.mt.forum.domain.forum.model.ForumUser
+import io.rune.mt.forum.domain.mcp.McpEndpoint
 import io.rune.mt.forum.domain.settings.model.preferences.AppPreferences
 import io.rune.mt.forum.domain.settings.model.preferences.GithubUpdateChannel
 import io.rune.mt.forum.domain.settings.model.preferences.PredictiveBackAnimation
@@ -78,6 +80,11 @@ class AppSettingsRepositoryImpl(
             predictiveBackExitDirection = PredictiveBackExitDirection.fromValueOrDefault(
                 prefs[AppDataStore.PREDICTIVE_BACK_EXIT_DIRECTION] ?: PredictiveBackExitDirection.ALWAYS_RIGHT.value,
             ),
+            mcpServerEnabled = prefs[AppDataStore.MCP_SERVER_ENABLED] ?: false,
+            // A stale/hand-edited port never reaches a bind: fall back to the default.
+            mcpServerPort = McpEndpoint.normalizePort(
+                prefs[AppDataStore.MCP_SERVER_PORT] ?: McpEndpoint.DEFAULT_PORT,
+            ),
         )
     }.shareIn(
         scope = appScope,
@@ -110,6 +117,7 @@ class AppSettingsRepositoryImpl(
     private fun intKey(setting: IntSetting): Preferences.Key<Int> = when (setting) {
         IntSetting.ThemeSeedColor -> AppDataStore.THEME_SEED_COLOR
         IntSetting.ThemeWallpaperSeedColor -> AppDataStore.THEME_WALLPAPER_SEED_COLOR
+        IntSetting.McpServerPort -> AppDataStore.MCP_SERVER_PORT
     }
 
     private fun booleanKey(setting: BooleanSetting): Preferences.Key<Boolean> = when (setting) {
@@ -122,6 +130,7 @@ class AppSettingsRepositoryImpl(
         BooleanSetting.UiUseMiuixMonet -> AppDataStore.UI_USE_MIUIX_MONET
         BooleanSetting.UiUseAppleFloatingBar -> AppDataStore.UI_USE_APPLE_FLOATING_BAR
         BooleanSetting.EnableFileLogging -> AppDataStore.ENABLE_FILE_LOGGING
+        BooleanSetting.McpServerEnabled -> AppDataStore.MCP_SERVER_ENABLED
     }
 
     private companion object {

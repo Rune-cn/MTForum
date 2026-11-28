@@ -361,4 +361,26 @@
     <string name="forum_attach_saved_format">Saved to %1$s</string>
     <string name="forum_attach_save_failed">Could not save the file</string>
     <string name="forum_attach_share_failed">Could not share the file</string>
+    <string name="mcp_server_title">MCP server</string>
+    <string name="mcp_server_entry_desc">Expose read-only threads and replies to AI clients on this device</string>
+    <string name="mcp_server_enable">Enable MCP server</string>
+    <string name="mcp_server_enable_desc">Binds 127.0.0.1 only; no authentication</string>
+    <string name="mcp_server_endpoint">MCP endpoint (Streamable HTTP)</string>
+    <string name="mcp_server_copy">Copy</string>
+    <string name="mcp_server_copied">Endpoint copied</string>
+    <string name="mcp_server_port">Port</string>
+    <string name="mcp_server_port_range">Port range: 1024–65535</string>
+    <string name="mcp_server_port_invalid">Enter a port between 1024 and 65535</string>
+    <string name="mcp_server_tools">Exposed tools (%1$d, read-only)</string>
+    <string name="mcp_server_status_running">Running on 127.0.0.1:%1$d</string>
+    <string name="mcp_server_status_stopped">Stopped</string>
+    <string name="mcp_server_status_error">Failed to start: %1$s</string>
+    <string name="mcp_server_transport_note">POST /mcp with JSON-RPC 2.0. GET /mcp returns 405 (no SSE stream).</string>
+    <string name="mcp_server_security_title">Security</string>
+    <string name="mcp_server_security_loopback">Reachable from this device only (127.0.0.1)</string>
+    <string name="mcp_server_security_no_auth">No authentication: any app on this device can read these tools</string>
+    <string name="mcp_server_security_readonly">Read-only: no posting, private messages, login or setting changes</string>
+    <string name="mcp_server_client_title">Connect a client</string>
+    <string name="mcp_server_client_hint">Point an MCP client\'s Streamable HTTP transport at this endpoint</string>
+    <string name="mcp_server_client_example">Example: %1$s</string>
 </resources>

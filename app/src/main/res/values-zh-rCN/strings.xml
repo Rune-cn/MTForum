@@ -361,4 +361,26 @@
     <string name="forum_attach_saved_format">已保存到 %1$s</string>
     <string name="forum_attach_save_failed">保存失败</string>
     <string name="forum_attach_share_failed">分享失败</string>
+    <string name="mcp_server_title">MCP 服务</string>
+    <string name="mcp_server_entry_desc">通过本机接口向 AI 客户端提供只读的帖子与回复</string>
+    <string name="mcp_server_enable">启用 MCP 服务</string>
+    <string name="mcp_server_enable_desc">仅绑定 127.0.0.1，无鉴权</string>
+    <string name="mcp_server_endpoint">MCP 接口地址（Streamable HTTP）</string>
+    <string name="mcp_server_copy">复制</string>
+    <string name="mcp_server_copied">已复制接口地址</string>
+    <string name="mcp_server_port">端口</string>
+    <string name="mcp_server_port_range">端口范围：1024–65535</string>
+    <string name="mcp_server_port_invalid">请输入 1024 到 65535 之间的端口</string>
+    <string name="mcp_server_tools">暴露的工具（%1$d 个，只读）</string>
+    <string name="mcp_server_status_running">正在运行：127.0.0.1:%1$d</string>
+    <string name="mcp_server_status_stopped">已停止</string>
+    <string name="mcp_server_status_error">启动失败：%1$s</string>
+    <string name="mcp_server_transport_note">使用 JSON-RPC 2.0 向 /mcp 发送 POST；GET /mcp 返回 405（不提供 SSE 流）。</string>
+    <string name="mcp_server_security_title">安全</string>
+    <string name="mcp_server_security_loopback">仅本机可访问（127.0.0.1）</string>
+    <string name="mcp_server_security_no_auth">无鉴权：本机任何应用都能读取这些工具</string>
+    <string name="mcp_server_security_readonly">只读：不含发帖、私信、登录或修改设置</string>
+    <string name="mcp_server_client_title">连接客户端</string>
+    <string name="mcp_server_client_hint">在 MCP 客户端中把 Streamable HTTP 传输指向这个地址</string>
+    <string name="mcp_server_client_example">例如：%1$s</string>
 </resources>

@@ -59,6 +59,11 @@ class AppDataStore(private val dataStore: DataStore<Preferences>) {
         // Updater
         val GITHUB_UPDATE_CHANNEL = register(stringPreferencesKey("github_update_channel"), PreferenceValueType.STRING)
         val CUSTOM_GITHUB_PROXY_URL = register(stringPreferencesKey("custom_github_proxy_url"), PreferenceValueType.STRING)
+
+        // Local MCP server (设置 → MCP 服务). Stored in the same app-settings DataStore as every
+        // other preference; no second store is introduced.
+        val MCP_SERVER_ENABLED = register(booleanPreferencesKey("mcp_server_enabled"), PreferenceValueType.BOOLEAN)
+        val MCP_SERVER_PORT = register(intPreferencesKey("mcp_server_port"), PreferenceValueType.INT)
     }
 
     suspend fun putString(key: Preferences.Key<String>, value: String) {

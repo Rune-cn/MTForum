@@ -150,6 +150,12 @@ fun MiuixPreferredPage(
                     .padding(horizontal = 12.dp)
                     .padding(bottom = 12.dp),
             ) {
+                MiuixNavigationItemWidget(
+                    icon = AppIcons.Theme,
+                    title = stringResource(R.string.mcp_server_title),
+                    description = stringResource(R.string.mcp_server_entry_desc),
+                    onClick = { navigator.push(Route.Mcp) },
+                )
                 BasicComponent(
                     title = stringResource(R.string.about_detail),
                     summary = updateCheckDescription(uiState.checkState) ?: if (uiState.hasUpdate) {

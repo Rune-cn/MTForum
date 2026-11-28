@@ -17,6 +17,7 @@ import io.rune.mt.forum.ui.page.main.settings.SettingsSharedViewModel
 import io.rune.mt.forum.ui.page.main.settings.home.HomePageViewModel
 import io.rune.mt.forum.ui.page.main.settings.preferred.PreferredViewModel
 import io.rune.mt.forum.ui.page.main.settings.preferred.about.AboutViewModel
+import io.rune.mt.forum.ui.page.main.settings.preferred.mcp.McpSettingsViewModel
 import io.rune.mt.forum.ui.page.main.settings.preferred.theme.ThemeSettingsViewModel
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
@@ -26,6 +27,7 @@ val viewModelModule = module {
     viewModelOf(::HomePageViewModel)
     viewModelOf(::PreferredViewModel)
     viewModelOf(::ThemeSettingsViewModel)
+    viewModelOf(::McpSettingsViewModel)
     viewModelOf(::AboutViewModel)
     viewModelOf(::ForumViewModel)
     viewModelOf(::ForumMessagesViewModel)

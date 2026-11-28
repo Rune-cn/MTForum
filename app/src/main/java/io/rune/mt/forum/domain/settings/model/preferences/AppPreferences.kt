@@ -34,4 +34,8 @@ data class AppPreferences(
     // Predictive Back Settings
     val predictiveBackAnimation: PredictiveBackAnimation,
     val predictiveBackExitDirection: PredictiveBackExitDirection,
+    // Local MCP server (设置 → MCP 服务). Off by default; the loopback socket only exists while
+    // the switch is on, and the port is validated before binding.
+    val mcpServerEnabled: Boolean = false,
+    val mcpServerPort: Int = io.rune.mt.forum.domain.mcp.McpEndpoint.DEFAULT_PORT,
 )
