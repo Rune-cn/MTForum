@@ -365,9 +365,10 @@ if (state.posts.isEmpty()) {
 
     ForumImageViewer(url = viewerUrl, onDismiss = { viewerUrl = null })
 
-    // Attachment chooser. Composed at the page root (like the reply composer) so it is not clipped
-    // by the list item that owns the card; `WindowBottomSheet` is a real dialog window, so the
-    // sheet is also unaffected by the `SelectionContainer` around the body.
+    // Attachment chooser. Composed at the page root like the reply composer so it is not clipped
+    // by the list item that owns the card. It goes through the shared `MiuixBottomSheet`: the OS4
+    // branch is an inline overlay in the root host's dialog layer and the OS3 branch is a real
+    // dialog window, so neither is affected by the `SelectionContainer` around the body.
     val finishedFile = downloadState.completedFile()
     LaunchedEffect(downloadState.state?.error, finishedFile) {
         downloadState.state?.error?.let { reason ->
