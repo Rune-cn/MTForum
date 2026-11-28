@@ -89,6 +89,9 @@ fun ForumHomePage(
     viewModel: ForumViewModel = koinViewModel(),
 ) {
     val state by viewModel.homeState.collectAsStateWithLifecycle()
+    // The grid honours the user's board order/hide preferences; `homeBoards` recomputes when the
+    // index or the settings change (see ForumViewModel.homeBoards + arrangeForums).
+    val boards by viewModel.homeBoards.collectAsStateWithLifecycle()
     val session by viewModel.session.collectAsStateWithLifecycle()
     val chrome = rememberMiuixPageChrome(enableBlur)
     val navigator = LocalNavigator.current
@@ -184,10 +187,10 @@ fun ForumHomePage(
                 }
 
                 else -> {
-                    if (state.forums.isNotEmpty()) {
+                    if (boards.isNotEmpty()) {
                         item { SmallTitle(stringResource(R.string.forum_boards)) }
                         items(
-                            items = state.forums.chunked(FORUM_GRID_COLUMNS),
+                            items = boards.chunked(FORUM_GRID_COLUMNS),
                             key = { row -> "board_row_${row.first().fid}" },
                         ) { row ->
                             ForumBoardRow(
@@ -220,7 +223,7 @@ fun ForumHomePage(
                         }
                     }
 
-                    if (state.forums.isEmpty() && state.hotRanking.isEmpty()) {
+                    if (boards.isEmpty() && state.hotRanking.isEmpty()) {
                         item { ForumEmptyCard(stringResource(R.string.forum_empty_threads)) }
                     }
 
@@ -258,7 +261,7 @@ fun ForumHomePage(
         // surface covers the page including its bar.
         ForumBoardPickerSheet(
             show = showBoardPicker,
-            boards = state.forums,
+            boards = boards,
             onDismissRequest = { showBoardPicker = false },
             onPick = { forum ->
                 showBoardPicker = false

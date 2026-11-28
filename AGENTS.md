@@ -295,6 +295,30 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
       `sealed interface UpdateCheckResult { Checked | Skipped | Failed(reason) }`，失败必须带原因。
     - 成功后要**重新问站点**（草稿删除），本地移除行只是断言，不是事实。
 
+37. **评论屏蔽与板块顺序/隐藏都是本机设置（不调服务器）**：
+    - 规则存**现有 settings DataStore**（JSON 字符串）：`thread_comment_filter_v1`
+      （`CommentFilterSettings{masterEnabled,filterOp,rules[CommentFilterRule{id,pattern,type,enabled}]}`）；
+      板块存 `forum_board_prefs_v1`（`ForumBoardPreferences{orderedFids,hiddenFids}`）。实现分别见
+      `CommentFilterRepositoryImpl` / `ForumBoardPreferencesRepositoryImpl`，都按
+      `ForumDraftRepositoryImpl` 的“整份 JSON 一次原子 edit”写法。
+    - **匹配语义**：关键词 = 忽略大小写子串；正则 = 忽略大小写 `Regex`。**规则在保存时校验**
+      （空串 / 超过 `MAX_COMMENT_FILTER_PATTERN_LENGTH = 200` 字符 / 非法正则 / 超过
+      `MAX_COMMENT_FILTER_RULES = 50` 条直接拒绝并提示）；**读盘时容忍**：坏 JSON → 默认空；
+      单条坏正则/超长/空 id → 跳过该条，绝不让列表崩。
+    - **正则只编译一次**：`CommentFilterMatcher.compile(rules)` 生成一个 matcher，按规则版本复用；
+      楼层文本用 `ForumBodyParser.plainText` 解析并按 pid 缓存，**过滤在 `ForumViewModel.threadDisplay`
+      里做，不在 LazyColumn 的 item 循环里**（UI 列表路径只读已算好的结果）。正则可能灾难性回溯，
+      但单楼层匹配 + 200 字符上限把影响限定在“某个帖子页稍慢”，规则详情见 HANDOVER §27。
+    - **默认保留楼主**（`filterOp=false`）；打开“也过滤楼主”才连 OP 一起判。被屏蔽条数用页脚
+      “N 条被屏蔽” + 临时显示开关呈现（`revealHidden`，换帖子自动复位）。
+    - **板块排序/隐藏**应用到**首页宫格**（`ForumViewModel.homeBoards`）与**发帖板块选择器**
+      （`NewThreadViewModel.loadBoards`）；搜索是站点级 POST、没有板块筛选，不适用（已注明）。
+      隐藏板块只从宫格/选择器消失，仍可通过深链/直接 URL 进入。
+    - **新板块合并规则**：`arrangeForums(serverForums, prefs[, includeHidden])` —— 用户排过序的
+      已知板块按用户顺序；**服务器后来新增的板块保持它在服务器列表里的位置**（未被用户重排的区域
+      不被打乱）；`orderedFids` 为空时直接用服务器顺序；`includeHidden=true` 供设置页继续展示隐藏行。
+      该函数是纯函数，`ForumBoardPreferencesTest` 钉住每个分支。
+
 ## Miuix 双风格（OS3 / OS4）
 
 - **唯一开关**：`ThemeState.useMiuixOs4` → `AppTheme.useMiuixOs4`（CompositionLocal）。

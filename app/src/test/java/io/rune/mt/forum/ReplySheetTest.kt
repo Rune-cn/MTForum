@@ -139,6 +139,12 @@ class ReplySheetTest {
                     single<ForumRepository> { repository }
                     single<ForumDraftRepository> { ReplyFakeDraftRepository() }
                     single<ForumDraftService> { ReplyFakeDraftService() }
+                    single<io.rune.mt.forum.domain.forum.repository.CommentFilterRepository> {
+                        io.rune.mt.forum.domain.forum.repository.NoopCommentFilterRepository
+                    }
+                    single<io.rune.mt.forum.domain.forum.repository.ForumBoardPreferencesRepository> {
+                        io.rune.mt.forum.domain.forum.repository.NoopForumBoardPreferencesRepository
+                    }
                     // The page builds the authenticated attachment downloader eagerly; the test
                     // never downloads, the client only has to exist.
                     single { ForumHttpClient(ForumCookieJar()) }

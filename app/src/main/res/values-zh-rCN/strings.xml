@@ -361,4 +361,44 @@
     <string name="forum_attach_saved_format">已保存到 %1$s</string>
     <string name="forum_attach_save_failed">保存失败</string>
     <string name="forum_attach_share_failed">分享失败</string>
+    <!-- 评论屏蔽 -->
+    <string name="forum_comment_filter_title">评论屏蔽</string>
+    <string name="forum_comment_filter_section_desc">按关键词或正则屏蔽评论</string>
+    <string name="forum_comment_filter_master">启用评论屏蔽</string>
+    <string name="forum_comment_filter_master_desc">以下规则作用于帖子的回复</string>
+    <string name="forum_comment_filter_filter_op">也过滤楼主</string>
+    <string name="forum_comment_filter_filter_op_desc">默认保留楼主</string>
+    <string name="forum_comment_filter_rules">规则</string>
+    <string name="forum_comment_filter_add">添加规则</string>
+    <string name="forum_comment_filter_empty">还没有规则</string>
+    <string name="forum_comment_filter_type_keyword">关键词</string>
+    <string name="forum_comment_filter_type_regex">正则</string>
+    <string name="forum_comment_filter_pattern_hint">关键词或正则表达式</string>
+    <string name="forum_comment_filter_add_title">添加评论屏蔽规则</string>
+    <string name="forum_comment_filter_edit_title">编辑评论屏蔽规则</string>
+    <string name="forum_comment_filter_edit">编辑</string>
+    <string name="forum_comment_filter_delete">删除</string>
+    <string name="forum_comment_filter_save">保存</string>
+    <string name="forum_comment_filter_delete_title">删除规则</string>
+    <string name="forum_comment_filter_delete_message">确定删除这条规则？</string>
+    <string name="forum_comment_filter_error_blank">请输入关键词或正则</string>
+    <string name="forum_comment_filter_error_too_long">规则过长（最多 %1$d 个字符）</string>
+    <string name="forum_comment_filter_error_invalid_regex">正则表达式无效</string>
+    <string name="forum_comment_filter_error_too_many">规则过多（最多 %1$d 条）</string>
+    <string name="forum_comment_filter_error_storage">保存规则失败</string>
+    <string name="forum_comment_filter_blocked_format">%1$d 条被屏蔽</string>
+    <string name="forum_comment_filter_reveal">临时显示</string>
+    <string name="forum_comment_filter_hide">收屏蔽</string>
+    <!-- 板块管理 -->
+    <string name="forum_board_settings_title">板块管理</string>
+    <string name="forum_board_settings_desc">调整首页板块顺序或隐藏板块</string>
+    <string name="forum_board_settings_move_up">上移</string>
+    <string name="forum_board_settings_move_down">下移</string>
+    <string name="forum_board_settings_hide">隐藏</string>
+    <string name="forum_board_settings_shown">显示</string>
+    <string name="forum_board_settings_empty">未加载到板块</string>
+    <string name="forum_board_settings_retry">重试</string>
+    <string name="forum_board_settings_error">板块加载失败：%1$s</string>
+    <string name="forum_board_settings_hidden_hint">隐藏的板块仍可通过链接打开，只是不再出现在首页宫格和发帖板块选择器里。</string>
+    <string name="forum_customization_section">论坛定制</string>
 </resources>

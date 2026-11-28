@@ -132,6 +132,12 @@ class ForumHomeFeedPagingTest {
                     single<ForumRepository> { repository }
                     single<ForumDraftRepository> { FeedFakeDraftRepository }
                     single<ForumDraftService> { FeedFakeDraftService }
+                    single<io.rune.mt.forum.domain.forum.repository.CommentFilterRepository> {
+                        io.rune.mt.forum.domain.forum.repository.NoopCommentFilterRepository
+                    }
+                    single<io.rune.mt.forum.domain.forum.repository.ForumBoardPreferencesRepository> {
+                        io.rune.mt.forum.domain.forum.repository.NoopForumBoardPreferencesRepository
+                    }
                     single<ForumSearchHistoryRepository> { FeedFakeSearchHistory() }
                     viewModelOf(::ForumViewModel)
                     viewModelOf(::ForumSignInViewModel)

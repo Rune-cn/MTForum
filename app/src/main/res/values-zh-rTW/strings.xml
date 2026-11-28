@@ -361,4 +361,44 @@
     <string name="forum_attach_saved_format">已儲存到 %1$s</string>
     <string name="forum_attach_save_failed">儲存失敗</string>
     <string name="forum_attach_share_failed">分享失敗</string>
+    <!-- 評論屏蔽 -->
+    <string name="forum_comment_filter_title">評論屏蔽</string>
+    <string name="forum_comment_filter_section_desc">按關鍵詞或正則屏蔽評論</string>
+    <string name="forum_comment_filter_master">啟用評論屏蔽</string>
+    <string name="forum_comment_filter_master_desc">以下規則作用於帖子的回覆</string>
+    <string name="forum_comment_filter_filter_op">也過濾樓主</string>
+    <string name="forum_comment_filter_filter_op_desc">預設保留樓主</string>
+    <string name="forum_comment_filter_rules">規則</string>
+    <string name="forum_comment_filter_add">新增規則</string>
+    <string name="forum_comment_filter_empty">還沒有規則</string>
+    <string name="forum_comment_filter_type_keyword">關鍵詞</string>
+    <string name="forum_comment_filter_type_regex">正則</string>
+    <string name="forum_comment_filter_pattern_hint">關鍵詞或正則表達式</string>
+    <string name="forum_comment_filter_add_title">新增評論屏蔽規則</string>
+    <string name="forum_comment_filter_edit_title">編輯評論屏蔽規則</string>
+    <string name="forum_comment_filter_edit">編輯</string>
+    <string name="forum_comment_filter_delete">刪除</string>
+    <string name="forum_comment_filter_save">儲存</string>
+    <string name="forum_comment_filter_delete_title">刪除規則</string>
+    <string name="forum_comment_filter_delete_message">確定刪除這條規則？</string>
+    <string name="forum_comment_filter_error_blank">請輸入關鍵詞或正則</string>
+    <string name="forum_comment_filter_error_too_long">規則過長（最多 %1$d 個字元）</string>
+    <string name="forum_comment_filter_error_invalid_regex">正則表達式無效</string>
+    <string name="forum_comment_filter_error_too_many">規則過多（最多 %1$d 條）</string>
+    <string name="forum_comment_filter_error_storage">儲存規則失敗</string>
+    <string name="forum_comment_filter_blocked_format">%1$d 條被屏蔽</string>
+    <string name="forum_comment_filter_reveal">臨時顯示</string>
+    <string name="forum_comment_filter_hide">收屏蔽</string>
+    <!-- 板塊管理 -->
+    <string name="forum_board_settings_title">板塊管理</string>
+    <string name="forum_board_settings_desc">調整首頁板塊順序或隱藏板塊</string>
+    <string name="forum_board_settings_move_up">上移</string>
+    <string name="forum_board_settings_move_down">下移</string>
+    <string name="forum_board_settings_hide">隱藏</string>
+    <string name="forum_board_settings_shown">顯示</string>
+    <string name="forum_board_settings_empty">未載入到板塊</string>
+    <string name="forum_board_settings_retry">重試</string>
+    <string name="forum_board_settings_error">板塊載入失敗：%1$s</string>
+    <string name="forum_board_settings_hidden_hint">隱藏的板塊仍可透過連結開啟，只是不再出現在首頁宮格和發帖板塊選擇器裡。</string>
+    <string name="forum_customization_section">論壇定製</string>
 </resources>

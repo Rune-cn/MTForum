@@ -79,6 +79,7 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.interfaces.ExperimentalScrollBarApi
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -104,6 +105,9 @@ fun ForumThreadPage(
     forumHttpClient: ForumHttpClient = koinInject(),
 ) {
     val state by viewModel.threadState.collectAsStateWithLifecycle()
+    // The filtered floor list lives in the ViewModel (compiled-once matcher, cached plain text),
+    // so this page only renders what it is given. See ForumViewModel.threadDisplay.
+    val display by viewModel.threadDisplay.collectAsStateWithLifecycle()
     val navigator = LocalNavigator.current
     val chrome = rememberMiuixPageChrome(enableBlur)
     // OS4 frames content with a wider gutter; the shared chrome resolves the rest of the style.
@@ -259,10 +263,10 @@ fun ForumThreadPage(
                                         )
                                     }
                                 } else {
-if (state.posts.isEmpty()) {
+if (display.posts.isEmpty()) {
                                         item { ForumEmptyCard(stringResource(R.string.forum_empty_posts)) }
                                     } else {
-                                        items(items = state.posts, key = { "post_${it.pid}" }) { post ->
+                                        items(items = display.posts, key = { "post_${it.pid}" }) { post ->
                                             ForumPostCard(
                                                 post = post,
                                                 forumName = state.forumName,
@@ -278,6 +282,18 @@ if (state.posts.isEmpty()) {
                                                 },
                                                 onImageClick = { viewerUrl = it },
                                                 onAttachmentClick = { attachmentTarget = it },
+                                            )
+                                        }
+                                    }
+
+                                    // "N 条被屏蔽" + a temporary reveal toggle. The count comes from
+                                    // the ViewModel's filter, so it stays correct while revealed.
+                                    if (display.revealAvailable) {
+                                        item {
+                                            BlockedFloorsFooter(
+                                                hiddenCount = display.hiddenCount,
+                                                revealed = display.revealed,
+                                                onToggle = viewModel::toggleBlockedReveal,
                                             )
                                         }
                                     }
@@ -555,6 +571,38 @@ internal fun ForumPostCard(
             )
         }
         Spacer(Modifier.height(14.dp))
+    }
+}
+
+/**
+ * The small footer the thread page shows when the comment filter hid some floors: "N 条被屏蔽"
+ * plus a temporary reveal toggle. It only reports what the ViewModel filtered; the count stays the
+ * same while revealed so the user never loses track of how much was hidden.
+ */
+@Composable
+internal fun BlockedFloorsFooter(
+    hiddenCount: Int,
+    revealed: Boolean,
+    onToggle: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.forum_comment_filter_blocked_format, hiddenCount),
+            modifier = Modifier.weight(1f),
+            fontSize = 12.sp,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        )
+        TextButton(
+            text = stringResource(
+                if (revealed) R.string.forum_comment_filter_hide else R.string.forum_comment_filter_reveal,
+            ),
+            onClick = onToggle,
+        )
     }
 }
 
