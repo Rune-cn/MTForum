@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -153,7 +151,7 @@ fun MiuixErrorTextBlock(error: Throwable, modifier: Modifier = Modifier) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
-                color = MaterialTheme.colorScheme.outline,
+                color = MiuixTheme.colorScheme.outline,
             )
 
             val textToShow = if (AppConfig.isDebug) {
@@ -171,7 +169,7 @@ fun MiuixErrorTextBlock(error: Throwable, modifier: Modifier = Modifier) {
                     value = textToShow,
                     onValueChange = {},
                     readOnly = true,
-                    textStyle = LocalTextStyle.current.copy(color = contentColor),
+                    textStyle = MiuixTheme.textStyles.body2.copy(color = contentColor),
                     modifier = Modifier
                         .fillMaxWidth()
                         // Allow vertical scrolling for long stack traces

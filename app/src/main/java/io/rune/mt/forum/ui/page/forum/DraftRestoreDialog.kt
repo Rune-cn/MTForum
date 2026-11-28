@@ -12,11 +12,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.rune.mt.forum.ui.page.miuix.widgets.MiuixStyleDialog
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.window.WindowDialog
 
 /**
  * Restore prompt for a client-local draft (发帖 or 回复).
@@ -41,7 +41,7 @@ internal fun DraftRestoreDialog(
     onDiscard: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    WindowDialog(show = visible, onDismissRequest = onDismiss) {
+    MiuixStyleDialog(show = visible, onDismissRequest = onDismiss) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(
                 text = title,

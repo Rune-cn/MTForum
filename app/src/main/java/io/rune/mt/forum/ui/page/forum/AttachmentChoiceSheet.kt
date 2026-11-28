@@ -32,20 +32,18 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.rune.mt.forum.R
-import io.rune.mt.forum.ui.icons.AppMiuixIcons
-import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBackButton
+import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBottomSheet
+import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBottomSheetCloseAction
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.theme.LocalDismissState
+import top.yukonga.miuix.kmp.blur.Backdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.window.WindowBottomSheet
 
 /**
  * The attachment chooser: 「下载到本机」 / 「在浏览器打开」 / 「复制链接」.
@@ -54,14 +52,15 @@ import top.yukonga.miuix.kmp.window.WindowBottomSheet
  * plain browser hop frequently 403s or lands on the acw challenge page. Offering the choice — and
  * performing the download through the authenticated HTTP stack — is what makes the card useful.
  *
- * The sheet is a real dialog window (`WindowBottomSheet`), so it is reachable from the thread list
- * without being clipped by the `LazyColumn` item that owns the card. While a download runs the
- * row turns into its own progress/result panel: the sheet is where the user looks after tapping,
- * so a Snackbar-only report would be easy to miss. Progress is indeterminate when the server sends
- * no `Content-Length`, and a failure is shown with its reason instead of a silent no-op.
+ * While a download runs the row turns into its own progress/result panel: the sheet is where the
+ * user looks after tapping, so a Snackbar-only report would be easy to miss. Progress is
+ * indeterminate when the server sends no `Content-Length`, and a failure is shown with its reason
+ * instead of a silent no-op.
  *
- * OS4 gets the glass sheet (`GlassBottomSheet`) and OS3 the classic `WindowBottomSheet`, following
- * the project's rule 8 style split; `useMiuixOs4` comes from the theme, exactly as elsewhere.
+ * OS4 gets the glass sheet and OS3 the classic `WindowBottomSheet` through the shared
+ * [MiuixBottomSheet] helper (rule 8) — the same container the reply composer and the 签到 panel
+ * use. The previous copy called `WindowBottomSheet` directly, which put the OS3 sheet on the OS4
+ * path.
  */
 @Composable
 internal fun AttachmentChoiceSheet(
@@ -73,27 +72,21 @@ internal fun AttachmentChoiceSheet(
     onOpenInBrowser: (ForumBodyBlock.Attachment) -> Unit,
     onShareFile: (ForumBodyBlock.Attachment) -> Unit,
     onSaveFile: (ForumBodyBlock.Attachment) -> Unit,
+    backdrop: Backdrop? = null,
 ) {
     val show = target != null
     val copiedMessage = stringResource(R.string.forum_attach_copied)
     val clipboard = LocalClipboardManager.current
     var copied by remember(target?.url) { mutableStateOf(false) }
 
-    WindowBottomSheet(
+    MiuixBottomSheet(
         show = show,
         onDismissRequest = onDismissRequest,
         title = stringResource(R.string.forum_attach_sheet_title),
-        startAction = {
-            val dismissState = LocalDismissState.current
-            MiuixBackButton(
-                icon = AppMiuixIcons.Close,
-                onClick = { dismissState?.invoke() ?: onDismissRequest() },
-            )
-        },
-        insideMargin = DpSize(16.dp, 0.dp),
-        backgroundColor = MiuixTheme.colorScheme.surfaceContainerHigh,
+        backdrop = backdrop,
+        startAction = { MiuixBottomSheetCloseAction(onDismissRequest) },
     ) {
-        val attachment = target ?: return@WindowBottomSheet
+        val attachment = target ?: return@MiuixBottomSheet
         Column(modifier = Modifier.fillMaxWidth()) {
             AttachmentHeader(attachment)
 

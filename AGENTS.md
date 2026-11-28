@@ -65,6 +65,13 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
    统一走 `ui/page/miuix/widgets/MiuixBottomSheet`（标题头 + 关闭动作 + 相同内边距/圆角/手势，
    风格分支只在该助手里），别各写一套。实例见 `ForumSignInSheet`、`ReplyComposer`、
    `AttachmentChoiceSheet`。
+
+   **模态对话框同理，统一走 `MiuixStyleDialog`**（OS4 `GlassDialog` / OS3 `WindowDialog`）。
+   直接 `WindowDialog` 在 OS4 下就是 OS3 泄漏；`MiuixConfirmDialog`、`MiuixBlockingLoadingDialog`、
+   `DraftRestoreDialog`、`LoginRequiredDialog`、更新检查对话框都已改走该助手。
+   **判断一个文件是否泄漏用 `MiuixStyleGuardTest`**：同文件必须出现
+   `AppTheme.useMiuixOs4` / `MiuixComponentScope` / `useOs4` 守卫；OS4-only 玻璃包装器
+   自身（`MiuixGlassNavigationBar`）是唯一白名单。新增 `Glass*`/`Window*` 用法后先跑它。
 9. **不要条件化 `MiuixComponentHost`**：`SubcomposeLayout` 同帧销毁会崩溃。
 10. **禁止日志打印 Cookie 明文**，只可打 uid / isLoggedIn。
 11. **提交**：Conventional Commits；主体 ≤72 字符；不加 AI 署名或 Co-authored-by。
@@ -364,7 +371,17 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
   顶栏 `MiuixTopAppBar` + `MiuixTopBarIconButton`；返回 `MiuixBackButton`；
   底部导航 `MiuixGlassNavigationBar`（OS4）/ `FloatingBottomBar`（OS3）。
 - **OS4 专属视觉**：`size`、`Glass*` 来自 `miuix-material`/`miuix-glass`；
-  OS3 下不得泄漏玻璃组件，反之亦然。
+  OS3 下不得泄漏玻璃组件，反之亦然。**方向性由源码契约测试钉住**：
+  `MiuixStyleGuardTest` 扫 `src/main`，OS4-only 玻璃 import 缺风格守卫、OS3-only
+  `WindowListPopup`/`WindowDialog`/`WindowBottomSheet`/`FloatingBottomBar` import 缺风格守卫、
+  以及 Miuix UI 树读取 `MaterialTheme.colorScheme`/`material3.LocalTextStyle` 都会失败。
+  注释里写 `useMiuixOs4` 不算守卫（测试会先剥注释）。
+- **禁止在 Miuix 屏里读 Material3**：卡片/分隔线/文本样式用 `MiuixTheme.colorScheme` /
+  `MiuixTheme.textStyles`。`MiuixCards.kt` 曾用 `MaterialTheme.colorScheme.outline` 画分隔线，
+  OS4 调色板下会露出另一套主题色。
+- **render effect 守卫只有一处**：`isOs4PlatformSupported` / `isRenderEffectSupported()`。
+  任何 `drawBackdrop` / `textureBlur` / `Glass*` 只能在其为真时进入；底部悬浮栏的
+  `FloatingBottomBarMode.LiquidGlass` 也走 `isOs4PlatformSupported`，不能只看 SDK 版本。
 - **主题模式切换用示例应用的形态**：`ThemeModePreviewRow`（浅色/深色两张预览 tile，单选）+
   `ThemeModeFollowSystemRow`（跟随系统开关），见 `ThemeModeSelector.kt`；持久化仍走
   `ThemeSettingsAction.SetThemeMode` → `UpdateSettingUseCase`，**不要**退回下拉 Spinner

@@ -88,6 +88,18 @@ class ForumParserTest {
     }
 
     @Test
+    fun `thread detail reads the recommend count from the OP strip`() {
+        // rich_156696 is a real page-1 capture whose OP was 推荐ed: the strip hydrates
+        // `em.comiis_recommend_num` with 47 (the footer duplicate carries the same number).
+        val liked = ForumHtmlParser.parseThreadDetail(fixture("rich_156696.html"), tid = 156696, page = 1)
+        assertEquals(47, liked.recommendCount)
+        // thread_177093 has zero likes: the strip is an empty `ul`, the footer control prints no
+        // number at all. The selector must report 0 instead of throwing or inventing a value.
+        val unliked = ForumHtmlParser.parseThreadDetail(fixture("thread_177093.html"), tid = 177093, page = 1)
+        assertEquals(0, unliked.recommendCount)
+    }
+
+    @Test
     fun `guide page parses through the board parser`() {
         // `view=newthread` is the 最新 导读 list; it shares the board listing's DOM, which is why
         // the board parser can read every guide view (newthread/hot/digest/new/sofa) unchanged.

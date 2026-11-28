@@ -24,6 +24,7 @@ import io.rune.mt.forum.ui.page.forum.AttachmentChoiceSheet
 import io.rune.mt.forum.ui.page.forum.ForumBodyBlock
 import io.rune.mt.forum.ui.page.forum.ForumBodyParser
 import io.rune.mt.forum.ui.page.forum.ForumHtmlText
+import io.rune.mt.forum.ui.page.miuix.widgets.MiuixComponentHost
 import io.rune.mt.forum.ui.theme.AppTheme
 import java.io.File
 import org.junit.Assert.assertTrue
@@ -139,9 +140,9 @@ class ForumRichBodyScreenshotTest {
     /**
      * The attachment chooser itself: 「下载到本机」 / 「在浏览器打开」 / 「复制链接」.
      *
-     * Task B is about the *choice*, so the sheet is the thing worth inspecting. It is a real
-     * `WindowBottomSheet` (a Dialog window), which is why this case renders it directly instead of
-     * going through the thread list.
+     * Task B is about the *choice*, so the sheet is the thing worth inspecting. It goes through
+     * the shared `MiuixBottomSheet` helper, whose OS4 branch renders into the root host's dialog
+     * layer, so the test mounts `MiuixComponentHost` exactly like the app shell does.
      */
     @Test
     fun `attachment chooser sheet renders both actions`() {
@@ -157,26 +158,28 @@ class ForumRichBodyScreenshotTest {
                     seedColor = Color(0xFF2E9E5B),
                     useMiuixOs4 = true,
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color(0xFFF2F3F5))
-                            .padding(16.dp),
-                    ) {
-                        AttachmentChoiceSheet(
-                            target = ForumBodyBlock.Attachment(
-                                name = "Converter-0.2-beta.26042415.mtp",
-                                caption = "67.99 KB , 下载次数: 4, 下载积分: 金币 -1",
-                                url = "https://bbs.binmt.cc/forum.php?mod=attachment&aid=MzYxMTM2",
-                            ),
-                            download = null,
-                            onDismissRequest = {},
-                            onDownload = {},
-                            onCancelDownload = {},
-                            onOpenInBrowser = {},
-                            onShareFile = {},
-                            onSaveFile = {},
-                        )
+                    MiuixComponentHost(useOs4 = true, useBlur = false) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color(0xFFF2F3F5))
+                                .padding(16.dp),
+                        ) {
+                            AttachmentChoiceSheet(
+                                target = ForumBodyBlock.Attachment(
+                                    name = "Converter-0.2-beta.26042415.mtp",
+                                    caption = "67.99 KB , 下载次数: 4, 下载积分: 金币 -1",
+                                    url = "https://bbs.binmt.cc/forum.php?mod=attachment&aid=MzYxMTM2",
+                                ),
+                                download = null,
+                                onDismissRequest = {},
+                                onDownload = {},
+                                onCancelDownload = {},
+                                onOpenInBrowser = {},
+                                onShareFile = {},
+                                onSaveFile = {},
+                            )
+                        }
                     }
                 }
             }

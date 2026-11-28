@@ -111,7 +111,7 @@ class ForumPostCardScreenshotTest {
                             .padding(12.dp),
                         verticalArrangement = Arrangement.Top,
                     ) {
-                        ForumPostCard(post = op, forumName = "综合交流", onAuthorClick = {})
+                        ForumPostCard(post = op, forumName = "综合交流", recommendCount = 47, onAuthorClick = {})
                         ForumPostCard(post = replyFloor)
                     }
                 }
@@ -123,6 +123,9 @@ class ForumPostCardScreenshotTest {
         // plumbing reaches the card (Robolectric resolves the English default strings).
         compose.onNodeWithText("Board: 综合交流").assertIsDisplayed()
         compose.onNodeWithText("wuti").assertIsDisplayed()
+        // The thread's 推荐 count is rendered on the OP card only. Robolectric resolves the
+        // English default resources, so the format is `<n> likes`.
+        compose.onNodeWithText("47 likes").assertIsDisplayed()
 
         runCatching {
             val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()

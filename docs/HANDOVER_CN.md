@@ -2600,3 +2600,129 @@ handler 不存在，`NavDisplay` 独占手势；打开时它接管，拖动进�
 - 附件只给名字/URL/价格提示，不代下载（下载仍走 App 内 Cookie + acw 流程）。
 - 回环无 TLS、无鉴权：同一设备上的任意应用都能调用，这是本机自用工具的明确取舍。
 
+---
+
+## 29. 帖子内点赞数 + OS3/OS4 样式泄漏审计（2026-11-28）
+
+两条用户请求：
+
+1.「帖子内看到帖子有多少人点赞」
+2.「不要 os3 误用 os4 的样式，os4 不误用 os3 的样式」
+
+### 29.1 点赞数：选择器、样本与刷新
+
+**选择器**：`ul.comiis_recommend_list_a em.comiis_recommend_num`（取第一个）。
+
+站点把 OP 的推荐条渲染成：
+
+```html
+<ul class="comiis_recommend_list_a comiis_recommend_list_on">
+  <li style="float:right;margin-right:0;">
+    <a href="misc.php?op=recommend&amp;tid=156696&amp;mod=faq&amp;mobile=2">
+      <span class="bg_b f_c"><i class="comiis_font">&#xe63b;</i>
+        <em class="comiis_recommend_num">47</em>赞</span>
+    </a>
+  </li>
+  …推荐人头像…
+</ul>
+```
+
+页脚还有同一数字的副本 `span#comiis_recommend_num`（真实页两处都是 47）；选择器只锚定
+OP 条，避免页脚模板漂移。**零赞页面没有这个元素**：`thread_177093.html` 的
+`ul.comiis_recommend_list_a` 是空的、全文无 `comiis_recommend_num`，解析结果必须是 `0`
+而不是错误。任务描述里提到的 `album_images_177269.html` 实际**没有**推荐数字，故正向样本
+用 `rich_156696.html`（47），零值样本用 `thread_177093.html`。
+
+- 解析：`ForumHtmlParser.parseThreadDetail` → `ForumThreadDetail.recommendCount`
+  （page 1 的 OP 条）。
+- 状态：`ForumThreadState.recommendCount`；`loadMorePosts` **不覆盖**它（page ≥ 2 没有 OP 条，
+  否则翻页会把 47 冲成 0）。
+- UI：`ForumPostCard(recommendCount = …)` 只在 OP 卡片头部渲染 `👍 47`（复用
+  `forum_thread_likes_format`，三语已有，键数仍 352）。回复楼层没有该字段。
+- 防过期：`recommendCurrentThread()` 成功后先乐观 `+1`，再 `refreshThread()` 重取 page 1，
+  由站点数字校准。接口本身是「一步 GET 不可撤销」，响应里没有计数，只能重取。
+- 测试：`ForumParserTest` 新增「thread detail reads the recommend count from the OP strip」
+  （47 / 0）；`ForumPostCardScreenshotTest` 在 OS3/OS4 两份截图里断言 `47 likes` 可见。
+
+### 29.2 双风格泄漏审计（findings）
+
+| 文件 | 方向 | 问题 | 处置 |
+|---|---|---|---|
+| `ui/page/miuix/widgets/MiuixCards.kt` | Material3 → Miuix | `MaterialTheme.colorScheme.outline` 画分隔线；`material3.LocalTextStyle` 作错误详情 textStyle | 改 `MiuixTheme.colorScheme.outline` / `MiuixTheme.textStyles.body2` |
+| `ui/page/miuix/widgets/MiuixNumPickerWidget.kt` | Material3 → Miuix | 3 处 `MaterialTheme.typography` | 改 `MiuixTheme.textStyles.title3/body2` |
+| `ui/page/miuix/widgets/MiuixBadge.kt` | Material3 → Miuix | `material3.LocalTextStyle` | 改 `MiuixTheme.textStyles.body2` |
+| `ui/theme/Backdrop.kt` | Material3 遗留 | 仅存的 `MaterialTheme.colorScheme` 在 3 个 Material3 命名助手，均无调用方 | 删除死代码（`rememberMiuixBlurBackdrop` 保留，守卫完整） |
+| `ui/page/forum/AttachmentChoiceSheet.kt` | OS3 → OS4 | 注释声称 OS4 玻璃，实际无条件 `WindowBottomSheet` | 改走 `MiuixBottomSheet` + `backdrop = chrome.backdrop` |
+| `ui/page/miuix/settings/preferred/UpdateSheet.kt` | OS3 → OS4 | 更新面板无条件 `WindowBottomSheet` | 改走 `MiuixBottomSheet` |
+| `MiuixDialog.kt`（`ErrorDisplaySheet`） | OS3 死代码 | 无条件 `WindowBottomSheet`，无调用方 | 删除文件 |
+| `MiuixSmallTitleDropDown.kt`（`MiuixDropdown`） | OS3 死代码 | 无条件 `WindowListPopup`，无调用方 | 删除文件 |
+| `MiuixConfirmDialog` / `MiuixBlockingLoadingDialog` / `DraftRestoreDialog` / `LoginRequiredDialog` / `MiuixBadge` 详情层 / About 更新提示 / Preferred 更新提示 | OS3 → OS4 | 无条件 `WindowDialog` | 新增 `ui/page/miuix/widgets/MiuixStyleDialog`（OS4 `GlassDialog` / OS3 `WindowDialog`），全部迁移 |
+| `ui/navigation/MiuixNavWrapper.kt` | render effect | `FloatingBottomBarMode.LiquidGlass` 只看 `SDK_INT >= 33`，绕开了 `AppTheme`/宿主共用的平台守卫 | 改 `isOs4PlatformSupported`（与主题/宿主同一守卫） |
+| ComposerBoardPicker / ComposerImageSourceSheet / ForumBoardPickerSheet / MiuixBottomSheet / MiuixPreferences / MiuixTopAppBar / ForumSearchOverlay / ThreadActions | 正常 | 已有 `if (AppTheme.useMiuixOs4)` 或 `MiuixComponentScope` 分支 | 无需改动，契约测试锁定 |
+
+**共享助手**：`MiuixBottomSheet` 继续统一所有底部面板；对话框新增 `MiuixStyleDialog`，
+两者都只在助手内部做一次风格分支，调用方不再自选 OS3/OS4 组件。`MiuixBottomSheet` 的
+OS4 `GlassBottomSheet` 仍是内联 overlay（宿主 `MiuixComponentHost` + `backdrop` 传页面内容层
+或 `null`），OS3 仍是真实窗口，规则 8/9/23/28/29 不变。
+
+### 29.3 backdrop / render effect 守卫 grep 结果
+
+| 位置 | 结果 |
+|---|---|
+| `ui/theme/Backdrop.kt` `rememberMiuixBlurBackdrop` | `!enableBlur || !isRenderEffectSupported() || SafeMode.blurDisabled` → null ✓ |
+| `ui/page/miuix/widgets/MiuixComponentHost.kt` | `useGlass = useOs4 && isRenderEffectSupported()`；两个 layer 都从该值来 ✓ |
+| `ui/page/miuix/widgets/MiuixPageScaffold.kt` | 经 `rememberMiuixBlurBackdrop` ✓ |
+| `ui/page/miuix/settings/preferred/about/MiuixAboutPage.kt` | `rememberMiuixBlurBackdrop(blurSupported)`；`textureBlur` 只在拿到的 backdrop 上 ✓ |
+| `ui/page/miuix/widgets/MiuixTopAppBar.kt` | `rememberLayerBackdrop()` 只在 OS4 玻璃分支（`useOs4` 已平台门控）✓ |
+| `ui/navigation/MiuixNavWrapper.kt` | **修复**：悬浮栏模式改 `isOs4PlatformSupported`（与 `AppTheme`/`MiuixComponentHost` 同一守卫）；`rememberLayerBackdrop()` 本身只登记图层，真正的 `drawBackdrop` 在 mode 分支 |
+| `ui/library/FloatingBottomBar.kt` | `drawBackdrop` 只在 `isLiquidGlassMode` / `isBlurMode` 分支；模式由调用方传入（上面的 wrapper 已修） |
+| `ui/page/forum/ThreadActions.kt` | `threadMenuBackdrop` + `SafeMode.blurDisabled`，拒绝 `pageBackdrop`（规则 23/29）✓ |
+
+### 29.4 源码契约测试与反向验证
+
+新增 `MiuixStyleGuardTest`（3 用例，纯源码扫描，Robolectric 无关）：
+
+1. `os4 glass widgets are only used behind a style guard`：`import top.yukonga.miuix.kmp.glass.*`
+   或 `material.GlassDefaults/GlassShadows` 必须与 `AppTheme.useMiuixOs4` / `useMiuixOs4` /
+   `MiuixComponentScope` / `useOs4` 同文件；唯一白名单是 OS4-only 包装器
+   `MiuixGlassNavigationBar.kt`，并反查白名单文件确实还在用玻璃。
+2. `os3 window widgets are only used behind a style guard`：`WindowListPopup` /
+   `WindowDialog` / `WindowBottomSheet` / `FloatingBottomBar` 也必须同文件出现风格守卫。
+3. `miuix screens do not read Material 3 colors`：`ui/` 树不得出现
+   `MaterialTheme.colorScheme` 或 `material3.LocalTextStyle`。
+
+守卫检查**先剥掉注释**，否则 KDoc 里写一句 `useMiuixOs4` 就能骗过测试——第一版演示正是
+被探针文件自己的注释骗过，已修正。**反向验证**：临时加入
+`ui/page/forum/StyleLeakProbe.kt`（只 import `GlassBottomSheet` + 一个空函数），测试立刻失败：
+
+```
+MiuixStyleGuardTest > os4 glass widgets are only used behind a style guard FAILED
+java.lang.AssertionError: OS4-only glass imports without a useMiuixOs4/MiuixComponentScope guard: [StyleLeakProbe.kt]
+    at io.rune.mt.forum.MiuixStyleGuardTest.os4 glass widgets are only used behind a style guard(MiuixStyleGuardTest.kt:104)
+3 tests completed, 1 failed
+```
+
+删除探针后同一测试 3/3 通过（`TEST-io.rune.mt.forum.MiuixStyleGuardTest.xml`：
+`tests="3" failures="0" errors="0"`）。
+
+### 29.5 验证
+
+- `:app:compileStableDebugKotlin` → BUILD SUCCESSFUL。
+- `:app:testStableDebugUnitTest` → **76 suites / 445 tests / 0 failures / 0 errors / 0 skipped**
+  （基线 74/439；本次新增解析 1、契约 3、对话框双风格 2）。
+- `:app:lintVitalStableRelease` → BUILD SUCCESSFUL，
+  `Lint found no new issues (and 1 error filtered by baseline lint-baseline.xml)`。
+- 三语键数：352 / 352 / 352（本次没有新增或删除键；赞数复用 `forum_thread_likes_format`）。
+- 截图：`app/build/ui-screenshots/os3-thread-post-cards.png` / `os4-thread-post-cards.png`
+  已重新生成，两份都带 OP 的 `👍 47` 断言。
+
+### 29.6 限制（如实）
+
+- **无真机**：OS4 的 `GlassDialog` / `GlassBottomSheet` 真实观感未在设备上看过；Robolectric
+  不能编译 miuix 的 AGSL 玻璃 shader（既有限制，HANDOVER §18.2/§12 同款）。玻璃对话框在
+  OS4 下走默认 opaque/玻璃材质，需要一次真机走查。
+- **顶不可撤销**，仍未线上实测推荐接口（会给帖子永久 +1）。乐观 +1 后重取 page 1，若站点
+  响应有延迟，数字可能短暂不是最终值。
+- `MiuixIntNumberPickerWidget` 没有调用方，只修了 Material3 读取，未删除；`MiuixPreferences`
+  等选择器行仍是文件内分支（它们本身就是 style-aware 助手），未强行统一到单个 helper。
+

@@ -37,6 +37,7 @@ import org.koin.androidx.compose.koinViewModel
 import timber.log.Timber
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixDropdownPreference
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixPageScaffold
+import io.rune.mt.forum.ui.page.miuix.widgets.MiuixStyleDialog
 import io.rune.mt.forum.ui.page.miuix.widgets.rememberMiuixPageChrome
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.BasicComponentColors
@@ -44,7 +45,6 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.window.WindowDialog
 
 @Composable
 fun MiuixPreferredPage(
@@ -195,8 +195,8 @@ fun MiuixPreferredPage(
             }
         }
     }
-    // Update check result shown with miuix WindowDialog.
-    WindowDialog(
+    // Update check result: the shared style-aware dialog (OS4 glass / OS3 window).
+    MiuixStyleDialog(
         show = updateMessage != null,
         title = stringResource(R.string.get_update),
         summary = updateMessage.orEmpty(),

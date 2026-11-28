@@ -270,6 +270,9 @@ if (display.posts.isEmpty()) {
                                             ForumPostCard(
                                                 post = post,
                                                 forumName = state.forumName,
+                                                // The recommend count belongs to the thread (the
+                                                // OP strip), so only the OP card shows it.
+                                                recommendCount = state.recommendCount.takeIf { post.isOp },
                                                 onAuthorClick = { author ->
                                                     // `authorUid == 0` means the row carried no profile
                                                     // link (guest/deleted account); pushing a profile
@@ -378,9 +381,10 @@ if (display.posts.isEmpty()) {
 
     ForumImageViewer(url = viewerUrl, onDismiss = { viewerUrl = null })
 
-    // Attachment chooser. Composed at the page root (like the reply composer) so it is not clipped
-    // by the list item that owns the card; `WindowBottomSheet` is a real dialog window, so the
-    // sheet is also unaffected by the `SelectionContainer` around the body.
+    // Attachment chooser. Composed at the page root like the reply composer so it is not clipped
+    // by the list item that owns the card. It goes through the shared `MiuixBottomSheet`: the OS4
+    // branch is an inline overlay in the root host's dialog layer and the OS3 branch is a real
+    // dialog window, so neither is affected by the `SelectionContainer` around the body.
     val finishedFile = downloadState.completedFile()
     LaunchedEffect(downloadState.state?.error, finishedFile) {
         downloadState.state?.error?.let { reason ->
@@ -398,6 +402,7 @@ if (display.posts.isEmpty()) {
     AttachmentChoiceSheet(
         target = attachmentTarget,
         download = downloadState.state,
+        backdrop = chrome.backdrop,
         onDismissRequest = {
             attachmentTarget = null
             // A finished or failed row is cleared on dismiss; a running one keeps going so the
@@ -458,6 +463,8 @@ internal fun ForumPostCard(
     post: ForumPost,
     modifier: Modifier = Modifier,
     forumName: String? = null,
+    /** Thread-level 推荐 (顶) count; only the OP card receives it. */
+    recommendCount: Int? = null,
     onImageClick: (String) -> Unit = {},
     onAuthorClick: (ForumPost) -> Unit = {},
     onAttachmentClick: ((ForumBodyBlock.Attachment) -> Unit)? = null,
@@ -548,6 +555,29 @@ internal fun ForumPostCard(
                     fontSize = 11.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
+            }
+            // The thread's 推荐 (顶) tally, in the OP card's meta corner where the site itself
+            // prints it. It comes from the OP's recommend strip, so only the OP carries it; a
+            // reply has no per-floor count. `forum_thread_likes_format` is the same string the
+            // home list uses, so all three locales are already covered.
+            if (op && recommendCount != null) {
+                Row(
+                    modifier = Modifier.padding(start = 8.dp, top = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.ThumbUp,
+                        contentDescription = stringResource(R.string.thread_action_like),
+                        modifier = Modifier.size(12.dp),
+                        tint = MiuixTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.width(3.dp))
+                    Text(
+                        text = stringResource(R.string.forum_thread_likes_format, recommendCount),
+                        fontSize = 11.sp,
+                        color = MiuixTheme.colorScheme.primary,
+                    )
+                }
             }
         }
 
