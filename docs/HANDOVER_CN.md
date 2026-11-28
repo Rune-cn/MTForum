@@ -2336,3 +2336,26 @@ Koin 的**无反射** DSL 会把每个构造参数都当依赖解析，**不看 
 - `:app:testStableDebugUnitTest --tests KoinGraphTest` → BUILD SUCCESSFUL（2 用例）；
   反向验证见 26.1。
 
+### 26.4 附件「保存/分享」没反应
+
+根因：`AttachmentDownload.kt` 的 `shareFile()` 用 `Uri.fromFile(file)` 构造 `EXTRA_STREAM`。
+API 24 起把 `file://` URI 交给别的应用会抛 `FileUriExposedException`，而整段包在
+`runCatching` 里 —— 异常被吞掉，按钮看起来就是「点了没反应」。
+
+修复：
+
+- 声明 `androidx.core.content.FileProvider`（authority `${applicationId}.fileprovider`，
+  `exported=false` + `grantUriPermissions=true`），`res/xml/file_paths.xml` 暴露
+  `cacheDir/attachments/`（与下载落点一致）以及整个 cache 根。
+- `attachmentContentUri()` 统一走 `FileProvider.getUriForFile`，分享带
+  `FLAG_GRANT_READ_URI_PERMISSION`；`shareFile()` 现在**返回**失败而不是吞掉，页面用 Toast 提示。
+- 新增真正的「保存到下载」：API 29+ 走 `MediaStore.Downloads`（`Download/MTForum/<name>`，
+  无需权限），API < 29 落到 app 外部目录并回显绝对路径；成功提示「已保存到 …」，失败带原因。
+- 面板在下载完成后同时给「保存到下载 / 分享」两个出口。
+
+**验证**：`AttachmentShareTest`（4 例）——源码契约（不得出现 `Uri.fromFile`、必须
+`FileProvider.getUriForFile` + 授权 flag + `exceptionOrNull()`）、manifest/`file_paths` 契约、
+缺文件必须报错、保存必须返回可定位的路径。
+**Robolectric 限制**：它不展开 `@xml/file_paths` 元数据，`FileProvider.getUriForFile` 找不到根，
+所以 `content://` 的真实解析只能在真机验证——这正是改用源码契约 + manifest 契约的原因。
+

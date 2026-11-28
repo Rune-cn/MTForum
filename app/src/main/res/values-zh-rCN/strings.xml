@@ -357,4 +357,8 @@
     <string name="about_sponsor_qr_desc">微信赞赏码</string>
     <string name="about_sponsor_voluntary">赞赏完全自愿，不影响任何功能——所有功能都是免费的。</string>
     <string name="about_sponsor_github">在代码仓库查看赞赏码</string>
+    <string name="forum_attach_save">保存到下载</string>
+    <string name="forum_attach_saved_format">已保存到 %1$s</string>
+    <string name="forum_attach_save_failed">保存失败</string>
+    <string name="forum_attach_share_failed">分享失败</string>
 </resources>

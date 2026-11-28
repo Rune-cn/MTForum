@@ -275,7 +275,14 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     `KoinGraphTest` 启动**真实** `appModules` 并解析所有屏幕级定义，任何“容器造不出来”的定义
     会在测试里失败——不要改成用 fake 模块替代它。
 
-35. **加载态必须是「状态」，不是一对 Show/Hide 事件**：阻塞对话框/进度条只能由
+35. **对外分享文件只能给 `content://`，绝不能 `Uri.fromFile`**：API 24 起把 `file://` 放进
+    `EXTRA_STREAM` 会抛 `FileUriExposedException`；再用 `runCatching` 吞掉，就成了「点了没反应」。
+    统一走 `FileProvider.getUriForFile(context, "<pkg>.fileprovider", file)` +
+    `FLAG_GRANT_READ_URI_PERMISSION`，`res/xml/file_paths.xml` 必须覆盖落点目录；
+    分享/保存的失败要**返回**给调用方并 Toast，不许静默。`Robolectric` 不解析 provider 元数据，
+    所以 `AttachmentShareTest` 用源码契约 + manifest 契约钉住，真实解析在真机验证。
+
+36. **加载态必须是「状态」，不是一对 Show/Hide 事件**：阻塞对话框/进度条只能由
     `StateFlow`（如 `UpdateRepository.checkState` 的 `Idle/Checking/Settled`）派生，且由**持有者**
     在 `try/finally` 里把 `Checking` 收尾（成功、跳过、超时、异常、取消都要收）。
     曾经的 `PreferredViewEvent.ShowUpdateLoading` / `AboutEvent.HideUpdateLoading` 只要有一条

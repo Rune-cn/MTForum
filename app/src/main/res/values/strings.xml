@@ -357,4 +357,8 @@
     <string name="about_sponsor_qr_desc">WeChat reward QR code</string>
     <string name="about_sponsor_voluntary">Donations are voluntary and unlock nothing — every feature stays free.</string>
     <string name="about_sponsor_github">View the reward code in the repository</string>
+    <string name="forum_attach_save">Save to Downloads</string>
+    <string name="forum_attach_saved_format">Saved to %1$s</string>
+    <string name="forum_attach_save_failed">Could not save the file</string>
+    <string name="forum_attach_share_failed">Could not share the file</string>
 </resources>

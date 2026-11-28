@@ -72,6 +72,7 @@ internal fun AttachmentChoiceSheet(
     onCancelDownload: () -> Unit,
     onOpenInBrowser: (ForumBodyBlock.Attachment) -> Unit,
     onShareFile: (ForumBodyBlock.Attachment) -> Unit,
+    onSaveFile: (ForumBodyBlock.Attachment) -> Unit,
 ) {
     val show = target != null
     val copiedMessage = stringResource(R.string.forum_attach_copied)
@@ -115,6 +116,7 @@ internal fun AttachmentChoiceSheet(
                     state = download,
                     onCancel = onCancelDownload,
                     onShare = { onShareFile(download.attachment) },
+                    onSave = { onSaveFile(download.attachment) },
                     onDismiss = onDismissRequest,
                 )
             }
@@ -202,6 +204,7 @@ private fun DownloadProgressPanel(
     state: AttachmentDownloadState,
     onCancel: () -> Unit,
     onShare: () -> Unit,
+    onSave: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val error = state.error
@@ -251,10 +254,19 @@ private fun DownloadProgressPanel(
                     onClick = onDismiss,
                 )
 
-                done -> TextButton(
-                    text = stringResource(R.string.forum_attach_share),
-                    onClick = onShare,
-                )
+                done -> {
+                    // Two exits for a finished download: a real copy the user can find later, and
+                    // the system share sheet. Both used to be a single dead button because the
+                    // share built a file:// URI (FileUriExposedException swallowed by runCatching).
+                    TextButton(
+                        text = stringResource(R.string.forum_attach_save),
+                        onClick = onSave,
+                    )
+                    TextButton(
+                        text = stringResource(R.string.forum_attach_share),
+                        onClick = onShare,
+                    )
+                }
 
                 else -> TextButton(text = stringResource(R.string.forum_attach_cancel), onClick = onCancel)
             }

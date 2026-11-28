@@ -3,6 +3,17 @@
     <cache-path
         name="internal_cache_logs"
         path="logs/" />
+    <!-- Downloaded forum attachments live in cacheDir/attachments; the FileProvider below is what
+         makes them shareable as content:// instead of the file:// URI that FileUriExposedException
+         rejected (the "保存/分享没反应" bug). -->
+    <cache-path
+        name="attachments"
+        path="attachments/" />
+    <!-- The whole cache too: FileProvider resolves by canonical path prefix, and a caller may hand
+         it a file from a sub-directory added later. -->
+    <cache-path
+        name="cache_root"
+        path="." />
     <external-cache-path
         name="external_cache"
         path="." />

@@ -374,6 +374,11 @@ if (state.posts.isEmpty()) {
             snackbarHostState.showSnackbar(attachmentDone)
         }
     }
+    // Hoisted: the sheet's callbacks are plain lambdas, so resources must be resolved here.
+    val shareFailedText = stringResource(R.string.forum_attach_share_failed)
+    val saveFailedText = stringResource(R.string.forum_attach_save_failed)
+    val savedFormat = stringResource(R.string.forum_attach_saved_format)
+
     AttachmentChoiceSheet(
         target = attachmentTarget,
         download = downloadState.state,
@@ -391,7 +396,34 @@ if (state.posts.isEmpty()) {
         },
         onShareFile = { attachment ->
             val file = downloadState.completedFile()
-            if (file != null) shareFile(context, file, attachment.name, attachmentShareTitle)
+            if (file != null) {
+                val failure = shareFile(context, file, attachment.name, attachmentShareTitle)
+                if (failure != null) {
+                    android.widget.Toast.makeText(
+                        context,
+                        shareFailedText,
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            }
+        },
+        onSaveFile = { attachment ->
+            val file = downloadState.completedFile()
+            if (file != null) {
+                when (val result = saveAttachmentToDownloads(context, file, attachment.name)) {
+                    is AttachmentSaveResult.Saved -> android.widget.Toast.makeText(
+                        context,
+                        savedFormat.format(result.label),
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+
+                    is AttachmentSaveResult.Failed -> android.widget.Toast.makeText(
+                        context,
+                        saveFailedText + ": " + result.reason,
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                }
+            }
         },
     )
 }

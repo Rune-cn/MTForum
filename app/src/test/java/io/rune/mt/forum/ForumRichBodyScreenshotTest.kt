@@ -175,6 +175,7 @@ class ForumRichBodyScreenshotTest {
                             onCancelDownload = {},
                             onOpenInBrowser = {},
                             onShareFile = {},
+                            onSaveFile = {},
                         )
                     }
                 }

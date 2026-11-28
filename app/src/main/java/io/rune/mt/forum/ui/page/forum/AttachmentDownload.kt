@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Environment
 import androidx.compose.runtime.Stable
+import androidx.core.content.FileProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -125,20 +126,25 @@ internal fun openInBrowser(context: Context, url: String) {
 }
 
 /**
- * Shares an already-downloaded attachment through the system share sheet.
+ * Hands an already-downloaded attachment to the system share sheet.
  *
- * The cache directory is *not* a `FileProvider`-exported location, and adding a provider just for
- * this would widen the app's exported surface. The file is therefore copied once into the app's
- * external files dir (`Android/data/<pkg>/files/attachments/`), which is also visible over USB and
- * to any share receiver that can read app-private files, and the copy is what gets shared. When
- * external storage is unavailable the internal file is shared as a plain text reference instead of
- * crashing.
+ * The cache file is **not** directly shareable: `ACTION_SEND` with a `file://` URI throws
+ * `FileUriExposedException` on every API >= 24, and the old implementation wrapped the whole thing
+ * in `runCatching`, so the exception vanished and the button looked dead ("下载附件后点保存/分享
+ * 没反应"). Sharing now goes through the app's [FileProvider] (`content://`), with
+ * `FLAG_GRANT_READ_URI_PERMISSION`, and returns the failure instead of swallowing it.
+ *
+ * @return null on success, or the throwable the caller should surface to the user.
  */
-internal fun shareFile(context: Context, file: File, name: String, title: String) {
-    if (!file.exists()) return
-    runCatching {
-        val shareTarget = file.copyToPublicAttachment(context)
-        val uri = shareTarget?.let { fileUri(it) } ?: fileUri(file)
+internal fun shareFile(
+    context: Context,
+    file: File,
+    name: String,
+    title: String,
+): Throwable? {
+    if (!file.exists()) return IllegalStateException("missing file: ${file.name}")
+    return runCatching {
+        val uri = attachmentContentUri(context, file)
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = guessMimeType(name)
             putExtra(Intent.EXTRA_STREAM, uri)
@@ -148,25 +154,62 @@ internal fun shareFile(context: Context, file: File, name: String, title: String
         context.startActivity(Intent.createChooser(intent, title).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }.onFailure { error ->
         Timber.tag("AttachmentDownload").w(error, "share failed for %s", name)
-    }
+    }.exceptionOrNull()
 }
 
 /**
- * Copies the cached file into the app-external directory so a share receiver can read it.
+ * The `content://` URI a share/view receiver can actually read.
  *
- * Returns null when external storage is not mounted; the caller then falls back to the internal
- * path (still readable by this app, so the chooser opens, but receivers may not get the bytes —
- * which is why the copy is attempted first).
+ * [FileProvider] is declared in the manifest with `@xml/file_paths`; the attachments live under
+ * `cacheDir/attachments`, which is exactly the `attachments` cache root the provider exposes.
  */
-private fun File.copyToPublicAttachment(context: Context): File? = runCatching {
-    val base = context.getExternalFilesDir(null) ?: return@runCatching null
-    val dir = File(base, "attachments").apply { mkdirs() }
-    val target = File(dir, name)
-    copyTo(target, overwrite = true)
-    target
-}.getOrNull()
+internal fun attachmentContentUri(context: Context, file: File): Uri =
+    FileProvider.getUriForFile(context, context.packageName + ".fileprovider", file)
 
-private fun fileUri(file: File): Uri = Uri.fromFile(file)
+/**
+ * Copies a downloaded attachment to a place the user can find on their own, and reports where.
+ *
+ * On API 29+ this goes through `MediaStore.Downloads`, so the file appears in the Downloads folder
+ * of every file manager without any storage permission. Below 29 writing to the public Downloads
+ * folder needs `WRITE_EXTERNAL_STORAGE`, which this app does not request, so the file is written to
+ * the app-external directory instead and the returned label names that path.
+ */
+internal sealed interface AttachmentSaveResult {
+    data class Saved(val label: String) : AttachmentSaveResult
+    data class Failed(val reason: String) : AttachmentSaveResult
+}
+
+internal fun saveAttachmentToDownloads(context: Context, file: File, name: String): AttachmentSaveResult {
+    if (!file.exists()) return AttachmentSaveResult.Failed("missing file: ${file.name}")
+    return runCatching {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name)
+                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, guessMimeType(name))
+                put(
+                    android.provider.MediaStore.MediaColumns.RELATIVE_PATH,
+                    Environment.DIRECTORY_DOWNLOADS + "/MTForum",
+                )
+            }
+            val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: return AttachmentSaveResult.Failed("Downloads rejected the file")
+            resolver.openOutputStream(uri)?.use { output -> file.inputStream().use { it.copyTo(output) } }
+                ?: return AttachmentSaveResult.Failed("cannot open the Downloads stream")
+            AttachmentSaveResult.Saved("Download/MTForum/$name")
+        } else {
+            val base = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                ?: return AttachmentSaveResult.Failed("external storage unavailable")
+            val dir = File(base, "MTForum").apply { mkdirs() }
+            val target = File(dir, name)
+            file.copyTo(target, overwrite = true)
+            AttachmentSaveResult.Saved(target.absolutePath)
+        }
+    }.getOrElse { error ->
+        Timber.tag("AttachmentDownload").w(error, "save failed for %s", name)
+        AttachmentSaveResult.Failed(error.message ?: error::class.java.simpleName)
+    }
+}
 
 private fun guessMimeType(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
     "png" -> "image/png"
