@@ -385,6 +385,7 @@ if (state.posts.isEmpty()) {
     AttachmentChoiceSheet(
         target = attachmentTarget,
         download = downloadState.state,
+        backdrop = chrome.backdrop,
         onDismissRequest = {
             attachmentTarget = null
             // A finished or failed row is cleared on dismiss; a running one keeps going so the

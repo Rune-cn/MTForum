@@ -19,20 +19,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import io.rune.mt.forum.R
 import io.rune.mt.forum.core.env.AppConfig
 import io.rune.mt.forum.domain.updater.model.UpdateInfo
-import io.rune.mt.forum.ui.icons.AppMiuixIcons
-import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBackButton
+import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBottomSheet
+import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBottomSheetCloseAction
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixMarkdownText
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.theme.LocalDismissState
+import top.yukonga.miuix.kmp.blur.Backdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.window.WindowBottomSheet
 
 /**
  * ============================================================
@@ -70,23 +68,17 @@ fun MiuixUpdateSheet(
     onDismissRequest: () -> Unit,
     onDownload: (UpdateInfo) -> Unit,
     onOpenReleasePage: (String) -> Unit = {},
+    backdrop: Backdrop? = null,
 ) {
-    WindowBottomSheet(
+    MiuixBottomSheet(
         show = show,
         onDismissRequest = onDismissRequest,
         title = stringResource(R.string.update_sheet_title),
-        startAction = {
-            val dismissState = LocalDismissState.current
-            MiuixBackButton(
-                icon = AppMiuixIcons.Close,
-                onClick = { dismissState?.invoke() ?: onDismissRequest() },
-            )
-        },
-        insideMargin = DpSize(16.dp, 0.dp),
-        backgroundColor = MiuixTheme.colorScheme.surfaceContainerHigh,
+        backdrop = backdrop,
+        startAction = { MiuixBottomSheetCloseAction(onDismissRequest) },
     ) {
         val info = updateInfo
-        if (info == null) return@WindowBottomSheet
+        if (info == null) return@MiuixBottomSheet
 
         Column(modifier = Modifier.fillMaxWidth()) {
             Column(

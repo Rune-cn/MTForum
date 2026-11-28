@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package io.rune.mt.forum.ui.navigation
 
-import android.os.Build
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Settings
@@ -40,7 +39,11 @@ fun MiuixMainPageWrapper(uiState: ThemeState, sharedViewModel: SettingsSharedVie
     val useOs4 = isOs4PlatformSupported && uiState.useMiuixOs4
     val useFloatingBottomBar = useOs4 || uiState.useAppleFloatingBar
     val floatingBottomBarMode = when {
-        useBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> FloatingBottomBarMode.LiquidGlass
+        // `isOs4PlatformSupported` is the runtime AGSL check (SDK >= 33 *and*
+        // isRenderEffectSupported()); an SDK-only check would select the liquid-glass draw on a
+        // device that cannot compile the shader, i.e. the same "glass without the guard" bug the
+        // backdrop helpers avoid.
+        useBlur && isOs4PlatformSupported -> FloatingBottomBarMode.LiquidGlass
         useBlur -> FloatingBottomBarMode.Blur
         else -> FloatingBottomBarMode.None
     }

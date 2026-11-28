@@ -9,8 +9,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.rune.mt.forum.R
+import io.rune.mt.forum.ui.page.miuix.widgets.MiuixStyleDialog
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.window.WindowDialog
 
 /**
  * Read-only browsing guard.
@@ -25,7 +25,7 @@ fun LoginRequiredDialog(
     onDismissRequest: () -> Unit,
     onLogin: () -> Unit,
 ) {
-    WindowDialog(
+    MiuixStyleDialog(
         show = show,
         title = stringResource(R.string.login_required_title),
         summary = stringResource(R.string.login_required_message),

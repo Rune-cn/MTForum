@@ -17,7 +17,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,7 +37,6 @@ import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.window.WindowDialog
 
 @Composable
 fun MiuixBadge(
@@ -63,7 +61,7 @@ fun MiuixBadge(
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
                 // Remove default font padding for accurate vertical centering
-                style = LocalTextStyle.current.copy(
+                style = MiuixTheme.textStyles.body2.copy(
                     platformStyle = PlatformTextStyle(
                         includeFontPadding = false,
                     ),
@@ -104,7 +102,7 @@ fun MiuixInfoChipGroup(modifier: Modifier = Modifier, notices: List<NoticeModel>
     }
 
     if (selectedNotice != null) {
-        WindowDialog(
+        MiuixStyleDialog(
             show = showDialog.value,
             title = selectedNotice!!.shortLabel,
             titleColor = selectedNotice!!.color,

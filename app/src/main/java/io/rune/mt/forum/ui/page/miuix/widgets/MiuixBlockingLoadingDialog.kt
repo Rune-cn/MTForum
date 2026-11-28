@@ -12,11 +12,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.window.WindowDialog
 
 @Composable
 fun MiuixBlockingLoadingDialog(visible: Boolean, text: String) {
-    WindowDialog(show = visible) {
+    MiuixStyleDialog(show = visible, onDismissRequest = {}) {
         BackHandler {
             // Block input while the operation is running.
         }

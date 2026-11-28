@@ -88,10 +88,10 @@ import io.rune.mt.forum.ui.page.main.settings.preferred.about.AboutEvent
 import io.rune.mt.forum.ui.page.main.settings.preferred.about.AboutState
 import io.rune.mt.forum.ui.page.main.settings.preferred.about.AboutViewModel
 import io.rune.mt.forum.ui.page.main.settings.preferred.about.updateCheckDescription
-import io.rune.mt.forum.ui.page.miuix.widgets.ErrorDisplaySheet
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBackButton
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixNavigationItemWidget
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixProgressiveAppBarSurface
+import io.rune.mt.forum.ui.page.miuix.widgets.MiuixStyleDialog
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixSwitchWidget
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopAppBar
 import io.rune.mt.forum.ui.theme.AppTheme
@@ -133,9 +133,6 @@ import top.yukonga.miuix.kmp.theme.LocalDismissState
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-import top.yukonga.miuix.kmp.window.WindowBottomSheet
-import top.yukonga.miuix.kmp.window.WindowDialog
-import top.yukonga.miuix.kmp.window.WindowListPopup
 
 // Unified entry point
 @Composable
@@ -198,7 +195,7 @@ fun MiuixAboutPage(
         text = stringResource(R.string.checking_update),
     )
 
-    WindowDialog(
+    MiuixStyleDialog(
         show = updateMessage != null,
         title = stringResource(R.string.get_update),
         summary = updateMessage.orEmpty(),

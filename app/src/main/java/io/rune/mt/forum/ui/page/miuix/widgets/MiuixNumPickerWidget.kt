@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,13 +53,13 @@ fun MiuixIntNumberPickerWidget(
                     Text(
                         text = title,
                         color = MiuixTheme.colorScheme.onSurface,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MiuixTheme.textStyles.title3,
                     )
                     description?.let {
                         Text(
                             text = it,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MiuixTheme.textStyles.body2,
                         )
                     }
                 }
@@ -99,7 +98,7 @@ fun MiuixIntNumberPickerWidget(
                 text = "$value$valueSuffix",
                 modifier = valueModifier,
                 style = if (subduedValue) {
-                    MaterialTheme.typography.bodyMedium
+                    MiuixTheme.textStyles.body2
                 } else {
                     MiuixTheme.textStyles.button
                 },
