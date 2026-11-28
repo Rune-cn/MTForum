@@ -8,6 +8,8 @@ import androidx.datastore.preferences.preferencesDataStoreFile
 import io.rune.mt.forum.data.forum.network.ForumCookieJar
 import io.rune.mt.forum.data.forum.network.ForumHttpClient
 import io.rune.mt.forum.data.forum.network.ForumHttpGateway
+import io.rune.mt.forum.data.forum.repository.CommentFilterRepositoryImpl
+import io.rune.mt.forum.data.forum.repository.ForumBoardPreferencesRepositoryImpl
 import io.rune.mt.forum.data.forum.repository.ForumDraftRepositoryImpl
 import io.rune.mt.forum.data.forum.repository.ForumDraftServiceImpl
 import io.rune.mt.forum.data.forum.repository.ForumPasswordAuthenticator
@@ -16,6 +18,8 @@ import io.rune.mt.forum.data.forum.repository.ForumSearchHistoryRepositoryImpl
 import io.rune.mt.forum.data.forum.repository.ForumSessionStore
 import io.rune.mt.forum.data.image.ForumImageHostClient
 import io.rune.mt.forum.domain.forum.model.ImageHostGateway
+import io.rune.mt.forum.domain.forum.repository.CommentFilterRepository
+import io.rune.mt.forum.domain.forum.repository.ForumBoardPreferencesRepository
 import io.rune.mt.forum.domain.forum.repository.ForumDraftRepository
 import io.rune.mt.forum.domain.forum.repository.ForumDraftService
 import io.rune.mt.forum.domain.forum.repository.ForumRepository
@@ -72,5 +76,16 @@ val forumModule = module {
     }
     single<ForumSearchHistoryRepository> {
         ForumSearchHistoryRepositoryImpl(dataStore = get(SEARCH_HISTORY_DATA_STORE), json = get())
+    }
+
+    // User customisation of the forum itself, stored as JSON documents in the **app settings**
+    // DataStore (not a private one) exactly like the brief asked. `get()` with no qualifier is the
+    // settings DataStore; the two private stores above are qualified and cannot be picked by
+    // accident.
+    single<CommentFilterRepository> {
+        CommentFilterRepositoryImpl(dataStore = get(), json = get())
+    }
+    single<ForumBoardPreferencesRepository> {
+        ForumBoardPreferencesRepositoryImpl(dataStore = get(), json = get())
     }
 }
