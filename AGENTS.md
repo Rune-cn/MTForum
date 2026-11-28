@@ -361,6 +361,15 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
       **不要**新建 DataStore；socket 生命周期只属于 `McpServerControllerImpl`（观察设置流），
       UI/ViewModel 只写偏好。正文纯文本化复用 `ForumBodyParser`（规则 25），不要另写 DOM 解析。
 
+39. **启动图标只有 vector，且压在左下角**：`res/drawable/ic_launcher_{background,foreground,monochrome}.xml`
+    + `res/mipmap-anydpi-v26/ic_launcher{,_round}.xml`（`<monochrome>` 必须在，否则 Android 13
+    主题图标退化）。前景那只猫的最远像素必须 ≤ 66dp 安全区半径（33dp，实测 30.6），
+    右上象限一个像素都不许占（角标落点）。**不要再加 `mipmap-*dpi/ic_launcher*.png`**——
+    minSdk 26 下位图只会盖掉 vector；`LauncherIconTest` 会因此失败。
+    改图后跑 `python tools/render_app_icon.py` 重生 `docs/screenshots/app-icon*.png`，
+    它读的就是 shipped XML，别手画 PNG。**关于页 logo 用 `ic_about_mark`**（同一只猫的居中副本，
+    `<group translate>`），不要把角落版单色层拉大当居中 logo（会偏左 ~21dp）。
+
 ## Miuix 双风格（OS3 / OS4）
 
 - **唯一开关**：`ThemeState.useMiuixOs4` → `AppTheme.useMiuixOs4`（CompositionLocal）。
