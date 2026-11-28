@@ -33,6 +33,14 @@ app/src/main/java/io/rune/mt/forum/
 │   │   ├── McpRequestThrottle.kt     120 请求/分钟滑动窗口（429）
 │   │   ├── McpLimits.kt              64KB body / 16KB 头 / 4k 单楼 / 48k 单结果
 │   │   └── McpServerControllerImpl.kt  观察设置流 → 启动/停止/重绑 socket
+│   ├── plugin/                       插件模型（LuaJ 宿主 + 内置目录）
+│   │   ├── PluginRunner.kt            Lua 沙箱：只暴露 ctx；nil 掉 os/io/package/require/debug/luajava；
+│   │   │                             10s 上限；ctx 的宿主调用用 runBlocking(IO) 桥接（见 HANDOVER §36）
+│   │   ├── PluginRepositoryImpl.kt    远程 plugins.json（15s callTimeout）+ 安装态/仓库配置/运行记录
+│   │   │                              （settings DataStore：plugin_installed_v1 / plugin_repository_v1 / plugin_runtime_v1）
+│   │   ├── BuiltinPlugins.kt          history/filter/board/mcp/cache 五个内置插件（中文名与描述，默认启用）
+│   │   ├── PluginScriptStorage.kt     每插件独立 KV（SharedPreferences plugin_storage）
+│   │   └── PluginUiBridge.kt          脚本/VM → 页面 id 的通道（AppNavContainer 解析成 Route）
 │   └── updater/                      更新检查（指向本仓库 Releases）
 │       ├── OnlineUpdateRepositoryImpl.kt   HTTP + 缓存 + `checkState`（Idle/Checking/Settled）生命周期
 │       ├── UpdateCheckEngine.kt            纯决策管线：策略 → feed → 选 asset → 版本比较 → 确定结果
@@ -47,6 +55,8 @@ app/src/main/java/io/rune/mt/forum/
 │   │                                 / CommentFilterRepository.kt / ForumBoardPreferencesRepository.kt
 │   ├── settings/                     偏好模型与用例
 │   ├── mcp/                          McpEndpoint / McpServerController / McpToolCatalog（设置页共用）
+│   ├── plugin/                       PluginManifest / PluginPackage / InstalledPlugin / PluginRepository
+│   │                                 / PluginRepositoryConfig / PluginRunResult / PluginRunRecord
 │   └── updater/
 ├── di/
 │   ├── ForumModule.kt                论坛 Koin 模块
@@ -59,8 +69,9 @@ app/src/main/java/io/rune/mt/forum/
 │   ├── crash/ · i18n/ · device/ · env/ · reflection/
 ├── ui/
 │   ├── navigation/
-│   │   ├── Routes.kt                 Main / About / Theme / Mcp / Login / ForumList / ForumThread
-│   │   │                             / PrivateConversation / NewThread / Favorites / Drafts
+│   │   ├── Routes.kt                 Main / About / Theme / Mcp / Plugins / ThreadCache / Login
+│   │   │                             / ForumList / ForumThread / PrivateConversation / NewThread
+│   │   │                             / Favorites / Drafts；pluginBuiltinRoute() 把内置插件 id 映射成路由
 │   │   └── AppNavContainer.kt        NavDisplay + entry 注册
 │   ├── page/
 │   │   ├── forum/                    论坛页面层
@@ -82,7 +93,10 @@ app/src/main/java/io/rune/mt/forum/
 │   │   │   ├── ForumSignInSheet.kt   首页顶栏「每日签到」底部面板（OS4 玻璃/OS3 窗口，规则 8）
 │   │   │   ├── ForumSignInCard.kt    签到面板内容（排名/连续/累计 + 签到按钮 + 游客登录提示）
 │   │   │   ├── ForumSignInViewModel.kt 签到页状态 + 签到结果（CDATA 文案）
-│   │   │   ├── ForumViewModel.kt     VM + 各页面 State（含 threadDisplay 评论过滤 + homeBoards 板块排序）
+│   │   │   ├── ForumViewModel.kt     VM + 各页面 State（含 threadDisplay 评论过滤 + homeBoards 板块排序
+│   │   │   │                          + 帖子缓存的写入/失败回退 cachedAt）
+│   │   │   ├── ForumThreadCache.kt   帖子缓存：filesDir/thread_cache/<tid>.json + index.json（开关 + LRU，上限 200）
+│   │   │   ├── ForumThreadCachePage.kt / ViewModel  设置 → 插件 → 帖子缓存（占用/条目数/开关/清空）
 │   │   │   ├── ForumCommentFilterViewModel.kt  评论屏蔽设置页 VM
 │   │   │   ├── ForumBoardSettingsViewModel.kt  板块顺序/隐藏设置页 VM
 │   │   │   ├── ReplyComposer.kt      回复底部面板（与签到共用 `MiuixBottomSheet`，引用 + 表情，无草稿）
@@ -92,7 +106,9 @@ app/src/main/java/io/rune/mt/forum/
 │   │   ├── login/                    登录页 / VM / 状态
 │   │   ├── main/forum/               论坛 VM 与 State（旧位置，保留兼容）
 │   │   ├── miuix/
-│   │   │   ├── settings/             设置页（账号区块、主题入口、关于）、论坛定制（评论屏蔽 / 板块管理）、MCP 服务入口
+│   │   │   ├── settings/             设置页（账号区块、主题入口、关于、插件入口）
+│   │   │   │                          + ForumPluginPage/ViewModel（插件卡片：开关/打开/运行/卸载/日志/仓库）
+│   │   │   │                          + ForumCommentFilterPage / ForumBoardSettingsPage（由插件卡片进入）
 │   │   │   └── widgets/              共享组件（页面脚手架、顶栏、滚动条、分组卡片、底部面板 `MiuixBottomSheet` 等）
 │   │   └── theme/ · library/ · animation/
 └── App.kt

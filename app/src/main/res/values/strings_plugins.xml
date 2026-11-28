@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Strings of 设置 → 插件 and 帖子缓存.
+
+  Kept in their own file (instead of appending to strings.xml) so the plugin centre can be added
+  without touching the shared string table; the three locales are still complete, which is what
+  lint's MissingTranslation / ExtraTranslation pair checks (rule 5). Move them into strings.xml at
+  will — the keys do not collide.
+-->
+<resources>
+    <string name="plugin_section_title">Plugins</string>
+    <string name="plugin_entry_desc">Script plugins and built-in features</string>
+    <string name="plugin_page_title">Plugins</string>
+    <string name="plugin_refresh_action">Refresh plugin list</string>
+    <string name="plugin_install_local_action">Install from a local file</string>
+    <string name="plugin_install_local_unreadable">The selected file could not be read</string>
+    <string name="plugin_section_installed">Installed</string>
+    <string name="plugin_section_available">Available</string>
+    <string name="plugin_open_action">Open</string>
+    <string name="plugin_run_action">Run</string>
+    <string name="plugin_running">Running…</string>
+    <string name="plugin_install_action">Install</string>
+    <string name="plugin_uninstall_action">Uninstall</string>
+    <string name="plugin_uninstall_title">Uninstall this plugin?</string>
+    <string name="plugin_uninstall_message_format">“%1$s” and its local settings will be removed.</string>
+    <string name="plugin_builtin_label">Built-in</string>
+    <string name="plugin_script_label">Script</string>
+    <string name="plugin_never_run">Not run yet</string>
+    <string name="plugin_last_run_ok_format">Last run %1$s · succeeded</string>
+    <string name="plugin_last_run_failed_format">Last run %1$s · failed: %2$s</string>
+    <string name="plugin_log_title">Recent log</string>
+    <string name="plugin_log_expand">Show log</string>
+    <string name="plugin_log_collapse">Hide log</string>
+    <string name="plugin_log_empty">No log yet — run a plugin first.</string>
+    <string name="plugin_log_lines_format">%1$d lines</string>
+    <string name="plugin_source_title">Plugin repository</string>
+    <string name="plugin_source_desc">The GitHub owner, repository and branch that hold plugins.json</string>
+    <string name="plugin_source_owner_label">Owner</string>
+    <string name="plugin_source_repo_label">Repository</string>
+    <string name="plugin_source_branch_label">Branch</string>
+    <string name="plugin_source_save">Save</string>
+    <string name="plugin_catalog_error_format">Remote list unavailable: %1$s</string>
+    <string name="plugin_empty">No plugins installed</string>
+
+    <string name="thread_cache_title">Thread cache</string>
+    <string name="thread_cache_switch_title">Cache threads</string>
+    <string name="thread_cache_switch_desc">Save the text and floors of every thread you open on this device (max 200 threads)</string>
+    <string name="thread_cache_usage_title">Usage</string>
+    <string name="thread_cache_usage_format">%1$d threads · %2$s</string>
+    <string name="thread_cache_usage_hint">A cached copy is only used when a thread fails to load.</string>
+    <string name="thread_cache_clear_action">Clear cache</string>
+    <string name="thread_cache_clear_title">Clear the thread cache?</string>
+    <string name="thread_cache_clear_message">Every cached thread on this device will be removed.</string>
+    <string name="thread_cache_empty">Nothing cached yet</string>
+    <string name="thread_cache_banner_format">From cache · %1$s</string>
+</resources>

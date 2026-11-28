@@ -14,6 +14,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.rune.mt.forum.data.plugin.PluginUiBridge
 import io.rune.mt.forum.domain.settings.model.preferences.PredictiveBackAnimation
 import io.rune.mt.forum.domain.settings.model.preferences.ThemeState
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +29,7 @@ import io.rune.mt.forum.ui.page.forum.ForumListPage
 import io.rune.mt.forum.ui.page.forum.ForumNoticesPage
 import io.rune.mt.forum.ui.page.forum.ForumProfilePage
 import io.rune.mt.forum.ui.page.forum.ForumSearchPage
+import io.rune.mt.forum.ui.page.forum.ForumThreadCachePage
 import io.rune.mt.forum.ui.page.forum.ForumThreadHistoryPage
 import io.rune.mt.forum.ui.page.forum.ForumThreadPage
 import io.rune.mt.forum.ui.page.forum.NewThreadPage
@@ -38,6 +40,7 @@ import androidx.compose.ui.res.stringResource
 import io.rune.mt.forum.R
 import io.rune.mt.forum.ui.page.miuix.settings.ForumBoardSettingsPage
 import io.rune.mt.forum.ui.page.miuix.settings.ForumCommentFilterPage
+import io.rune.mt.forum.ui.page.miuix.settings.ForumPluginPage
 import io.rune.mt.forum.ui.page.miuix.settings.preferred.about.MiuixAboutPage
 import io.rune.mt.forum.ui.page.miuix.settings.preferred.mcp.MiuixMcpSettingsPage
 import io.rune.mt.forum.ui.page.miuix.settings.preferred.theme.MiuixThemeSettingsPage
@@ -73,6 +76,18 @@ fun AppNavContainer(
         Navigator(backStack).apply { dropDuplicateDestinations() }
     }
     val onBack = remember(navigator) { { navigator.pop() } }
+
+    // Plugin pages: the 插件 page's 打开 button and a script's `ctx.ui.open(id)` both publish a
+    // built-in page id on the same bridge, and this is the only place that turns one into a route
+    // (`pluginBuiltinRoute`). Plugins never hold a Navigator — the nav host owns it.
+    val pluginUiBridge: PluginUiBridge = koinInject()
+    LaunchedEffect(pluginUiBridge) {
+        pluginUiBridge.requests.collect { builtinId ->
+            val route = pluginBuiltinRoute(builtinId) ?: return@collect
+            Timber.tag("PluginUi").i("open builtin=%s route=%s", builtinId, route)
+            navigator.push(route)
+        }
+    }
 
     // A link is a one-shot jump: navigate, then clear the flow so nothing replays it on the next
     // recomposition. The Activity only publishes a route on cold start or a new VIEW intent.
@@ -268,6 +283,18 @@ fun AppNavContainer(
             }
             entry<Route.BoardSettings>(swipeDismiss = swipeBackDirection) {
                 ForumBoardSettingsPage(
+                    enableBlur = useBlur,
+                    outerPadding = PaddingValues(),
+                )
+            }
+            entry<Route.Plugins>(swipeDismiss = swipeBackDirection) {
+                ForumPluginPage(
+                    enableBlur = useBlur,
+                    outerPadding = PaddingValues(),
+                )
+            }
+            entry<Route.ThreadCache>(swipeDismiss = swipeBackDirection) {
+                ForumThreadCachePage(
                     enableBlur = useBlur,
                     outerPadding = PaddingValues(),
                 )

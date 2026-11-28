@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 设置 → 插件 / 帖子缓存 的简体中文（与 values/strings_plugins.xml 的键一一对应）。 -->
+<resources>
+    <string name="plugin_section_title">插件</string>
+    <string name="plugin_entry_desc">脚本插件与内置功能</string>
+    <string name="plugin_page_title">插件</string>
+    <string name="plugin_refresh_action">刷新插件列表</string>
+    <string name="plugin_install_local_action">从本地文件安装</string>
+    <string name="plugin_install_local_unreadable">选中的文件读不出来</string>
+    <string name="plugin_section_installed">已安装</string>
+    <string name="plugin_section_available">可安装</string>
+    <string name="plugin_open_action">打开</string>
+    <string name="plugin_run_action">运行</string>
+    <string name="plugin_running">运行中…</string>
+    <string name="plugin_install_action">安装</string>
+    <string name="plugin_uninstall_action">卸载</string>
+    <string name="plugin_uninstall_title">卸载这个插件？</string>
+    <string name="plugin_uninstall_message_format">将移除「%1$s」及其本机设置。</string>
+    <string name="plugin_builtin_label">内置</string>
+    <string name="plugin_script_label">脚本</string>
+    <string name="plugin_never_run">尚未运行</string>
+    <string name="plugin_last_run_ok_format">上次运行 %1$s · 成功</string>
+    <string name="plugin_last_run_failed_format">上次运行 %1$s · 失败：%2$s</string>
+    <string name="plugin_log_title">最近日志</string>
+    <string name="plugin_log_expand">展开日志</string>
+    <string name="plugin_log_collapse">收起日志</string>
+    <string name="plugin_log_empty">还没有日志，先运行一次插件。</string>
+    <string name="plugin_log_lines_format">%1$d 行</string>
+    <string name="plugin_source_title">插件仓库</string>
+    <string name="plugin_source_desc">存放 plugins.json 的 GitHub owner、仓库与分支</string>
+    <string name="plugin_source_owner_label">Owner</string>
+    <string name="plugin_source_repo_label">仓库</string>
+    <string name="plugin_source_branch_label">分支</string>
+    <string name="plugin_source_save">保存</string>
+    <string name="plugin_catalog_error_format">远程清单不可用：%1$s</string>
+    <string name="plugin_empty">还没有安装插件</string>
+
+    <string name="thread_cache_title">帖子缓存</string>
+    <string name="thread_cache_switch_title">启用帖子缓存</string>
+    <string name="thread_cache_switch_desc">帖子加载成功后把正文与楼层存到本机（最多 200 条）</string>
+    <string name="thread_cache_usage_title">占用</string>
+    <string name="thread_cache_usage_format">%1$d 条 · %2$s</string>
+    <string name="thread_cache_usage_hint">只有在帖子加载失败时才会用到缓存。</string>
+    <string name="thread_cache_clear_action">清空缓存</string>
+    <string name="thread_cache_clear_title">清空帖子缓存？</string>
+    <string name="thread_cache_clear_message">本机缓存的帖子都会被删除。</string>
+    <string name="thread_cache_empty">还没有缓存</string>
+    <string name="thread_cache_banner_format">来自缓存 · %1$s</string>
+</resources>

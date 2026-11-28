@@ -244,6 +244,9 @@ dependencies {
 
     // html parsing for the Discuz/Comiis templates
     implementation(libs.jsoup)
+
+    // Lua runtime for local script plugins (设置 → 插件); the host API lives in data/plugin.
+    implementation(libs.luaj.jse)
     implementation(libs.coil.compose)
     implementation(libs.coil.gif)
     implementation(libs.coil.network.okhttp)

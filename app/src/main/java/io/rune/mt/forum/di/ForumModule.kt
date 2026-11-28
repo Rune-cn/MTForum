@@ -18,6 +18,10 @@ import io.rune.mt.forum.data.forum.repository.ForumSearchHistoryRepositoryImpl
 import io.rune.mt.forum.data.forum.repository.ForumSessionStore
 import io.rune.mt.forum.data.forum.repository.ForumThreadHistoryRepositoryImpl
 import io.rune.mt.forum.data.image.ForumImageHostClient
+import io.rune.mt.forum.data.plugin.PluginRepositoryImpl
+import io.rune.mt.forum.data.plugin.PluginRunner
+import io.rune.mt.forum.data.plugin.PluginScriptStorage
+import io.rune.mt.forum.data.plugin.PluginUiBridge
 import io.rune.mt.forum.domain.forum.model.ImageHostGateway
 import io.rune.mt.forum.domain.forum.repository.CommentFilterRepository
 import io.rune.mt.forum.domain.forum.repository.ForumBoardPreferencesRepository
@@ -26,6 +30,10 @@ import io.rune.mt.forum.domain.forum.repository.ForumDraftService
 import io.rune.mt.forum.domain.forum.repository.ForumRepository
 import io.rune.mt.forum.domain.forum.repository.ForumSearchHistoryRepository
 import io.rune.mt.forum.domain.forum.repository.ForumThreadHistoryRepository
+import io.rune.mt.forum.domain.plugin.PluginRepository
+import io.rune.mt.forum.ui.page.forum.ForumThreadCacheRepository
+import io.rune.mt.forum.ui.page.forum.ForumThreadCacheRepositoryImpl
+import java.io.File
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
@@ -104,5 +112,41 @@ val forumModule = module {
     }
     single<ForumBoardPreferencesRepository> {
         ForumBoardPreferencesRepositoryImpl(dataStore = get(), json = get())
+    }
+
+    // ---- 插件 (设置 → 插件) -----------------------------------------------------
+    //
+    // Built explicitly, never with singleOf: every one of these has a constructor parameter the
+    // graph cannot guess (a Context, a File, another interface), and Koin's reflection-free DSL
+    // resolves **every** parameter, default or not (rule 34).
+    //
+    // The page id channel is the one bridge between a running script and the navigator: the script
+    // publishes history/filter/board/mcp/cache, AppNavContainer resolves the route.
+    single { PluginUiBridge() }
+    single { PluginScriptStorage(androidContext()) }
+    single {
+        PluginRunner(
+            http = get(),
+            forum = get(),
+            imageHost = get(),
+            storage = get(),
+            uiBridge = get(),
+            context = androidContext(),
+        )
+    }
+    // Install state, the remote catalogue and the run records live in the **app settings**
+    // DataStore (get() with no qualifier), exactly like the comment filter and board prefs: no
+    // second store is introduced for a feature that is a preference document.
+    single<PluginRepository> {
+        PluginRepositoryImpl(dataStore = get(), json = get(), runner = get(), storage = get())
+    }
+
+    // 帖子缓存: the device-local copy of opened threads. Its own directory, so 清空 cannot touch
+    // drafts, history or settings.
+    single<ForumThreadCacheRepository> {
+        ForumThreadCacheRepositoryImpl(
+            root = File(androidContext().filesDir, "thread_cache"),
+            json = get(),
+        )
     }
 }

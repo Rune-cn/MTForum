@@ -30,6 +30,7 @@ miuix = "0.9.5-beta03"
 okhttp = "5.5.0"
 jsoup = "1.21.1"
 coil = "3.3.0"
+luaj = "3.0.1"
 robolectric = "4.16"
 monetcompat = "0.4.1"
 materialKolor = "6.0.0"
@@ -138,6 +139,9 @@ miuix-navigation = { group = "top.yukonga.miuix.kmp", name = "miuix-nav-android"
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp" }
 okhttp-bom = { module = "com.squareup.okhttp3:okhttp-bom", version.ref = "okhttp" }
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
+# Lua scripting engine for local plugins (设置 → 插件). LuaJ 3.0.1 is the last
+# released Lua 5.2 implementation on Maven Central; see data/plugin/PluginRunner.kt.
+luaj-jse = { module = "org.luaj:luaj-jse", version.ref = "luaj" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-gif = { module = "io.coil-kt.coil3:coil-gif", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }

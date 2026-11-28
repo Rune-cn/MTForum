@@ -10,11 +10,13 @@ import io.rune.mt.forum.ui.page.forum.ForumNoticesViewModel
 import io.rune.mt.forum.ui.page.forum.ForumSearchHistoryViewModel
 import io.rune.mt.forum.ui.page.forum.ForumSearchViewModel
 import io.rune.mt.forum.ui.page.forum.ForumSignInViewModel
+import io.rune.mt.forum.ui.page.forum.ForumThreadCacheViewModel
 import io.rune.mt.forum.ui.page.forum.ForumThreadHistoryViewModel
 import io.rune.mt.forum.ui.page.forum.ForumProfileViewModel
 import io.rune.mt.forum.ui.page.forum.ForumViewModel
 import io.rune.mt.forum.ui.page.forum.NewThreadViewModel
 import io.rune.mt.forum.ui.page.login.LoginViewModel
+import io.rune.mt.forum.ui.page.miuix.settings.ForumPluginViewModel
 import io.rune.mt.forum.ui.page.main.settings.AccountViewModel
 import io.rune.mt.forum.ui.page.main.settings.SettingsSharedViewModel
 import io.rune.mt.forum.ui.page.main.settings.home.HomePageViewModel
@@ -42,9 +44,11 @@ val viewModelModule = module {
     viewModelOf(::ForumSignInViewModel)
     viewModelOf(::ForumDraftsViewModel)
     viewModelOf(::ForumThreadHistoryViewModel)
+    viewModelOf(::ForumThreadCacheViewModel)
     viewModelOf(::ForumCommentFilterViewModel)
     viewModelOf(::ForumBoardSettingsViewModel)
     viewModelOf(::NewThreadViewModel)
     viewModelOf(::LoginViewModel)
     viewModelOf(::AccountViewModel)
+    viewModelOf(::ForumPluginViewModel)
 }

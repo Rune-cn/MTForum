@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 設定 → 外掛 / 帖子快取 的繁體中文（與 values/strings_plugins.xml 的鍵一一對應）。 -->
+<resources>
+    <string name="plugin_section_title">外掛</string>
+    <string name="plugin_entry_desc">腳本外掛與內建功能</string>
+    <string name="plugin_page_title">外掛</string>
+    <string name="plugin_refresh_action">重新整理外掛清單</string>
+    <string name="plugin_install_local_action">從本機檔案安裝</string>
+    <string name="plugin_install_local_unreadable">選取的檔案讀不出來</string>
+    <string name="plugin_section_installed">已安裝</string>
+    <string name="plugin_section_available">可安裝</string>
+    <string name="plugin_open_action">開啟</string>
+    <string name="plugin_run_action">執行</string>
+    <string name="plugin_running">執行中…</string>
+    <string name="plugin_install_action">安裝</string>
+    <string name="plugin_uninstall_action">解除安裝</string>
+    <string name="plugin_uninstall_title">解除安裝此外掛？</string>
+    <string name="plugin_uninstall_message_format">將移除「%1$s」及其本機設定。</string>
+    <string name="plugin_builtin_label">內建</string>
+    <string name="plugin_script_label">腳本</string>
+    <string name="plugin_never_run">尚未執行</string>
+    <string name="plugin_last_run_ok_format">上次執行 %1$s · 成功</string>
+    <string name="plugin_last_run_failed_format">上次執行 %1$s · 失敗：%2$s</string>
+    <string name="plugin_log_title">最近日誌</string>
+    <string name="plugin_log_expand">展開日誌</string>
+    <string name="plugin_log_collapse">收合日誌</string>
+    <string name="plugin_log_empty">尚無日誌，先執行一次外掛。</string>
+    <string name="plugin_log_lines_format">%1$d 行</string>
+    <string name="plugin_source_title">外掛儲存庫</string>
+    <string name="plugin_source_desc">存放 plugins.json 的 GitHub owner、儲存庫與分支</string>
+    <string name="plugin_source_owner_label">Owner</string>
+    <string name="plugin_source_repo_label">儲存庫</string>
+    <string name="plugin_source_branch_label">分支</string>
+    <string name="plugin_source_save">儲存</string>
+    <string name="plugin_catalog_error_format">遠端清單無法使用：%1$s</string>
+    <string name="plugin_empty">還沒有安裝外掛</string>
+
+    <string name="thread_cache_title">帖子快取</string>
+    <string name="thread_cache_switch_title">啟用帖子快取</string>
+    <string name="thread_cache_switch_desc">帖子載入成功後把正文與樓層存到本機（最多 200 條）</string>
+    <string name="thread_cache_usage_title">佔用</string>
+    <string name="thread_cache_usage_format">%1$d 條 · %2$s</string>
+    <string name="thread_cache_usage_hint">只有在帖子載入失敗時才會用到快取。</string>
+    <string name="thread_cache_clear_action">清空快取</string>
+    <string name="thread_cache_clear_title">清空帖子快取？</string>
+    <string name="thread_cache_clear_message">本機快取的帖子都會被刪除。</string>
+    <string name="thread_cache_empty">尚無快取</string>
+    <string name="thread_cache_banner_format">來自快取 · %1$s</string>
+</resources>

@@ -47,6 +47,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import android.content.Intent
 import android.net.Uri
+import android.text.format.DateUtils
 
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -277,6 +278,13 @@ fun ForumThreadPage(
                                         )
                                     }
                                 } else {
+                                    // 帖子缓存: the floors below came from the device copy, not
+                                    // from the site, so the banner dates that copy (the state is
+                                    // only set by the failure path in
+                                    // ForumViewModel.loadThreadPage).
+                                    state.cachedAt?.let { savedAt ->
+                                        item { CachedThreadBanner(savedAt = savedAt) }
+                                    }
 if (display.posts.isEmpty()) {
                                         item { ForumEmptyCard(stringResource(R.string.forum_empty_posts)) }
                                     } else {
@@ -647,5 +655,33 @@ internal fun BlockedFloorsFooter(hiddenCount: Int) {
         fontSize = 12.sp,
         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
     )
+}
+
+/**
+ * "来自缓存 · 时间" — shown above the floors when the page is rendering the device copy.
+ *
+ * 帖子缓存 only ever answers a **failed** load (see `ForumViewModel.loadThreadPage`), so this card
+ * is the one signal that what follows may be stale. It states the time rather than offering an
+ * action: the retry path is the page's own pull-to-refresh, and a second "refresh" affordance on
+ * the banner would be the same request twice.
+ *
+ * The time uses the platform's relative formatter (as 浏览历史 does), so the wording follows the
+ * system locale and no extra translated label set is needed.
+ */
+@Composable
+internal fun CachedThreadBanner(savedAt: Long) {
+    val whenLabel = DateUtils.getRelativeTimeSpanString(
+        savedAt,
+        System.currentTimeMillis(),
+        DateUtils.MINUTE_IN_MILLIS,
+    ).toString()
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(R.string.thread_cache_banner_format, whenLabel),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            fontSize = 12.sp,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        )
+    }
 }
 

@@ -139,21 +139,46 @@ class McpSettingsPageTest {
     }
 
     /**
-     * The entry row itself lives in the settings page's `LazyListScope` (which needs the whole
-     * Koin graph); like `SettingsAccountEntryTest`, a source contract keeps the 设置 entry from
-     * silently disappearing while the sub-page tests still cover what it opens.
+     * The MCP page is now reached from 设置 → 插件 → MCP 服务.
+     *
+     * The 其他 row was removed on request together with 浏览历史 / 评论屏蔽 / 板块管理: they are plugin
+     * cards now. The contract moves with the entry instead of disappearing — the settings page
+     * points at the plugin centre, the built-in catalogue still lists the MCP card, and the
+     * page-id table still resolves it to [Route.Mcp]. A source scan (not a compose) for the same
+     * reason as before: `MiuixPreferredPage` is an inline `LazyListScope` that needs the whole
+     * Koin graph.
      */
     @Test
-    fun `settings page keeps the MCP entry row`() {
-        val page = File(
-            "src/main/java/io/rune/mt/forum/ui/page/miuix/settings/preferred/MiuixPreferredPage.kt",
-        ).also { assertTrue("settings page source not found at ${it.absolutePath}", it.isFile) }
-            .readText()
+    fun `mcp entry lives in the plugin centre`() {
+        fun source(relative: String): String =
+            File("src/main/java/io/rune/mt/forum/$relative")
+                .also { assertTrue("source not found at ${it.absolutePath}", it.isFile) }
+                .readText()
 
-        assertTrue("the settings entry must navigate to Route.Mcp", page.contains("Route.Mcp"))
+        val settings = source("ui/page/miuix/settings/preferred/MiuixPreferredPage.kt")
         assertTrue(
-            "the settings entry must use the MCP title string",
-            page.contains("R.string.mcp_server_title"),
+            "the settings page must link to the plugin centre",
+            settings.contains("Route.Plugins"),
+        )
+        assertTrue(
+            "the MCP row must be gone from the settings page (it is a plugin card now)",
+            !settings.contains("Route.Mcp"),
+        )
+
+        val builtins = source("data/plugin/BuiltinPlugins.kt")
+        assertTrue(
+            "the built-in catalogue must keep the MCP card",
+            builtins.contains("const val MCP"),
+        )
+        assertTrue(
+            "the MCP card must name its built-in page id",
+            builtins.contains("builtin = MCP"),
+        )
+
+        val routes = source("ui/navigation/Routes.kt")
+        assertTrue(
+            "the mcp page id must still resolve to Route.Mcp",
+            routes.contains("\"mcp\" -> Route.Mcp"),
         )
     }
 

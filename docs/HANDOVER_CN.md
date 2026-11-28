@@ -2976,3 +2976,65 @@ python tools/render_app_icon.py  → foreground safe-zone reach 30.60dp (< 33dp)
 5. **个人主页签名可选中**：`ProfileSignatureCard` 用 `SelectionContainer` 包住正文，标题不参与选区；
    字号/颜色/内边距/最小高度逐项对齐 `BasicComponent`（headline1 Medium / body2）。
 6. 三语删除两个废弃键：`forum_comment_filter_reveal` / `forum_comment_filter_hide`。
+---
+
+## 36. 插件中心 + 帖子缓存（2026-11-29）
+
+### 36.1 为什么是「插件」
+
+五件既有功能（浏览历史 / 评论屏蔽 / 板块管理 / MCP 服务 / 帖子缓存）原本是设置页里的几行入口，
+本轮起它们是**插件卡片**：`PluginManifest.builtin` 只记一个页面 id，卡片「打开」把它映射成原来的
+`Route`，因此这五个页面**一行逻辑都没搬**。设置页的「论坛」分组只剩「我的收藏」「草稿」两行，
+「论坛定制」分组与「其他」里的 MCP 行已删除——插件中心是它们唯一的入口（规则 18 的新形态）。
+
+站点侧没有插件 API，所以「远程插件」是一个静态清单：`raw.githubusercontent.com/<owner>/<repo>/<branch>/plugins.json`，
+默认 `Rune-cn/MTForum-Plugins@main`，owner/repo/branch 可在设置里改（`plugin_repository_v1`）。清单失败
+（离线/404/坏 JSON/15s 超时）只显示内置那五个，并在页面顶部给一行原因。
+
+### 36.2 数据（`data/plugin` + `domain/plugin`）
+
+- `PluginManifest`（@Serializable）：`id/name/version/description/script/builtin/enabledByDefault`。
+  `script` 与 `builtin` 互斥；`id` 是安装态、KV、运行记录的唯一键（不能含空格/斜杠）。
+- `PluginPackage`：`schemaVersion + plugins`，同时用于远程 `plugins.json` 与本地安装文件；
+  解析器同时容忍「裸数组」和「单个 manifest」。
+- 安装态 `plugin_installed_v1` 存 **整份 manifest**（不是 id）：远程清单只是橱窗，装上的脚本离线照样能跑。
+- 运行记录 `plugin_runtime_v1`：`{at, ok, message, log(≤50)}`，卡片重启后仍能说清上次结果。
+- 内置目录 `BuiltinPlugins` 写死在数据层（中文名与描述、version 1.0.0、`enabledByDefault=true`）；
+  安装文档**不存在**才播种，所以卸载内置插件是「粘住」的（文档一旦存在，内容即事实）。
+- 本地安装：系统文件选择器（`OpenDocument`，`application/json` + `*/*`）读文本 → `installFromJson`；
+  脚本文本复制进安装态，**不保留外部文件引用**。
+
+### 36.3 Lua 宿主（`data/plugin/PluginRunner.kt`）
+
+- 依赖 `org.luaj:luaj-jse:3.0.1`（Lua 5.2 实现，Maven Central；只支持解释执行，无 JIT）。
+- 每次运行 **全新 Globals**；`os/io/package/require/debug/luajava/load/loadfile/loadstring/dofile` 全部置 nil；
+  `string/table/math` 保留（纯 Lua，没有它们脚本没法用）。
+- 整段 `withTimeout(10s)` + `Dispatchers.IO`；`onRun(ctx)` 由卡片「运行」触发，`onAppStart(ctx)` 在
+  `App.onCreate` 的协程里、**登录态恢复完成后延迟 2s** 执行，逐个 try/catch。
+- `ctx` 只有六个命名空间：`log / toast / storage.get|set / forum.signIn|isLoggedIn /
+  imageHost.uploadBase64 / http.get|postForm / ui.open`。宿主 suspend API 用 `runBlocking(Dispatchers.IO)`
+  桥接（Lua 是同步 VM）；`http.*` 走 `ForumHttpClient`（acw + cookie），`imageHost` 走 `ImageHostGateway`。
+- `ui.open(id)` 与插件的「打开」走**同一个** `PluginUiBridge`：脚本发布页面 id，`AppNavContainer` 用
+  `pluginBuiltinRoute(id)` 解析成路由。数据层不持有 Navigator。
+- 已知限制：LuaJ 没有可用的指令计数钩子（`debug` 已被摘掉），`withTimeout` 只在挂起点生效——
+  `while true do end` 会一直占着那条 IO 线程。它挡不住 UI，但也不回收；这是明确取舍，不是遗漏。
+
+### 36.4 帖子缓存（`ui/page/forum/ForumThreadCache*`）
+
+- 帖子页加载成功（第 1 页）后把正文与楼层写入 `filesDir/thread_cache/<tid>.json`，索引在
+  `index.json`（`enabled` + LRU 顺序，上限 200 条）；写满时被挤出的一条连同文件一起删除，读会把该条
+  移到队首（真正的 LRU）。
+- 加载失败且屏幕上还没有楼层时回退读缓存，`ForumThreadState.cachedAt` 置为缓存时间：帖子页在楼层上方
+  显示「来自缓存 · 时间」，**不显示错误卡**；下拉刷新失败不会顶掉正在看的楼层。
+- 开关关闭 = 不写也不读。图片不入缓存（正文 HTML 原样保留，图片 URL 离线时自然失败）。
+- 只缓存第 1 页：从第 21 楼开始的「缓存帖」是误导，且上限的意义是「重看刚读过的帖子」，不是镜像整站。
+
+### 36.5 验证与未验证
+
+本轮**没有跑 Gradle**（机主要求构建交给 GitHub Actions），因此下列项仍需 CI / 真机确认：
+
+- LuaJ 3.0.1 在 D8/R8 下的打包（`org.luaj.vm2.lib.jse` 的反射用法；release 混淆后 `ctx` 仍可用）——
+  若 R8 报 missing class，需要 keep 规则；
+- `MiuixStyleGuardTest` / `MainThreadSafetyTest` 对新增文件的静态契约（新增文件只用了已封装的
+  `MiuixStyleDialog`/`MiuixConfirmDialog`，没有直接 import `Glass*`/`Window*`）；
+- 真机上 10s 上限对「纯 Lua 死循环」无效（36.3 末条）。

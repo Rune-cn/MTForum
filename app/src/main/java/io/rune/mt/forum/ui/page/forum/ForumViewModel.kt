@@ -15,6 +15,7 @@ import io.rune.mt.forum.domain.forum.model.ForumHotEntry
 import io.rune.mt.forum.domain.forum.model.ForumPost
 import io.rune.mt.forum.domain.forum.model.ForumReplyDraft
 import io.rune.mt.forum.domain.forum.model.ForumThread
+import io.rune.mt.forum.domain.forum.model.ForumThreadDetail
 import io.rune.mt.forum.domain.forum.model.arrangeForums
 import io.rune.mt.forum.domain.forum.repository.CommentFilterRepository
 import io.rune.mt.forum.domain.forum.repository.ForumBoardPreferencesRepository
@@ -120,6 +121,14 @@ data class ForumThreadState(
     /** People who 推荐ed (顶) the thread; read from the OP's recommend strip, page 1 only. */
     val recommendCount: Int = 0,
     val error: String? = null,
+    /**
+     * Wall-clock time of the cached copy this page is showing, or `null` for live floors.
+     *
+     * Set only by the failure path in [loadThreadPage] when the cache answered instead of the
+     * site, so the page can print "来自缓存 · 时间" above the floors and the reader knows the data
+     * may be stale (帖子缓存, see [ForumThreadCacheRepository]).
+     */
+    val cachedAt: Long? = null,
 ) {
     val canLoadMore: Boolean get() = page < totalPages
 }
@@ -156,6 +165,13 @@ class ForumViewModel(
     private val commentFilter: CommentFilterRepository = NoopCommentFilterRepository,
     /** Local board order/hide customisation; defaults to "server order, nothing hidden". */
     private val boardPreferences: ForumBoardPreferencesRepository = NoopForumBoardPreferencesRepository,
+    /**
+     * Device-local copy of page 1 of every opened thread (帖子缓存).
+     *
+     * Defaults to the Noop store so previews and unit tests compose the ViewModel without a
+     * Context; the production graph registers the files-backed one.
+     */
+    private val threadCache: ForumThreadCacheRepository = NoopForumThreadCacheRepository,
 ) : ViewModel() {
 
     /** Session is read for the reply composer (login gate + author identity). */
@@ -940,8 +956,14 @@ class ForumViewModel(
                         formhash = detail.formhash,
                         noticeAuthor = detail.noticeAuthor,
                         recommendCount = detail.recommendCount,
+                        // Live floors: no banner, whatever the previous attempt showed.
+                        cachedAt = null,
                     )
                 }
+                // Only page 1 is cached (the OP + the first page of floors): a cached copy that
+                // starts at floor 21 would be a confusing read, and the cap is about reading
+                // threads again, not mirroring the whole site.
+                if (page == 1) cacheThread(detail)
                 Timber.tag(TAG).i(
                     "loadThreadPage ok tid=%d posts=%d pages=%d",
                     tid,
@@ -952,16 +974,78 @@ class ForumViewModel(
                 throw cancellation
             } catch (error: Exception) {
                 Timber.tag(TAG).e(error, "loadThreadPage tid=%d failed", tid)
-                _threadState.update {
-                    it.copy(
-                        isLoading = false,
-                        isRefreshing = false,
-                        isAppending = false,
-                        error = error.message ?: error.javaClass.simpleName,
+                // 帖子缓存: the site is unreachable, but this device may already hold page 1 of
+                // this thread. A cached answer renders as a normal page plus the "来自缓存" banner
+                // (cachedAt) instead of an error card — and only when nothing is on screen yet, so
+                // a failed pull-to-refresh never replaces the floors the reader is looking at.
+                val cached = if (page == 1 && _threadState.value.posts.isEmpty()) {
+                    cachedThread(tid)
+                } else {
+                    null
+                }
+                if (cached != null) {
+                    Timber.tag(TAG).i(
+                        "loadThreadPage tid=%d served from cache (%d floors, %d)",
+                        tid,
+                        cached.posts.size,
+                        cached.savedAt,
                     )
+                    _threadState.update {
+                        it.copy(
+                            tid = cached.tid,
+                            title = cached.title.ifBlank { it.title },
+                            forumName = cached.forumName ?: it.forumName,
+                            isLoading = false,
+                            isRefreshing = false,
+                            isAppending = false,
+                            posts = cached.posts,
+                            cachedAt = cached.savedAt,
+                            error = null,
+                        )
+                    }
+                } else {
+                    _threadState.update {
+                        it.copy(
+                            isLoading = false,
+                            isRefreshing = false,
+                            isAppending = false,
+                            error = error.message ?: error.javaClass.simpleName,
+                        )
+                    }
                 }
             }
         }
+    }
+
+    /**
+     * Writes page 1 of [detail] to the device cache.
+     *
+     * The cache is a convenience: a failed write must never turn a successful read into an error,
+     * so it is swallowed (and logged) here instead of propagating.
+     */
+    private suspend fun cacheThread(detail: ForumThreadDetail) {
+        try {
+            threadCache.write(
+                tid = detail.tid,
+                title = detail.title,
+                forumName = detail.forumName,
+                posts = detail.posts,
+            )
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            Timber.tag(TAG).w(error, "thread %d not cached", detail.tid)
+        }
+    }
+
+    /** The cached copy of [tid], or `null` when the cache is off / empty / unreadable. */
+    private suspend fun cachedThread(tid: Int): CachedThreadSnapshot? = try {
+        threadCache.read(tid)
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (error: Exception) {
+        Timber.tag(TAG).w(error, "thread %d cache unreadable", tid)
+        null
     }
 
     private companion object {

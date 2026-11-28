@@ -22,6 +22,7 @@
 
 - `data/forum/` — 反爬、Cookie、HTTP（含 multipart）、HTML 解析、表情目录、仓库
 - `domain/forum/` — 领域模型与仓库接口（含 `ForumMessaging.kt`：私信/收藏/发帖模型）
+- `domain/plugin/` + `data/plugin/` — 插件模型、Lua 宿主、内置目录、远程清单与安装态（见规则 41）
 - `ui/page/forum/` — 首页/列表/帖子/导读/私信/发帖、正文渲染、回复、表情选择、图片查看
 - `ui/page/login/` — 登录
 - `ui/page/miuix/` — 设置、主题、关于、共享组件
@@ -384,6 +385,24 @@ bash tools/build.sh :app:lintVitalStableRelease    # 改字符串后必跑
     **只由 `Navigator.push` 分配**递增实例号；单例路由重复 push 会 `popUntil` 揭示已有副本。
     新增可重复路由时必须同时改 `Routes.kt` 的 `withNavigationInstance` / `isSameDestinationAs`，
     且**不要**绕过 `Navigator` 直接 `backStack.add`（会跳过 instance 分配）。见 HANDOVER §34。
+
+41. **插件中心是插件的唯一入口**：设置 → 插件（`Route.Plugins`）的卡片是 浏览历史 / 评论屏蔽 /
+    板块管理 / MCP 服务 / 帖子缓存 与远程脚本插件的入口。设置页不再有那四行（也不要加回来）；
+    「论坛」分组只留「我的收藏」「草稿」。
+    - 内置插件只在 `data/plugin/BuiltinPlugins.kt` 声明（`builtin` = history/filter/board/mcp/cache，
+      中文名与描述、默认启用）；卡片「打开」与脚本的 `ctx.ui.open(id)` 都经
+      `ui/navigation/Routes.kt` 的 `pluginBuiltinRoute()` 解析成原路由——不要为插件复制页面逻辑，
+      也不要让数据层持有 Navigator（一律走 `PluginUiBridge` → `AppNavContainer`）。
+    - 远程清单只有 `plugins.json`（raw.githubusercontent，owner/repo/branch 存 settings DataStore）；
+      失败（离线/404/坏 JSON/15s callTimeout）只显示内置并在页面顶部给一行原因。安装态存整份
+      manifest（`plugin_installed_v1`），本地安装把脚本文本复制进来，绝不引用外部文件。
+    - Lua 沙箱在 `data/plugin/PluginRunner.kt`：每次全新 Globals、nil 掉 os/io/package/require/debug/
+      luajava/load*/dofile，整段 `withTimeout(10s)` + `Dispatchers.IO`，`ctx` 只有
+      log / toast / storage / forum / imageHost / http / ui；宿主 suspend 调用用
+      `runBlocking(Dispatchers.IO)` 桥接。异常只记录并返回失败（`PluginRunResult`），绝不崩 App。
+    - 帖子缓存：`ForumViewModel.loadThreadPage` 成功后写 `filesDir/thread_cache/<tid>.json`（只第 1 页、
+      上限 200、LRU，索引 `index.json` 含开关）；失败且屏上还没有楼层时回退读缓存并置
+      `cachedAt`（帖子页显示「来自缓存 · 时间」，不显示错误卡）；开关关闭则既不写也不读。
 
 ## Miuix 双风格（OS3 / OS4）
 

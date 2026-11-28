@@ -148,6 +148,25 @@ sealed interface Route : NavKey {
     /** 板块管理: reorder and hide boards on the home grid and the board pickers. */
     @Serializable
     data object BoardSettings : Route
+
+    /**
+     * 设置 → 插件: the plugin centre.
+     *
+     * Every plugin is a card here — the five built-ins (浏览历史 / 评论屏蔽 / 板块管理 / MCP 服务 /
+     * 帖子缓存) plus whatever the remote catalogue offers and the user installed. The routes those
+     * built-ins open stay exactly where they were; this page only becomes their entry point.
+     */
+    @Serializable
+    data object Plugins : Route
+
+    /**
+     * 帖子缓存: the device-local copy of opened threads — switch, usage readout and 清空.
+     *
+     * Reachable from the 插件 card (built-in `cache`); it is a page of its own because it has state
+     * (the switch) and a destructive action, which do not belong on a card row.
+     */
+    @Serializable
+    data object ThreadCache : Route
 }
 
 /**
@@ -220,4 +239,21 @@ fun NavKey.isSameDestinationAs(other: NavKey?): Boolean {
         is Route.PrivateConversation -> other is Route.PrivateConversation && other.uid == uid
         else -> this == other
     }
+}
+
+/**
+ * The page a built-in plugin id resolves to, or `null` for an unknown id.
+ *
+ * Both entry points — the 插件 page's 打开 button **and** a script's `ctx.ui.open(id)` — resolve
+ * through this one function, so a built-in can never be reachable from one path and not the other.
+ * The ids are the `builtin` values declared in `data/plugin/BuiltinPlugins.kt`; that catalogue is
+ * the single source of which ids exist, this is only the id → route mapping.
+ */
+fun pluginBuiltinRoute(builtinId: String): Route? = when (builtinId.trim().lowercase()) {
+    "history" -> Route.ThreadHistory
+    "filter" -> Route.CommentFilter
+    "board" -> Route.BoardSettings
+    "mcp" -> Route.Mcp
+    "cache" -> Route.ThreadCache
+    else -> null
 }

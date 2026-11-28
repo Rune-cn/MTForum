@@ -138,6 +138,12 @@ class ForumHomeFeedPagingTest {
                     single<io.rune.mt.forum.domain.forum.repository.ForumBoardPreferencesRepository> {
                         io.rune.mt.forum.domain.forum.repository.NoopForumBoardPreferencesRepository
                     }
+                    // 帖子缓存 (ForumViewModel's optional dependency): the Noop store keeps these
+                    // tests off the filesystem while the constructor stays satisfied for Koin,
+                    // which resolves every parameter (rule 34).
+                    single<io.rune.mt.forum.ui.page.forum.ForumThreadCacheRepository> {
+                        io.rune.mt.forum.ui.page.forum.NoopForumThreadCacheRepository
+                    }
                     single<ForumSearchHistoryRepository> { FeedFakeSearchHistory() }
                     viewModelOf(::ForumViewModel)
                     viewModelOf(::ForumSignInViewModel)

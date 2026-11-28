@@ -120,6 +120,12 @@ class ForumHomeSignInEntryTest {
                     single<io.rune.mt.forum.domain.forum.repository.ForumBoardPreferencesRepository> {
                         io.rune.mt.forum.domain.forum.repository.NoopForumBoardPreferencesRepository
                     }
+                    // 帖子缓存 (ForumViewModel's optional dependency): the Noop store keeps these
+                    // tests off the filesystem while the constructor stays satisfied for Koin,
+                    // which resolves every parameter (rule 34).
+                    single<io.rune.mt.forum.ui.page.forum.ForumThreadCacheRepository> {
+                        io.rune.mt.forum.ui.page.forum.NoopForumThreadCacheRepository
+                    }
                     // The home page always mounts the search overlay, whose recent list comes from
                     // this view model; the sheet tests never open it.
                     single<ForumSearchHistoryRepository> { HomeFakeSearchHistory() }
