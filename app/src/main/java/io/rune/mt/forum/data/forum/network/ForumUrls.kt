@@ -28,6 +28,24 @@ internal object ForumUrls {
     /** Path prefixes that also exist on the forum host itself (Discuz upload tree). */
     private val SITE_PATHS = listOf("/data/attachment/", "/uc_server/", "/template/", "/static/")
 
+    /**
+     * Resolves an `<a href>` to a **navigable** target, keeping non-http schemes the browser can
+     * still open.
+     *
+     * [absolute] is tuned for pictures: it drops every scheme but http(s). A post's `[email]` tag
+     * renders to `<a href="mailto:…">` and `[qq]` to a `tel:`-like chat URL; those are real,
+     * tappable links and must keep their scheme. `mailto:`/`tel:` are passed through verbatim,
+     * everything else goes through [absolute] (so `javascript:`/`file:`/`data:` action buttons
+     * still resolve to null).
+     */
+    fun navigable(raw: String?): String? {
+        val value = raw?.trim().orEmpty()
+        if (value.isEmpty()) return null
+        val lower = value.lowercase()
+        if (lower.startsWith("mailto:") || lower.startsWith("tel:")) return value
+        return absolute(value)
+    }
+
     /** Resolves [raw] against the forum root; returns `null` when it cannot be fetched by Coil. */
     fun absolute(raw: String?): String? {
         val value = raw?.trim().orEmpty()

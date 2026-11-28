@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -80,6 +82,15 @@ internal sealed interface ForumBodyBlock {
 
     /** A run of consecutive inline smilies, rendered as small images on one row. */
     data class EmojiRow(val urls: List<String>) : ForumBodyBlock
+
+    /**
+     * A media embed the native renderer cannot play (`[media]`/`[audio]`/`[flash]`).
+     *
+     * The site turns these into an `<iframe>` / `<video>` / a script-injected player, none of which
+     * can run here. Dropping them left a silent gap, so the URL is shown in an honest card that
+     * opens it externally — the content is not playable inline, but it is never lost.
+     */
+    data class Media(val url: String, val label: String? = null) : ForumBodyBlock
 
     /**
      * A quoted reply (`<blockquote>` / `div.comiis_quote`), inset behind a leading rule.
@@ -296,6 +307,8 @@ private fun BodyBlock(
         }
 
         is ForumBodyBlock.Picture -> PictureBlock(block, onImageClick)
+
+        is ForumBodyBlock.Media -> MediaCard(block, contentColor)
     }
 }
 
@@ -875,9 +888,62 @@ private fun AttachmentBadge(block: ForumBodyBlock.Attachment) {
     }
 }
 
+/**
+ * An honest card for a media embed the native renderer cannot play.
+ *
+ * The site's `[media]`/`[audio]`/`[flash]` become an iframe/video/script player. Instead of
+ * silently dropping that (the old skip-tag behaviour), the label and the URL stay visible and the
+ * card opens the URL in the platform browser. Content the client cannot play is never hidden.
+ */
 @Composable
-private fun InfoChip(text: AnnotatedString, background: Color, foreground: Color) {
+private fun MediaCard(block: ForumBodyBlock.Media, contentColor: Color) {
+    val uriHandler = LocalUriHandler.current
     Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(MiuixTheme.colorScheme.surfaceContainerHigh)
+            .clickable { runCatching { uriHandler.openUri(block.url) } }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.PlayArrow,
+                contentDescription = null,
+                tint = MiuixTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = block.label ?: "媒体",
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                fontWeight = FontWeight.Medium,
+                color = contentColor,
+            )
+            Text(
+                text = block.url,
+                fontSize = 11.sp,
+                lineHeight = 16.sp,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun InfoChip(text: AnnotatedString, background: Color, foreground: Color) {    Row(
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
             .background(background)
@@ -951,6 +1017,7 @@ private fun ForumBodyBlock.flattenedText(): AnnotatedString = when (this) {
     is ForumBodyBlock.Quote -> text
     is ForumBodyBlock.CodeBlock -> AnnotatedString(text)
     is ForumBodyBlock.Attachment -> AnnotatedString(name)
+    is ForumBodyBlock.Media -> AnnotatedString(label ?: url)
     else -> AnnotatedString("")
 }
 
