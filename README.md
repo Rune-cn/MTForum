@@ -1,21 +1,12 @@
 # MT论坛 客户端
 
-<p align="center">
-  <img src="docs/screenshots/app-icon.png" alt="应用图标" width="128" />
-</p>
-
-<p align="center">
-  <b>bbs.binmt.cc</b> 的第三方 Android 客户端 · Jetpack Compose + Miuix · 原生 Kotlin
-</p>
+**bbs.binmt.cc** 的第三方 Android 客户端 · Jetpack Compose + Miuix · 原生 Kotlin
 
 ## 应用图标
 
-启动图标只有 vector，没有一张位图：`res/drawable/ic_launcher_{background,foreground,monochrome}.xml`
-加 `res/mipmap-anydpi-v26/ic_launcher{,_round}.xml`。图案是一只坐在**左下角**的简易猫，
-右上留白给角标；猫的最远像素压在 33dp 安全区半径内（实测 30.6dp），Android 13+ 的主题图标
-复用同一份几何走 `<monochrome>`。预览由 `python tools/render_app_icon.py` 直接渲染这些 XML
-生成，不经过任何设计工具（上面那张就是它渲染出来的启动图标本身）。
-
+<p align="center">
+  <img src="docs/screenshots/app-icon.png" alt="应用图标" width="128" />
+</p>
 
 ## 简介
 
