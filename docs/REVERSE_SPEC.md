@@ -114,6 +114,20 @@ GET forum.php?mod=misc&action=recommend&handlekey=recommend_add&do=add&tid={tid}
 
 赞数展示来自 `misc.php?op=recommend&tid={tid}&mod=faq`。因不可撤销，未做线上实测。
 
+**帖子页内联赞数（2026-11-28 补测，离线样本）**：帖子页 OP 卡片自带推荐条
+`ul.comiis_recommend_list_a`；有人推荐时首个 `li`（`float:right`）是
+`<span class="bg_b f_c"><i class="comiis_font">&#xe63b;</i> <em class="comiis_recommend_num">47</em>…</span>`，
+即选择器 **`ul.comiis_recommend_list_a em.comiis_recommend_num`**（取 `.first()`）。
+零赞时该 `ul` 为空、页脚推荐控件也不打印数字 → 解析为 `0`，不是错误。
+页脚 `span#comiis_recommend_num` 是同一数字的副本（`rich_156696.html` 两处都是 47），
+选择器只锚定 OP 条，避免与页脚模板漂移。
+
+- 正向样本：`rich_156696.html`（OP 条与页脚均为 47）。
+- 零值样本：`thread_177093.html`（`ul.comiis_recommend_list_a` 空，全文无 `comiis_recommend_num`）。
+- 计数只在 **page 1** 的 OP 条上；翻页追加（page ≥ 2）没有该元素，视图模型保留 page 1 的值，
+  不能被 page 2 的 `0` 覆盖。解析落点 `ForumHtmlParser.parseThreadDetail` →
+  `ForumThreadDetail.recommendCount`。
+
 ---
 
 ## 16. 发新帖 — multipart POST
