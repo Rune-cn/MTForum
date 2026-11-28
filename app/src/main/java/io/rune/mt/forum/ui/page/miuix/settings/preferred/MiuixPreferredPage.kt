@@ -107,8 +107,9 @@ fun MiuixPreferredPage(
         item {
             // Forum shortcuts. Notifications and the profile page are reached from the home page
             // bell and the account card avatar instead of duplicated here; 每日签到 moved to the
-            // home top bar's right edge (a sheet, not a settings card). The two rows left are the
-            // signed-in user's own forum data: 我的收藏 and the site's 草稿.
+            // home top bar's right edge (a sheet, not a settings card). 我的收藏 and 草稿 are the
+            // signed-in user's own forum data; 浏览历史 is the device's own list of opened
+            // threads, so it stays usable signed out.
             Card(
                 modifier = Modifier
                     .padding(horizontal = 12.dp)
@@ -124,12 +125,19 @@ fun MiuixPreferredPage(
                     description = stringResource(R.string.drafts_entry_desc),
                     onClick = { navigator.push(Route.Drafts) },
                 )
+                // Browsing history is written on this device and never asked of the site, so the
+                // row must work for guests too (no login gate; see ForumThreadHistoryPage).
+                MiuixNavigationItemWidget(
+                    title = stringResource(R.string.thread_history_title),
+                    description = stringResource(R.string.thread_history_entry_desc),
+                    onClick = { navigator.push(Route.ThreadHistory) },
+                )
             }
         }
         item { SmallTitle(stringResource(R.string.forum_customization_section)) }
         item {
-            // Local forum customisation, kept out of the 论坛 group so that group stays the two
-            // account-owned shortcuts (收藏 / 草稿) rule 18 asks for.
+            // Local forum customisation, kept out of the 论坛 group so that group stays the
+            // user's own forum data (收藏 / 草稿 / 浏览历史), as rule 18 asks.
             Card(
                 modifier = Modifier
                     .padding(horizontal = 12.dp)

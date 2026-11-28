@@ -10,6 +10,7 @@ import io.rune.mt.forum.ui.page.forum.ForumNoticesViewModel
 import io.rune.mt.forum.ui.page.forum.ForumSearchHistoryViewModel
 import io.rune.mt.forum.ui.page.forum.ForumSearchViewModel
 import io.rune.mt.forum.ui.page.forum.ForumSignInViewModel
+import io.rune.mt.forum.ui.page.forum.ForumThreadHistoryViewModel
 import io.rune.mt.forum.ui.page.forum.ForumProfileViewModel
 import io.rune.mt.forum.ui.page.forum.ForumViewModel
 import io.rune.mt.forum.ui.page.forum.NewThreadViewModel
@@ -40,6 +41,7 @@ val viewModelModule = module {
     viewModelOf(::ForumFavoritesViewModel)
     viewModelOf(::ForumSignInViewModel)
     viewModelOf(::ForumDraftsViewModel)
+    viewModelOf(::ForumThreadHistoryViewModel)
     viewModelOf(::ForumCommentFilterViewModel)
     viewModelOf(::ForumBoardSettingsViewModel)
     viewModelOf(::NewThreadViewModel)

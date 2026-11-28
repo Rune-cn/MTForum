@@ -14,6 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -59,6 +60,8 @@ import io.rune.mt.forum.R
 import io.rune.mt.forum.data.forum.network.ForumAttachmentDownloader
 import io.rune.mt.forum.data.forum.network.ForumHttpClient
 import io.rune.mt.forum.domain.forum.model.ForumPost
+import io.rune.mt.forum.domain.forum.repository.ForumThreadHistoryRepository
+import io.rune.mt.forum.domain.forum.repository.NoopForumThreadHistoryRepository
 import io.rune.mt.forum.ui.navigation.LocalNavigator
 import io.rune.mt.forum.ui.navigation.Route
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBackButton
@@ -66,6 +69,7 @@ import io.rune.mt.forum.ui.page.miuix.widgets.MiuixPageScrollBar
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixTopAppBar
 import io.rune.mt.forum.ui.page.miuix.widgets.rememberMiuixPageChrome
 import io.rune.mt.forum.ui.theme.AppTheme
+import kotlinx.coroutines.CancellationException
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import timber.log.Timber
@@ -102,6 +106,9 @@ fun ForumThreadPage(
     // browser hop of the same URL 403s. Resolved here rather than inside the controller so the
     // dependency stays explicit and the controller is testable with a stub client.
     forumHttpClient: ForumHttpClient = koinInject(),
+    // Browsing-history recorder. The Noop default keeps previews/UI tests free of the device store;
+    // the nav host passes the real one (see `AppNavContainer`), so an opened thread is remembered.
+    threadHistory: ForumThreadHistoryRepository = NoopForumThreadHistoryRepository,
 ) {
     val state by viewModel.threadState.collectAsStateWithLifecycle()
     // The filtered floor list lives in the ViewModel (compiled-once matcher, cached plain text),
@@ -179,6 +186,25 @@ fun ForumThreadPage(
     LaunchedEffect(tid) {
         Timber.tag("ForumThreadPage").i("thread shown tid=%d", tid)
         viewModel.openThread(tid, title)
+    }
+
+    // Browsing history: one entry per tid, written only after the thread's first page actually
+    // loaded (isLoading starts true, so a recomposition cannot fire it early, and a failed load
+    // keeps the guard closed). Reopening the same tid only refreshes its timestamp in the store.
+    LaunchedEffect(tid, state.isLoading) {
+        if (state.isLoading || state.error != null || state.posts.isEmpty()) return@LaunchedEffect
+        try {
+            threadHistory.record(
+                tid = tid,
+                title = state.title.ifBlank { title },
+                forumName = state.forumName,
+            )
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            // The history is a convenience: a store failure must never break reading a thread.
+            Timber.tag("ForumThreadPage").w(error, "browsing history not recorded tid=%d", tid)
+        }
     }
 
     // Floor pages chain the same way board pages do; the footer row is the manual path.
@@ -273,6 +299,7 @@ if (display.posts.isEmpty()) {
                                                 },
                                                 onImageClick = { viewerUrl = it },
                                                 onAttachmentClick = { attachmentTarget = it },
+                                                onReply = { viewModel.requestReply(it) },
                                             )
                                         }
                                     }
@@ -443,8 +470,8 @@ if (display.posts.isEmpty()) {
  * and each subsequent post is 沙发/板凳/…-style ordinal. The OP keeps the tinted surface and the
  * OP badge so a long thread stays scannable, and the body is wrapped in a [SelectionContainer]
  * (text selection only; image taps still reach [ForumHtmlText]) so a reader can copy a floor.
- * The duplicate per-floor 回复 button was removed: the page's floating reply FAB is the single
- * reply entry point.
+ * Each floor carries its own 回复 action, which opens the composer with that floor quoted; the
+ * floating FAB stays the plain "reply to the thread" entry.
  */
 @Composable
 internal fun ForumPostCard(
@@ -456,6 +483,8 @@ internal fun ForumPostCard(
     onImageClick: (String) -> Unit = {},
     onAuthorClick: (ForumPost) -> Unit = {},
     onAttachmentClick: ((ForumBodyBlock.Attachment) -> Unit)? = null,
+    /** Tap 回复 on a floor: opens the composer quoting that floor. Null hides the action. */
+    onReply: ((ForumPost) -> Unit)? = null,
 ) {
     val op = post.isOp
     val level = post.authorLevel?.takeIf { it.isNotBlank() }
@@ -587,6 +616,20 @@ internal fun ForumPostCard(
                 onImageClick = onImageClick,
                 onAttachmentClick = onAttachmentClick,
             )
+        }
+        if (onReply != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 6.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(
+                    text = stringResource(R.string.forum_floor_reply),
+                    onClick = { onReply(post) },
+                )
+            }
         }
         Spacer(Modifier.height(14.dp))
     }

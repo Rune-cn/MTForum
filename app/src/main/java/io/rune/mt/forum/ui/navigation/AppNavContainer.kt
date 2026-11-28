@@ -28,6 +28,7 @@ import io.rune.mt.forum.ui.page.forum.ForumListPage
 import io.rune.mt.forum.ui.page.forum.ForumNoticesPage
 import io.rune.mt.forum.ui.page.forum.ForumProfilePage
 import io.rune.mt.forum.ui.page.forum.ForumSearchPage
+import io.rune.mt.forum.ui.page.forum.ForumThreadHistoryPage
 import io.rune.mt.forum.ui.page.forum.ForumThreadPage
 import io.rune.mt.forum.ui.page.forum.NewThreadPage
 import io.rune.mt.forum.ui.page.login.MiuixLoginPage
@@ -42,6 +43,7 @@ import io.rune.mt.forum.ui.page.miuix.settings.preferred.mcp.MiuixMcpSettingsPag
 import io.rune.mt.forum.ui.page.miuix.settings.preferred.theme.MiuixThemeSettingsPage
 import io.rune.mt.forum.ui.util.rememberDeviceCornerRadius
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 import io.rune.mt.forum.ui.theme.isOs4PlatformSupported
 import top.yukonga.miuix.kmp.nav.core.NavCornerClipMode
 import top.yukonga.miuix.kmp.nav.core.NavDisplay
@@ -182,6 +184,9 @@ fun AppNavContainer(
                     title = arg.title,
                     enableBlur = useBlur,
                     outerPadding = PaddingValues(),
+                    // The device store is passed in here rather than resolved inside the page, so the
+                    // page keeps a Noop default that previews and UI tests can compose without Koin.
+                    threadHistory = koinInject(),
                 )
             }
             entry<Route.PrivateConversation>(swipeDismiss = swipeBackDirection) { arg ->
@@ -204,6 +209,12 @@ fun AppNavContainer(
             }
             entry<Route.Drafts>(swipeDismiss = swipeBackDirection) {
                 ForumDraftsPage(
+                    enableBlur = useBlur,
+                    outerPadding = PaddingValues(),
+                )
+            }
+            entry<Route.ThreadHistory>(swipeDismiss = swipeBackDirection) {
+                ForumThreadHistoryPage(
                     enableBlur = useBlur,
                     outerPadding = PaddingValues(),
                 )

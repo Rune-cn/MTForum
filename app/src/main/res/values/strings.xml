@@ -149,6 +149,7 @@
     <string name="forum_loading_more">Loading more…</string>
     <string name="forum_last_page">All loaded</string>
     <string name="forum_op_badge">OP</string>
+    <string name="forum_floor_reply">Reply</string>
     <string name="forum_floor_format">#%1$d</string>
     <string name="forum_pinned_badge">Pinned</string>
     <string name="forum_digest_badge">Digest</string>
@@ -427,4 +428,14 @@
     <string name="mcp_server_client_title">Connect a client</string>
     <string name="mcp_server_client_hint">Point an MCP client\'s Streamable HTTP transport at this endpoint</string>
     <string name="mcp_server_client_example">Example: %1$s</string>
+    <!-- Thread browsing history (浏览历史): written on this device when a thread's first page loads. -->
+    <string name="thread_history_title">Thread history</string>
+    <string name="thread_history_entry_desc">Threads you opened on this device (newest 100)</string>
+    <string name="thread_history_empty">No browsing history yet.</string>
+    <string name="thread_history_clear_action">Clear</string>
+    <string name="thread_history_clear_title">Clear browsing history?</string>
+    <string name="thread_history_clear_message">Every thread recorded on this device will be removed. This cannot be undone.</string>
+    <string name="thread_history_delete_title">Remove this record?</string>
+    <string name="thread_history_delete_message_format">“%1$s” will be removed from the local history.</string>
+    <string name="thread_history_delete_action">Delete</string>
 </resources>

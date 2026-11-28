@@ -96,6 +96,15 @@ sealed interface Route : NavKey {
     data object Drafts : Route
 
     /**
+     * 浏览历史: the threads **this device** opened, most recent first.
+     *
+     * The list is local (DataStore, written by the thread page), so the route carries no
+     * arguments and the page works signed in or out; a row opens [ForumThread].
+     */
+    @Serializable
+    data object ThreadHistory : Route
+
+    /**
      * The site's 提醒 inbox (`home.php?mod=space&do=notice`): 系统提醒 / 回复我的 / 我的帖子 are
      * tabs inside the page, so the route carries no arguments.
      */

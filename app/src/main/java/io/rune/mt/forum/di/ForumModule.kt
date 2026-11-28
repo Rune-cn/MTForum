@@ -16,6 +16,7 @@ import io.rune.mt.forum.data.forum.repository.ForumPasswordAuthenticator
 import io.rune.mt.forum.data.forum.repository.ForumRepositoryImpl
 import io.rune.mt.forum.data.forum.repository.ForumSearchHistoryRepositoryImpl
 import io.rune.mt.forum.data.forum.repository.ForumSessionStore
+import io.rune.mt.forum.data.forum.repository.ForumThreadHistoryRepositoryImpl
 import io.rune.mt.forum.data.image.ForumImageHostClient
 import io.rune.mt.forum.domain.forum.model.ImageHostGateway
 import io.rune.mt.forum.domain.forum.repository.CommentFilterRepository
@@ -24,6 +25,7 @@ import io.rune.mt.forum.domain.forum.repository.ForumDraftRepository
 import io.rune.mt.forum.domain.forum.repository.ForumDraftService
 import io.rune.mt.forum.domain.forum.repository.ForumRepository
 import io.rune.mt.forum.domain.forum.repository.ForumSearchHistoryRepository
+import io.rune.mt.forum.domain.forum.repository.ForumThreadHistoryRepository
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
@@ -35,6 +37,9 @@ private val DRAFT_DATA_STORE = named("ForumDraftDataStore")
 
 /** Qualifier of the local recent-search list (a convenience, unrelated to the site's search). */
 private val SEARCH_HISTORY_DATA_STORE = named("ForumSearchHistoryDataStore")
+
+/** Qualifier of the device-local thread browsing history (never leaves the phone). */
+private val THREAD_HISTORY_DATA_STORE = named("ForumThreadHistoryDataStore")
 
 val forumModule = module {
     singleOf(::ForumCookieJar)
@@ -78,9 +83,21 @@ val forumModule = module {
         ForumSearchHistoryRepositoryImpl(dataStore = get(SEARCH_HISTORY_DATA_STORE), json = get())
     }
 
+    // Thread browsing history: the threads this device opened, with their own DataStore file so
+    // clearing them can never touch drafts, recent searches or settings. It is deliberately not
+    // tied to the forum session, so guests keep their own list (it is purely local).
+    single<DataStore<Preferences>>(THREAD_HISTORY_DATA_STORE) {
+        PreferenceDataStoreFactory.create(
+            produceFile = { androidContext().preferencesDataStoreFile("forum_thread_history") },
+        )
+    }
+    single<ForumThreadHistoryRepository> {
+        ForumThreadHistoryRepositoryImpl(dataStore = get(THREAD_HISTORY_DATA_STORE), json = get())
+    }
+
     // User customisation of the forum itself, stored as JSON documents in the **app settings**
     // DataStore (not a private one) exactly like the brief asked. `get()` with no qualifier is the
-    // settings DataStore; the two private stores above are qualified and cannot be picked by
+    // settings DataStore; the private stores above are qualified and cannot be picked by
     // accident.
     single<CommentFilterRepository> {
         CommentFilterRepositoryImpl(dataStore = get(), json = get())

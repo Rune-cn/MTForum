@@ -149,6 +149,7 @@
     <string name="forum_loading_more">正在加载…</string>
     <string name="forum_last_page">已经到底了</string>
     <string name="forum_op_badge">楼主</string>
+    <string name="forum_floor_reply">回复</string>
     <string name="forum_floor_format">#%1$d</string>
     <string name="forum_pinned_badge">置顶</string>
     <string name="forum_digest_badge">精华</string>
@@ -427,4 +428,14 @@
     <string name="mcp_server_client_title">连接客户端</string>
     <string name="mcp_server_client_hint">在 MCP 客户端中把 Streamable HTTP 传输指向这个地址</string>
     <string name="mcp_server_client_example">例如：%1$s</string>
+    <!-- 帖子浏览历史（本机记录，帖子第一条加载成功后写入） -->
+    <string name="thread_history_title">浏览历史</string>
+    <string name="thread_history_entry_desc">本机打开过的帖子（最多 100 条）</string>
+    <string name="thread_history_empty">还没有浏览记录</string>
+    <string name="thread_history_clear_action">清空</string>
+    <string name="thread_history_clear_title">清空浏览历史？</string>
+    <string name="thread_history_clear_message">将删除本机记录的全部浏览历史，且无法恢复。</string>
+    <string name="thread_history_delete_title">删除这条浏览记录？</string>
+    <string name="thread_history_delete_message_format">「%1$s」将从本机浏览历史中删除。</string>
+    <string name="thread_history_delete_action">删除</string>
 </resources>
