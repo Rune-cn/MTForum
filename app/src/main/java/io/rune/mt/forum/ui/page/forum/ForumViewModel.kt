@@ -5,24 +5,35 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.rune.mt.forum.R
 import io.rune.mt.forum.domain.forum.model.DraftActionResult
+import io.rune.mt.forum.domain.forum.filter.CommentFilterMatcher
+import io.rune.mt.forum.domain.forum.model.CommentFilterSettings
 import io.rune.mt.forum.domain.forum.model.Forum
+import io.rune.mt.forum.domain.forum.model.ForumBoardPreferences
 import io.rune.mt.forum.domain.forum.model.ForumCategory
 import io.rune.mt.forum.domain.forum.model.ForumGuideView
 import io.rune.mt.forum.domain.forum.model.ForumHotEntry
 import io.rune.mt.forum.domain.forum.model.ForumPost
 import io.rune.mt.forum.domain.forum.model.ForumReplyDraft
 import io.rune.mt.forum.domain.forum.model.ForumThread
+import io.rune.mt.forum.domain.forum.model.arrangeForums
+import io.rune.mt.forum.domain.forum.repository.CommentFilterRepository
+import io.rune.mt.forum.domain.forum.repository.ForumBoardPreferencesRepository
 import io.rune.mt.forum.domain.forum.repository.ForumDraftRepository
 import io.rune.mt.forum.domain.forum.repository.ForumDraftService
 import io.rune.mt.forum.domain.forum.repository.ForumRepository
+import io.rune.mt.forum.domain.forum.repository.NoopCommentFilterRepository
+import io.rune.mt.forum.domain.forum.repository.NoopForumBoardPreferencesRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -112,6 +123,24 @@ data class ForumThreadState(
 }
 
 /**
+ * What the thread page actually renders after the comment filter is applied.
+ *
+ * [posts] is the *visible* floor list (filtered), [hiddenCount] is how many were matched and is
+ * what the "N 条被屏蔽" footer reports, and [revealAvailable] drives the temporary reveal toggle.
+ * The filtering itself lives in the ViewModel, not in the LazyColumn item loop: each rule's regex
+ * is compiled once per settings revision and each floor's plain text is cached by pid, so the UI
+ * list path only walks already-computed strings.
+ */
+data class ThreadDisplayState(
+    val posts: List<ForumPost> = emptyList(),
+    val hiddenCount: Int = 0,
+    /** True while the temporary "show blocked floors" toggle is on. */
+    val revealed: Boolean = false,
+) {
+    val revealAvailable: Boolean get() = hiddenCount > 0
+}
+
+/**
  * Backs the three forum screens.
  *
  * The three state groups live side by side because the screens form one navigation chain
@@ -123,6 +152,10 @@ class ForumViewModel(
     private val repository: ForumRepository,
     private val drafts: ForumDraftRepository,
     private val draftService: ForumDraftService,
+    /** Local comment (楼层) filter rules. Defaults to a no-op so existing callers/tests keep working. */
+    private val commentFilter: CommentFilterRepository = NoopCommentFilterRepository,
+    /** Local board order/hide customisation; defaults to "server order, nothing hidden". */
+    private val boardPreferences: ForumBoardPreferencesRepository = NoopForumBoardPreferencesRepository,
 ) : ViewModel() {
 
     /** Session is read for the reply composer (login gate + author identity). */
@@ -136,6 +169,91 @@ class ForumViewModel(
 
     private val _threadState = MutableStateFlow(ForumThreadState())
     val threadState: StateFlow<ForumThreadState> = _threadState.asStateFlow()
+
+    // ---- Comment filter runtime ------------------------------------------
+    /** Settings + a matcher compiled once per revision (never per row). */
+    private data class FilterRuntime(
+        val settings: CommentFilterSettings,
+        val matcher: CommentFilterMatcher,
+    )
+
+    private val _filterRuntime = MutableStateFlow(FilterRuntime(CommentFilterSettings(), CommentFilterMatcher.EMPTY))
+    private val _revealHidden = MutableStateFlow(false)
+    /** Plain text of each floor, keyed by pid, so filtering never re-parses HTML. */
+    private val plainTextCache = HashMap<Long, String>()
+
+    init {
+        viewModelScope.launch {
+            commentFilter.settings.collect { settings ->
+                _filterRuntime.value = FilterRuntime(
+                    settings = settings,
+                    matcher = if (settings.masterEnabled) {
+                        CommentFilterMatcher.compile(settings.rules)
+                    } else {
+                        CommentFilterMatcher.EMPTY
+                    },
+                )
+            }
+        }
+    }
+
+    /** The filtered floor list + the "N 条被屏蔽" count the thread page renders. */
+    val threadDisplay: StateFlow<ThreadDisplayState> =
+        combine(_threadState, _filterRuntime, _revealHidden) { state, runtime, reveal ->
+            buildThreadDisplay(state.posts, runtime, reveal)
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, ThreadDisplayState())
+
+    /** Toggles the temporary "show blocked floors" state for the open thread. */
+    fun toggleBlockedReveal() {
+        _revealHidden.value = !_revealHidden.value
+    }
+
+    private fun buildThreadDisplay(
+        posts: List<ForumPost>,
+        runtime: FilterRuntime,
+        reveal: Boolean,
+    ): ThreadDisplayState {
+        val settings = runtime.settings
+        val matcher = runtime.matcher
+        if (!settings.masterEnabled || matcher.ruleCount == 0) {
+            return ThreadDisplayState(posts = posts, hiddenCount = 0)
+        }
+        val hiddenIds = HashSet<Long>()
+        for (post in posts) {
+            // The OP is kept unless the user opted into "也过滤楼主".
+            if (post.isOp && !settings.filterOp) continue
+            if (matcher.isBlocked(plainTextOf(post))) hiddenIds += post.pid
+        }
+        val shown = if (reveal) posts else posts.filterNot { it.pid in hiddenIds }
+        return ThreadDisplayState(posts = shown, hiddenCount = hiddenIds.size, revealed = reveal)
+    }
+
+    private fun plainTextOf(post: ForumPost): String {
+        plainTextCache[post.pid]?.let { return it }
+        if (plainTextCache.size > PLAIN_TEXT_CACHE_LIMIT) plainTextCache.clear()
+        return ForumBodyParser.plainText(post.contentHtml).also { plainTextCache[post.pid] = it }
+    }
+
+    // ---- Board order / hide ----------------------------------------------
+    private val _boardPreferences = MutableStateFlow(ForumBoardPreferences())
+
+    init {
+        viewModelScope.launch {
+            boardPreferences.preferences.collect { _boardPreferences.value = it }
+        }
+    }
+
+    /**
+     * The home board grid after the user's order/hide preferences are applied.
+     *
+     * Recomputed whenever the index arrives or the preferences change, so hiding/reordering on the
+     * settings page updates the grid without a refetch. The merge rule (new server boards keep
+     * their server slot) lives in [arrangeForums].
+     */
+    val homeBoards: StateFlow<List<Forum>> =
+        combine(_homeState, _boardPreferences) { home, prefs ->
+            arrangeForums(home.forums, prefs)
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private var homeJob: Job? = null
     private var homeLatestJob: Job? = null
@@ -474,6 +592,8 @@ class ForumViewModel(
         val current = _threadState.value
         if (current.tid != tid) {
             _threadState.value = ForumThreadState(tid = tid, title = title)
+            // A reveal is per-thread; a new thread starts filtered again.
+            _revealHidden.value = false
         } else {
             _threadState.update { it.copy(title = title.ifBlank { it.title }) }
         }
@@ -845,5 +965,11 @@ class ForumViewModel(
 
         /** A full 导读 page holds 50 rows; anything shorter is the last page (sofa: 12). */
         const val GUIDE_FULL_PAGE = 40
+
+        /**
+         * Upper bound on cached floor plain texts. A thread lives at most a few pages, so this is
+         * generous; crossing it just clears the cache and re-parses on demand.
+         */
+        const val PLAIN_TEXT_CACHE_LIMIT = 400
     }
 }

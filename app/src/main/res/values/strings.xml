@@ -361,4 +361,42 @@
     <string name="forum_attach_saved_format">Saved to %1$s</string>
     <string name="forum_attach_save_failed">Could not save the file</string>
     <string name="forum_attach_share_failed">Could not share the file</string>
+    <!-- Comment filter (评论屏蔽) -->
+    <string name="forum_comment_filter_title">Comment filter</string>
+    <string name="forum_comment_filter_section_desc">Hide comments by keyword or regex</string>
+    <string name="forum_comment_filter_master">Enable comment filter</string>
+    <string name="forum_comment_filter_master_desc">These rules apply to a thread\'s replies</string>
+    <string name="forum_comment_filter_filter_op">Also filter the OP</string>
+    <string name="forum_comment_filter_filter_op_desc">The original post is kept by default</string>
+    <string name="forum_comment_filter_rules">Rules</string>
+    <string name="forum_comment_filter_add">Add rule</string>
+    <string name="forum_comment_filter_empty">No rules yet</string>
+    <string name="forum_comment_filter_type_keyword">Keyword</string>
+    <string name="forum_comment_filter_type_regex">Regex</string>
+    <string name="forum_comment_filter_pattern_hint">Keyword or regular expression</string>
+    <string name="forum_comment_filter_add_title">Add comment filter rule</string>
+    <string name="forum_comment_filter_edit_title">Edit comment filter rule</string>
+    <string name="forum_comment_filter_edit">Edit</string>
+    <string name="forum_comment_filter_delete">Delete</string>
+    <string name="forum_comment_filter_save">Save</string>
+    <string name="forum_comment_filter_delete_title">Delete rule</string>
+    <string name="forum_comment_filter_delete_message">Delete this rule?</string>
+    <string name="forum_comment_filter_error_blank">Enter a keyword or regex</string>
+    <string name="forum_comment_filter_error_too_long">Pattern is too long (max %1$d characters)</string>
+    <string name="forum_comment_filter_error_invalid_regex">Invalid regular expression</string>
+    <string name="forum_comment_filter_error_too_many">Too many rules (max %1$d)</string>
+    <string name="forum_comment_filter_blocked_format">%1$d blocked</string>
+    <string name="forum_comment_filter_reveal">Show temporarily</string>
+    <string name="forum_comment_filter_hide">Hide again</string>
+    <!-- Board order and hide (板块管理) -->
+    <string name="forum_board_settings_title">Boards</string>
+    <string name="forum_board_settings_desc">Reorder or hide boards on the home grid</string>
+    <string name="forum_board_settings_move_up">Move up</string>
+    <string name="forum_board_settings_move_down">Move down</string>
+    <string name="forum_board_settings_hide">Hide</string>
+    <string name="forum_board_settings_shown">Shown</string>
+    <string name="forum_board_settings_empty">No boards loaded</string>
+    <string name="forum_board_settings_retry">Retry</string>
+    <string name="forum_board_settings_error">Could not load boards: %1$s</string>
+    <string name="forum_board_settings_hidden_hint">Hidden boards still open from links; they only leave the home grid and the board pickers.</string>
 </resources>
