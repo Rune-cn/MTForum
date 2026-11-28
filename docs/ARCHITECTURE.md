@@ -19,6 +19,8 @@ app/src/main/java/io/rune/mt/forum/
 │   │       ├── ForumRepositoryImpl.kt   仓库实现（每方法 withContext(IO)）
 │   │       ├── ForumDraftServiceImpl.kt 服务器草稿（`save=1` 存、`save` 空发表、`delete=1` 删）
 │   │       ├── ForumDraftRepositoryImpl.kt  本机草稿兜底（DataStore `forum_drafts`，上限 20 条）
+│   │       ├── CommentFilterRepositoryImpl.kt  评论屏蔽规则（settings DataStore `thread_comment_filter_v1`，一份 JSON）
+│   │       ├── ForumBoardPreferencesRepositoryImpl.kt  板块顺序/隐藏（settings DataStore `forum_board_prefs_v1`，一份 JSON）
 │   │       ├── ForumSessionStore.kt     DataStore 持久化 Cookie
 │   │       └── ForumPasswordAuthenticator.kt  账号密码登录
 │   ├── image/
@@ -33,7 +35,10 @@ app/src/main/java/io/rune/mt/forum/
 │   ├── forum/
 │   │   ├── model/                    Forum / ForumThread / ForumPost / ForumUser / ForumSession / ForumDraft
 │   │   │                             / ForumImageHost（图床结果、网关接口、格式与上传文件名策略）
+│   │   │                             / CommentFilter（规则/设置/错误/上限）、ForumBoardPreferences（含 arrangeForums 合并规则）
+│   │   │   ├── filter/CommentFilterMatcher.kt 规则编译一次、按纯文本匹配（关键词/正则，忽略大小写）
 │   │   └── repository/               ForumRepository.kt / ForumDraftRepository.kt（含 ForumDraftService）
+│   │                                 / CommentFilterRepository.kt / ForumBoardPreferencesRepository.kt
 │   ├── settings/                     偏好模型与用例
 │   └── updater/
 ├── di/
@@ -69,7 +74,9 @@ app/src/main/java/io/rune/mt/forum/
 │   │   │   ├── ForumSignInSheet.kt   首页顶栏「每日签到」底部面板（OS4 玻璃/OS3 窗口，规则 8）
 │   │   │   ├── ForumSignInCard.kt    签到面板内容（排名/连续/累计 + 签到按钮 + 游客登录提示）
 │   │   │   ├── ForumSignInViewModel.kt 签到页状态 + 签到结果（CDATA 文案）
-│   │   │   ├── ForumViewModel.kt     VM + 各页面 State
+│   │   │   ├── ForumViewModel.kt     VM + 各页面 State（含 threadDisplay 评论过滤 + homeBoards 板块排序）
+│   │   │   ├── ForumCommentFilterViewModel.kt  评论屏蔽设置页 VM
+│   │   │   ├── ForumBoardSettingsViewModel.kt  板块顺序/隐藏设置页 VM
 │   │   │   ├── ReplyComposer.kt      回复底部面板（与签到共用 `MiuixBottomSheet`，引用 + 表情，无草稿）
 │   │   │   ├── SmileyPicker.kt       表情选择器
 │   │   │   ├── ForumGuidePage.kt     导读五视图（最新/热门/精华/回复/抢沙发）
@@ -77,7 +84,7 @@ app/src/main/java/io/rune/mt/forum/
 │   │   ├── login/                    登录页 / VM / 状态
 │   │   ├── main/forum/               论坛 VM 与 State（旧位置，保留兼容）
 │   │   ├── miuix/
-│   │   │   ├── settings/             设置页（账号区块、主题入口、关于）
+│   │   │   ├── settings/             设置页（账号区块、主题入口、关于）、论坛定制（评论屏蔽 / 板块管理）
 │   │   │   └── widgets/              共享组件（页面脚手架、顶栏、滚动条、分组卡片、底部面板 `MiuixBottomSheet` 等）
 │   │   └── theme/ · library/ · animation/
 └── App.kt
@@ -167,3 +174,8 @@ Compose 页面（Miuix 组件，OS3/OS4 自适应）
    用 `MiuixGroupedCards.kt`（`MiuixCardSegment` / `LazyListScope.miuixGroupedItems`），
    圆角取 `CardDefaults.CornerRadius`，不要各自 `clip(RoundedCornerShape(...))`
    （HANDOVER §17.4）。
+22. **本机定制设置（评论屏蔽 / 板块顺序）存现有 settings DataStore**：`thread_comment_filter_v1`
+   （`CommentFilterSettings`，保存时校验、读盘容忍坏规则）与 `forum_board_prefs_v1`
+   （`orderedFids`+`hiddenFids`）。规则用 `CommentFilterMatcher` **编译一次**，过滤只在
+   `ForumViewModel.threadDisplay` 做（纯文本按 pid 缓存，不在 item 循环里重算）；板块合并规则是
+   纯函数 `arrangeForums`（新板块保留服务器 slot）。详见 HANDOVER §27 / AGENTS 规则 37。

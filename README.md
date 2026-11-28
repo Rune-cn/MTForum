@@ -13,6 +13,7 @@
 | 我的收藏 | 收藏列表 + 取消收藏（登录后） |
 | 每日签到 | 首页右上角入口（登录后）：今日排名 / 连续签到 / 累计签到，已签到置灰，服务器文案原样提示 |
 | 版块与分类 | 首页宫格全量版块（12 个）+ 版块主题分类筛选 |
+| 评论屏蔽 / 板块管理 | 帖子按**关键词或正则**屏蔽回复（默认保留楼主，可临时显示、页脚显示屏蔽数）；设置板块**顺序与隐藏**，首页宫格与发帖板块选择器即时生效（本机设置） |
 | 帖子页 | 楼层卡片重做、正文可选取文字、显示所属版块、回复面板改为与签到同款底部面板 |
 | 首页顶栏 | 搜索放大镜（Miuix 搜索覆盖层 + 最近搜索）/ 发帖（先选板块）/ 每日签到 |
 | 消息 | 私信 + 系统提醒 / 回复我的 / 我的帖子 四个页签（标签按内容定宽，窄屏横向滚动而不是省略号） |
@@ -64,7 +65,7 @@ UI 对齐 Miuix 官方示例应用（`example/`）：OS4 玻璃顶栏只采样�
 
 ```bash
 bash tools/build.sh                              # debug APK
-bash tools/build.sh :app:testStableDebugUnitTest  # 361 tests
+bash tools/build.sh :app:testStableDebugUnitTest  # 473 tests
 bash tools/build.sh :app:assembleStableRelease
 bash tools/build.sh :app:lintVitalStableRelease
 ```
@@ -74,7 +75,7 @@ bash tools/build.sh :app:lintVitalStableRelease
 ## 验证
 
 ```
-:app:testStableDebugUnitTest    361 tests, 0 failures
+:app:testStableDebugUnitTest    473 tests, 0 failures
 :app:assembleStableRelease      BUILD SUCCESSFUL  (2.3 MB)
 :app:lintVitalStableRelease     BUILD SUCCESSFUL
 ```

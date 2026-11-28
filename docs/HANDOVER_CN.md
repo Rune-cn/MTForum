@@ -2370,3 +2370,105 @@ handler 不存在，`NavDisplay` 独占手势；打开时它接管，拖动进�
 源码契约（handler 在 `Dialog(` 之后、进度驱动而非布尔、变换经 `graphicsLayer`）。
 真机手势体感未验证（无设备）。
 
+---
+
+## 27. 第十轮：评论关键词/正则屏蔽 + 板块顺序与隐藏（2026-11-28）
+
+机主两句话：「关键词或正则屏蔽评论」「设置板块顺序和隐藏」。两者都是**纯本机设置**，不发任何
+服务器请求，存**现有 settings DataStore**（`app_settings`，两个 JSON 字符串键）。
+
+### 27.1 存储键与模型
+
+| 键（Preferences string） | 模型 | 内容 |
+|---|---|---|
+| `thread_comment_filter_v1` | `CommentFilterSettings` | `masterEnabled`（总开关，默认 false）、`filterOp`（也过滤楼主，默认 false）、`rules: List<CommentFilterRule>` |
+| `forum_board_prefs_v1` | `ForumBoardPreferences` | `orderedFids: List<Int>`（用户顺序）、`hiddenFids: List<Int>`（隐藏板块） |
+
+- `CommentFilterRule{id, pattern, type, enabled}`；`type ∈ {KEYWORD, REGEX}`。`id` 是随机 UUID，
+  编辑/删除按 id，不按文本（两条规则可以同文本不同类型）。
+- 存法照 `ForumDraftRepositoryImpl`：整份 JSON 一个字符串，一次 `DataStore.edit` 原子写。
+  实现：`data/forum/repository/CommentFilterRepositoryImpl.kt` /
+  `ForumBoardPreferencesRepositoryImpl.kt`；接口在 `domain/forum/repository/`。
+- 读盘容忍：坏 JSON → 默认空配置；单条规则为空串 / 超长 / 非法正则 / 空 id → 跳过该条。
+  **绝不让一条坏规则把列表打崩。**
+
+### 27.2 匹配语义与限制
+
+- **关键词** = 忽略大小写子串（`text.lowercase().contains(needle.lowercase())`）。
+- **正则** = 忽略大小写 `Regex(pattern, IGNORE_CASE)`。
+- 被匹配的文本是**楼层的纯文本**（`ForumBodyParser.plainText(contentHtml)`），不是 HTML，避免
+  关键词误中标签/属性。
+- **只编译一次**：`CommentFilterMatcher.compile(rules)` 在规则版本变化时构造一次；matcher 内部
+  已是编译好的 `Regex` 与已小写的关键词。楼层纯文本按 pid 缓存（上限 400，超出清空重算）。
+- **过滤在 `ForumViewModel.threadDisplay` 做，不在 LazyColumn 的 item 循环里**：UI 列表路径只读
+  已算好的 `ThreadDisplayState.posts`，所以滚动/重组不会重编译正则或重解析 HTML。
+- **上限**（含原因，写死在 `domain/forum/model/CommentFilter.kt`）：
+  - `MAX_COMMENT_FILTER_RULES = 50`：设置页与逐页匹配都不至于太慢；超出在保存时拒绝。
+  - `MAX_COMMENT_FILTER_PATTERN_LENGTH = 200` 字符：足够写任何关键词/正则，又给回溯留了上限。
+- **保存时校验**（`CommentFilterRuleError`）：空串 / 超长 / 非法正则 / 规则已满 → 直接拒绝并提示
+  （UI 在编辑弹窗原地显示原因，弹窗不关）；**读取时从不因坏规则抛错**。
+- **灾难性回溯风险**：正则由用户输入，`(a+)+$` 这类模式可能指数回溯。缓解：每条规则 200 字符上限、
+  matcher 只对**单个楼层**的纯文本跑、且只在该规则版本下编译一次。影响面是“某个帖子页匹配稍慢”，
+  不是整机 ANR；文档记在这里，**不要**在没有重新评估前调高上限。
+- **默认保留楼主**：`post.isOp && !filterOp` 时永不参与匹配。只有用户打开“也过滤楼主”才连 OP 一起判。
+- **呈现**：页脚一行「N 条被屏蔽」+「临时显示 / 收屏蔽」开关（`BlockedFloorsFooter`）；换帖子时
+  自动复位。计数是“被规则命中的楼层数”，临时显示时数字仍保留。本地处理，无服务器调用。
+
+### 27.3 板块顺序 / 隐藏的落地与合并规则
+
+- **数据源**：`ForumRepository.getHome().forums`（站点顺序、全量），绝不硬编码。
+- **应用点**：
+  - 首页宫格：`ForumViewModel.homeBoards = combine(homeState, prefs) { arrangeForums(...) }`，
+    `ForumHomePage` 的宫格与发帖板块选择器都读它；设置变更即时生效（无需重新拉取）。
+  - 发帖板块选择器：`NewThreadViewModel.loadBoards` 读一次偏好后 `arrangeForums`，选择器只列未隐藏板块。
+  - **搜索没有板块筛选**（站点搜索是 POST、无 fid 维度），因此不适用；已在本文件与 AGENTS 规则 37 注明。
+- **设置页**：新增「论坛定制」分组，两行分别进「评论屏蔽」「板块管理」。板块管理页每行显式
+  **上移 / 下移 / 隐藏开关**（**没有**做拖拽排序——需求允许跳过；显式按钮对无障碍更友好）。
+- **隐藏板块的可达性**：只从**首页宫格**与**发帖板块选择器**消失；它们仍是正常站点版块，
+  通过帖子/深链/直接 URL（`forum-<fid>-1.html`）依旧能进入。设置页始终展示它们（开关关掉即为隐藏），
+  所以可以随时取消隐藏。
+- **服务器后来新增板块的合并规则**（`arrangeForums(serverForums, prefs, includeHidden)`，纯函数）：
+  1. 起点是站点返回的顺序（哪里“该在”以站点为准）；
+  2. 顺序走站点列表：遇到**用户见过的板块**（fid 在 `orderedFids` 里）时，按用户顺序发出下一个
+     尚未发出的已知板块——这就是“用户的重排生效”；
+  3. **用户没见过的板块**（fid 不在 `orderedFids`，即上次重排之后服务器新加的）就按它在服务器列表
+     里的位置发出——**保留服务器位置**，不被塞到最前/最后；
+  4. 最后移除隐藏板块（设置页要显示它们，故传 `includeHidden = true`）。
+  `orderedFids` 为空（从未重排）时直接用站点顺序；站点不再返回的 fid 自动忽略。
+  用例见 `ForumBoardPreferencesTest`（空偏好=站点序、隐藏移除、includeHidden 保留、用户重排生效、
+  新板块留在服务器 slot、前插新板块、失效 fid 忽略、持久化、坏文档回退）。
+
+### 27.4 代码落点
+
+| 层 | 位置 |
+|---|---|
+| 模型 | `domain/forum/model/CommentFilter.kt`、`ForumBoardPreferences.kt`（含 `arrangeForums` 纯函数） |
+| 匹配器 | `domain/forum/filter/CommentFilterMatcher.kt` |
+| 仓库接口 | `domain/forum/repository/CommentFilterRepository.kt`、`ForumBoardPreferencesRepository.kt`（含 Noop 默认实现） |
+| 仓库实现 | `data/forum/repository/CommentFilterRepositoryImpl.kt`、`ForumBoardPreferencesRepositoryImpl.kt` |
+| DI | `di/ForumModule.kt`（把两份 JSON 存进 settings DataStore） |
+| 线程页过滤 | `ui/page/forum/ForumViewModel.kt`（`threadDisplay` / `toggleBlockedReveal`）、`ForumThreadPage.kt`（`BlockedFloorsFooter`） |
+| 设置页 | `ui/page/miuix/settings/ForumCommentFilterPage.kt`、`ForumBoardSettingsPage.kt` + `ForumCommentFilterViewModel.kt`、`ForumBoardSettingsViewModel.kt` |
+| 导航 | `Route.CommentFilter` / `Route.BoardSettings`（`Routes.kt`、`AppNavContainer.kt`）；设置页「论坛定制」分组（`MiuixPreferredPage.kt`） |
+| 首页/发帖应用 | `ForumHomePage.kt`（`homeBoards`）、`NewThreadViewModel.kt`（选择器 `arrangeForums`） |
+
+### 27.5 验证
+
+<!-- VERIFY_BLOCK -->
+- `:app:compileStableDebugKotlin` → **BUILD SUCCESSFUL**
+- `:app:testStableDebugUnitTest` → **79 suites / 473 tests / 0 failures / 0 errors / 0 skipped**
+  （基线 74 suites / 439 tests；新增 5 个 suite / 34 例：`CommentFilterStoreTest` 10、
+  `CommentFilterMatcherTest` 8、`ForumThreadFilterViewModelTest` 5、`ForumBoardPreferencesTest` 9、
+  `ForumBoardGridViewModelTest` 2）
+- `:app:lintVitalStableRelease` → **BUILD SUCCESSFUL**（`Lint found no new issues`，
+  1 个既有错误由 `lint-baseline.xml` 过滤）
+- 三语字符串各 **390** 键，键集合一致（基线 352，+38）
+
+### 27.6 未验证 / 风险
+
+- 无真机/模拟器：设置页与帖子页的**实际观感**（编辑弹窗、页脚、板块行三连控件在窄屏的排布）未在
+  设备确认；逻辑由 VM/纯函数单测覆盖。
+- 正则灾难性回溯在本机没有压测；上限与“单楼层、编译一次”的缓解见 27.2，真机遇到极慢页时可再收紧。
+- 隐藏板块通过深链进入仍可用（这是刻意行为），但没有自动提示“该板块已被隐藏”。
+
+
