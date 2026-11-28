@@ -38,9 +38,17 @@ object CrashHandler : Thread.UncaughtExceptionHandler {
         // 2) Write a dedicated crash dump file for the crash-log view
         writeCrashDump(time, t, e, stack)
 
+        // 3) Show the crash screen before the process dies (owner asked for one: 「闪退」 alone gave
+        // no reason). It is a framework-only activity, so it still renders when app infra failed.
+        runCatching {
+            val context = appContext ?: return@runCatching
+            context.startActivity(CrashActivity.intent(context, time, stack))
+            Thread.sleep(900)
+        }
+
         // Give the file logger a moment to drain the buffer to disk.
         try {
-            Thread.sleep(500)
+            Thread.sleep(400)
         } catch (_: InterruptedException) {
         }
 

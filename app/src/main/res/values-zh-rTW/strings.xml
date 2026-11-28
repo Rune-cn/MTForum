@@ -437,4 +437,10 @@
     <string name="thread_history_delete_title">刪除這條瀏覽記錄？</string>
     <string name="thread_history_delete_message_format">「%1$s」將從本機瀏覽歷史中刪除。</string>
     <string name="thread_history_delete_action">刪除</string>
+    <string name="crash_title">應用程式崩潰了</string>
+    <string name="crash_hint">回報問題時請複製或分享下面的資訊。</string>
+    <string name="crash_copy">複製</string>
+    <string name="crash_copied">已複製</string>
+    <string name="crash_share">分享</string>
+    <string name="crash_restart">重新啟動</string>
 </resources>
