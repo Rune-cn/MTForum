@@ -159,10 +159,14 @@ class OnlineUpdateRepositoryImpl internal constructor(
     private fun fetchBody(url: String): String = try {
         httpGet(url)
     } catch (apiError: IOException) {
-        // api.github.com answers 403/429 once the anonymous quota (60/h per IP) is spent, and some
-        // networks are refused outright. The public Atom feed carries the same releases and has no
-        // quota, so a failed REST hop degrades to it instead of showing 「检查更新失败 403」.
-        Timber.tag(TAG).w("update REST hop failed (%s); falling back to the Atom feed", apiError.message)
+        // api.github.com answers 403/429 once the anonymous quota (60/h per IP) is spent. The
+        // public Atom feed carries the same releases and has no quota, so only that specific
+        // refusal degrades to it: timeouts, 5xx and fixture servers must still fail as before.
+        val quotaExhausted = apiError.message.let {
+            it != null && (it.contains("HTTP 403") || it.contains("HTTP 429"))
+        }
+        if (!quotaExhausted || !url.startsWith("https://api.github.com")) throw apiError
+        Timber.tag(TAG).w("update REST quota refused (%s); falling back to the Atom feed", apiError.message)
         atomFeedAsReleaseJson(httpGet("https://github.com/$REPO_OWNER/$REPO_NAME/releases.atom", "application/atom+xml"))
     }
 
