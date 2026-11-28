@@ -1,5 +1,6 @@
 import com.mikepenz.aboutlibraries.plugin.DuplicateMode
 import com.mikepenz.aboutlibraries.plugin.DuplicateRule
+import java.io.File
 import java.util.Properties
 
 plugins {
@@ -153,7 +154,7 @@ android {
                 // Point both the home dir and the artifact cache at a writable temp dir. It used to
                 // be a hard-coded Windows path, which made every Robolectric test fail on Linux
                 // (FileNotFoundException from the SDK jar lookup) - that is why CI could not run them.
-                val roboHome = java.io.File(System.getProperty("java.io.tmpdir"), "robo-home").apply { mkdirs() }
+                val roboHome = File(System.getProperty("java.io.tmpdir"), "robo-home").apply { mkdirs() }
                 it.systemProperty("user.home", roboHome.absolutePath)
                 it.systemProperty("robolectric.offline", "false")
             }
