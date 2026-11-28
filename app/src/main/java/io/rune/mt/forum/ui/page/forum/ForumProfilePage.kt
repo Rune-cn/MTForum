@@ -10,9 +10,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -133,19 +135,9 @@ fun ForumProfilePage(
                     item { SmallTitle(stringResource(R.string.profile_credits_section)) }
                     item { ProfileCreditCard(profile.creditStats) }
                 }
-                if (profile.signature != null) {
-                    item {
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 12.dp),
-                        ) {
-                            BasicComponent(
-                                title = stringResource(R.string.profile_signature_label),
-                                summary = profile.signature,
-                            )
-                        }
-                    }
+                val signature = profile.signature
+                if (signature != null) {
+                    item { ProfileSignatureCard(signature) }
                 }
                 if (profile.fields.isNotEmpty()) {
                     item { SmallTitle(stringResource(R.string.profile_section_info)) }
@@ -274,6 +266,46 @@ private fun ProfileStatsCard(profile: ForumUserProfile) {
                     }
                     repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 个人签名 card.
+ *
+ * Signatures are free text members often want to keep (contact details, quotes, 联系方式), so the
+ * body is wrapped in a [SelectionContainer]: long-press selects and copies it. The typography is
+ * kept identical to the Miuix `BasicComponent` this card used to be — title = headline1 size +
+ * Medium on `onBackground`, body = body2 size on `onSurfaceVariantSummary`, 16dp inside margin,
+ * 56dp minimum height — so the card still reads as one of the page's Miuix cards.
+ */
+@Composable
+private fun ProfileSignatureCard(signature: String) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 56.dp)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                text = stringResource(R.string.profile_signature_label),
+                fontSize = MiuixTheme.textStyles.headline1.fontSize,
+                fontWeight = FontWeight.Medium,
+                color = MiuixTheme.colorScheme.onBackground,
+            )
+            SelectionContainer {
+                Text(
+                    text = signature,
+                    fontSize = MiuixTheme.textStyles.body2.fontSize,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
             }
         }
     }

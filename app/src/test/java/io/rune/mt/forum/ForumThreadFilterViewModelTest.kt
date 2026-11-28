@@ -46,8 +46,6 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -55,9 +53,9 @@ import org.junit.Test
  * The thread page's comment filter, driven through [ForumViewModel].
  *
  * The requirements are behavioural: a matching reply disappears, the OP stays unless "也过滤楼主"
- * is on, the footer count is the number of matched floors, and the reveal toggle temporarily brings
- * them back. The filtering is done in the ViewModel (see `threadDisplay`) so these checks do not
- * need Compose at all.
+ * is on, and the footer count is the number of matched floors. Blocked floors are hidden for good
+ * — there is no temporary "show blocked" switch — so nothing here reveals them again. The filtering
+ * is done in the ViewModel (see `threadDisplay`) so these checks do not need Compose at all.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ForumThreadFilterViewModelTest {
@@ -100,8 +98,6 @@ class ForumThreadFilterViewModelTest {
         val display = vm.threadDisplay.value
         assertEquals(listOf(1L, 3L), display.posts.map { it.pid })
         assertEquals(1, display.hiddenCount)
-        assertTrue(display.revealAvailable)
-        assertFalse(display.revealed)
     }
 
     @Test
@@ -116,24 +112,19 @@ class ForumThreadFilterViewModelTest {
     }
 
     @Test
-    fun `reveal temporarily brings the blocked reply back`() = runTest(dispatcher.scheduler) {
+    fun `a blocked reply stays hidden after a refresh`() = runTest(dispatcher.scheduler) {
         val vm = viewModel()
         vm.openThread(7, "title")
         advanceUntilIdle()
         assertEquals(2, vm.threadDisplay.value.posts.size)
 
-        vm.toggleBlockedReveal()
+        vm.refreshThread()
         advanceUntilIdle()
 
-        val revealed = vm.threadDisplay.value
-        assertEquals(3, revealed.posts.size)
-        assertEquals(1, revealed.hiddenCount)
-        assertTrue(revealed.revealed)
-
-        vm.toggleBlockedReveal()
-        advanceUntilIdle()
-        assertEquals(2, vm.threadDisplay.value.posts.size)
-        assertFalse(vm.threadDisplay.value.revealed)
+        // Nothing on the thread page can bring a blocked floor back: the rules are a local setting.
+        val display = vm.threadDisplay.value
+        assertEquals(listOf(1L, 3L), display.posts.map { it.pid })
+        assertEquals(1, display.hiddenCount)
     }
 
     @Test

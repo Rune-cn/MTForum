@@ -14,22 +14,60 @@ import top.yukonga.miuix.kmp.nav.core.NavKey
 class Navigator(val backStack: NavBackStack) {
     private val resultBus = mutableMapOf<String, MutableSharedFlow<Any>>()
 
-    // Push a key onto the back stack.
+    /**
+     * Highest [RepeatableRoute.instanceId] handed out so far, seeded from a restored back stack.
+     *
+     * `NavDisplay` folds two entries that resolve to equal content keys into one, so a page popped
+     * and re-opened must not reuse the id of an entry that is still animating out. Ids are
+     * therefore monotonically increasing for this [Navigator] and only ever grow past the stack's
+     * own ids, which also keeps a process-death restore collision free.
+     */
+    private var instanceHighWater: Long = backStack.maxOfOrNull { (it as? Route)?.navigationInstanceId ?: 0L } ?: 0L
+
+    /**
+     * Push a key onto the back stack.
+     *
+     * This is the single place that turns a caller's [Route] into a back-stack key, and it is
+     * what keeps every entry's content key unique (`NavDisplay` rejects duplicates with
+     * `IllegalArgumentException: Duplicate contentKey on the back stack`):
+     *
+     *  - the page that is already on screen is not pushed a second time (a double tap, a row that
+     *    fires twice);
+     *  - a singleton destination that is still open further down is *revealed* — the pages above
+     *    it are popped — instead of stacking a second copy;
+     *  - a repeatable destination ([RepeatableRoute]) that is still open further down is pushed
+     *    as a new instance with its own [RepeatableRoute.instanceId], so back returns to the page
+     *    it was opened from.
+     */
     fun push(key: NavKey) {
-        if (backStack.lastOrNull() == key) {
+        val top = backStack.lastOrNull()
+        if (top != null && top.isSameDestinationAs(key)) {
             Timber.tag("Navigator").i("Trying push current page to backStack again, ignore!")
             return
         }
-        backStack.add(key)
+        val route = key as? Route
+        if (route == null) {
+            backStack.add(key)
+            return
+        }
+        if (!route.repeatsOnBackStack && backStack.any { it.isSameDestinationAs(route) }) {
+            // Singleton page (设置/收藏/提醒/…): one copy is enough, show the open one. Pushing a
+            // second copy would give two entries the same content key and crash the NavDisplay.
+            Timber.tag("Navigator").i("Page already on the back stack, reveal it: %s", route)
+            popUntil { it.isSameDestinationAs(route) }
+            return
+        }
+        backStack.add(route.stampedFor(backStack))
     }
 
     // Replace the top key, or push if the stack is empty.
     fun replace(key: NavKey) {
-        if (backStack.isNotEmpty()) {
-            backStack[backStack.lastIndex] = key
-        } else {
-            backStack.add(key)
+        if (backStack.isEmpty()) {
+            push(key)
+            return
         }
+        backStack.removeAt(backStack.lastIndex)
+        backStack.add((key as? Route)?.stampedFor(backStack) ?: key)
     }
 
     // Replace the backstack with a new list of keys if the stack is not empty.
@@ -39,8 +77,48 @@ class Navigator(val backStack: NavBackStack) {
         }
         if (backStack.isNotEmpty()) {
             backStack.clear()
-            backStack.addAll(keys)
+            // Stamp against the keys already re-added, so even a caller that passes the same
+            // destination twice ends up with two distinct content keys.
+            for (key in keys.toList()) {
+                backStack.add((key as? Route)?.stampedFor(backStack) ?: key)
+            }
         }
+    }
+
+    /**
+     * [this] ready for the back stack: the first copy of a page keeps the caller's value
+     * (`instanceId = 0`), a copy of a destination that is already open gets a fresh instance id.
+     */
+    private fun Route.stampedFor(stack: List<NavKey>): Route {
+        if (!repeatsOnBackStack) return this
+        if (stack.none { it.isSameDestinationAs(this) }) {
+            return if (navigationInstanceId == 0L) this else withNavigationInstance(0L)
+        }
+        val highest = stack.maxOfOrNull { (it as? Route)?.navigationInstanceId ?: 0L } ?: 0L
+        val instance = maxOf(instanceHighWater, highest) + 1
+        instanceHighWater = instance
+        return withNavigationInstance(instance)
+    }
+
+    /**
+     * Drops second copies of a destination from a **restored** back stack.
+     *
+     * `rememberNavBackStack` brings back exactly what the previous process saved, and a stack
+     * saved before the per-instance keys above existed can hold the same destination twice.
+     * `NavDisplay` rejects duplicate content keys while it reconciles, so such a restore would
+     * crash on every relaunch. The topmost copy wins: that is the page the user was looking at.
+     */
+    fun dropDuplicateDestinations() {
+        val kept = ArrayList<NavKey>(backStack.size)
+        for (index in backStack.indices.reversed()) {
+            val key = backStack[index]
+            if (kept.none { it.isSameDestinationAs(key) }) kept.add(key)
+        }
+        if (kept.size == backStack.size) return
+        kept.reverse()
+        Timber.tag("Navigator").i("Dropped %d duplicate back stack entr(ies)", backStack.size - kept.size)
+        backStack.clear()
+        backStack.addAll(kept)
     }
 
     /**

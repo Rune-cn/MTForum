@@ -63,7 +63,15 @@ fun AppNavContainer(
     )
 
     val backStack = rememberNavBackStack<Route>(Route.Main)
-    val navigator = remember(backStack) { Navigator(backStack) }
+    // `Navigator` is the single writer of back-stack keys and keeps every entry's content key
+    // unique (see `Navigator.push`): NavDisplay rejects a second entry that resolves to a key
+    // already on the stack. A stack *restored* from a process that died before that rule can
+    // still carry the same destination twice, so normalise it once — inside `remember`, i.e.
+    // before the first composition of NavDisplay reads the keys; a duplicate would otherwise
+    // throw while NavDisplay reconciles and crash the app on every restore.
+    val navigator = remember(backStack) {
+        Navigator(backStack).apply { dropDuplicateDestinations() }
+    }
     val onBack = remember(navigator) { { navigator.pop() } }
 
     // A link is a one-shot jump: navigate, then clear the flow so nothing replays it on the next
@@ -142,6 +150,12 @@ fun AppNavContainer(
         // ⚠️ 这里不再注册任何 entry 级 NavigationBackHandler / BackHandler。
         // NavDisplay 内部的 PredictiveBackHandlerWithSessions(enabled = size > 1) 才是唯一的
         // 手势驱动者；entry 内任何 enabled 的返回处理器都会抢走手势（= 无预览）。
+        //
+        // contentKey 就是 route 本身，每个 entry 必须唯一（重复会抛
+        // `IllegalArgumentException: Duplicate contentKey on the back stack`）：可重复的页面
+        // （ForumThread / ForumList / UserProfile / PrivateConversation / ForumSearch /
+        // NewThread）由 `Navigator.push` 写入 instanceId，别的路由一经入栈只保留一份。
+        // 不要在这里改成会丢掉 instanceId 的 contentKey，也不要绕过 Navigator 直接 add。
         NavDisplay(
             backStack = backStack,
             onBack = onBack,

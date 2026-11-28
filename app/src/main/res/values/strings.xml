@@ -392,8 +392,6 @@
     <string name="forum_comment_filter_error_too_many">Too many rules (max %1$d)</string>
     <string name="forum_comment_filter_error_storage">Could not save the rule</string>
     <string name="forum_comment_filter_blocked_format">%1$d blocked</string>
-    <string name="forum_comment_filter_reveal">Show temporarily</string>
-    <string name="forum_comment_filter_hide">Hide again</string>
     <!-- Board order and hide (板块管理) -->
     <string name="forum_board_settings_title">Boards</string>
     <string name="forum_board_settings_desc">Reorder or hide boards on the home grid</string>

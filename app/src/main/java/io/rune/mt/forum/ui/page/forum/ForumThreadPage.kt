@@ -304,15 +304,12 @@ if (display.posts.isEmpty()) {
                                         }
                                     }
 
-                                    // "N 条被屏蔽" + a temporary reveal toggle. The count comes from
-                                    // the ViewModel's filter, so it stays correct while revealed.
-                                    if (display.revealAvailable) {
+                                    // "N 条被屏蔽": the floors the local comment filter hid. They
+                                    // stay hidden for good (no temporary reveal), so this is a
+                                    // note explaining the gap, not a control.
+                                    if (display.hiddenCount > 0) {
                                         item {
-                                            BlockedFloorsFooter(
-                                                hiddenCount = display.hiddenCount,
-                                                revealed = display.revealed,
-                                                onToggle = viewModel::toggleBlockedReveal,
-                                            )
+                                            BlockedFloorsFooter(hiddenCount = display.hiddenCount)
                                         }
                                     }
 
@@ -636,34 +633,19 @@ internal fun ForumPostCard(
 }
 
 /**
- * The small footer the thread page shows when the comment filter hid some floors: "N 条被屏蔽"
- * plus a temporary reveal toggle. It only reports what the ViewModel filtered; the count stays the
- * same while revealed so the user never loses track of how much was hidden.
+ * The small footer the thread page shows when the comment filter hid some floors: "N 条被屏蔽".
+ * It only reports what the ViewModel filtered. Blocked floors are hidden permanently (the rules
+ * are a local setting), so there is deliberately no "show temporarily" toggle here.
  */
 @Composable
-internal fun BlockedFloorsFooter(
-    hiddenCount: Int,
-    revealed: Boolean,
-    onToggle: () -> Unit,
-) {
-    Row(
+internal fun BlockedFloorsFooter(hiddenCount: Int) {
+    Text(
+        text = stringResource(R.string.forum_comment_filter_blocked_format, hiddenCount),
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = stringResource(R.string.forum_comment_filter_blocked_format, hiddenCount),
-            modifier = Modifier.weight(1f),
-            fontSize = 12.sp,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-        )
-        TextButton(
-            text = stringResource(
-                if (revealed) R.string.forum_comment_filter_hide else R.string.forum_comment_filter_reveal,
-            ),
-            onClick = onToggle,
-        )
-    }
+        fontSize = 12.sp,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+    )
 }
 

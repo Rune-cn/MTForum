@@ -392,8 +392,6 @@
     <string name="forum_comment_filter_error_too_many">規則過多（最多 %1$d 條）</string>
     <string name="forum_comment_filter_error_storage">儲存規則失敗</string>
     <string name="forum_comment_filter_blocked_format">%1$d 條被屏蔽</string>
-    <string name="forum_comment_filter_reveal">臨時顯示</string>
-    <string name="forum_comment_filter_hide">收屏蔽</string>
     <!-- 板塊管理 -->
     <string name="forum_board_settings_title">板塊管理</string>
     <string name="forum_board_settings_desc">調整首頁板塊順序或隱藏板塊</string>

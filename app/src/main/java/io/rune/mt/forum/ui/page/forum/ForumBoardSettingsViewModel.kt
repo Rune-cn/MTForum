@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
 
 /** UI state of the board order/hide settings screen. */
@@ -27,11 +29,12 @@ data class ForumBoardSettingsUiState(
 
 /**
  * Backs the 板块管理 screen: lists the site's own board index (never a hard-coded list), lets the
- * user move rows up/down and hide them, and persists `orderedFids` + `hiddenFids` through
- * [ForumBoardPreferencesRepository].
+ * user reorder the grid (drag or the accessible up/down actions) and hide boards, and persists
+ * `orderedFids` + `hiddenFids` through [ForumBoardPreferencesRepository].
  *
  * The displayed order is [arrangeForums] over the server list with `includeHidden = true`, so the
- * hidden rows stay visible here (with their switch off) instead of vanishing from the settings page.
+ * hidden tiles stay in the grid (grayed out) instead of vanishing from the settings page — that is
+ * the only way to bring a hidden board back.
  */
 class ForumBoardSettingsViewModel(
     private val repository: ForumRepository,
@@ -43,6 +46,11 @@ class ForumBoardSettingsViewModel(
     private val loading = MutableStateFlow(true)
     private val error = MutableStateFlow<String?>(null)
     private var loadJob: Job? = null
+
+    // Reorders are launched from every drag crossing; DataStore serialises its own writes, but not
+    // necessarily in launch order. The mutex keeps the queued moves applied in the order the user
+    // made them, so a fast drag cannot land a later step first.
+    private val reorderMutex = Mutex()
 
     init {
         viewModelScope.launch {
@@ -81,12 +89,58 @@ class ForumBoardSettingsViewModel(
         }
     }
 
-    fun moveUp(fid: Int) {
-        reorder(fid) { index -> if (index > 0) index - 1 else index }
+    /**
+     * Drag reorder: moves the board currently at [from] to [to] in the displayed order. The grid
+     * re-slots optimistically on every crossing, so both indices always describe the order the user
+     * is looking at.
+     */
+    fun move(from: Int, to: Int) {
+        if (from == to) return
+        viewModelScope.launch {
+            // Compute the move inside the update lambda so it is applied to the freshest stored
+            // order, and hold the mutex so queued crossings land in the order they happened.
+            reorderMutex.withLock {
+                val boards = serverBoards.value
+                boardPreferences.update { current ->
+                    val order = arrangeForums(boards, current, includeHidden = true).map { it.fid }
+                    if (from !in order.indices || to !in order.indices) {
+                        current
+                    } else {
+                        val next = order.toMutableList()
+                        next.add(to, next.removeAt(from))
+                        // Store the full visible order so the user's arrangement is authoritative;
+                        // boards the server adds later are absent and keep their server slot via
+                        // arrangeForums.
+                        current.copy(orderedFids = next)
+                    }
+                }
+            }
+        }
     }
 
-    fun moveDown(fid: Int) {
-        reorder(fid) { index -> if (index < currentOrder().lastIndex) index + 1 else index }
+    fun moveUp(fid: Int) = step(fid, -1)
+
+    fun moveDown(fid: Int) = step(fid, +1)
+
+    /** The accessible per-tile move actions: one slot up/down for the board [fid]. */
+    private fun step(fid: Int, delta: Int) {
+        viewModelScope.launch {
+            reorderMutex.withLock {
+                val boards = serverBoards.value
+                boardPreferences.update { current ->
+                    val order = arrangeForums(boards, current, includeHidden = true).map { it.fid }
+                    val index = order.indexOf(fid)
+                    val target = index + delta
+                    if (index < 0 || target !in order.indices) {
+                        current
+                    } else {
+                        val next = order.toMutableList()
+                        next.add(target, next.removeAt(index))
+                        current.copy(orderedFids = next)
+                    }
+                }
+            }
+        }
     }
 
     fun setHidden(fid: Int, hidden: Boolean) {
@@ -100,25 +154,6 @@ class ForumBoardSettingsViewModel(
                 }
                 current.copy(hiddenFids = next)
             }
-        }
-    }
-
-    private fun currentOrder(): List<Int> =
-        arrangeForums(serverBoards.value, prefs.value, includeHidden = true).map { it.fid }
-
-    private fun reorder(fid: Int, target: (Int) -> Int) {
-        val order = currentOrder()
-        val index = order.indexOf(fid)
-        if (index < 0) return
-        val targetIndex = target(index)
-        if (targetIndex == index) return
-        val next = order.toMutableList()
-        next.removeAt(index)
-        next.add(targetIndex, fid)
-        viewModelScope.launch {
-            // Store the full visible order so the user's arrangement is authoritative; boards the
-            // server adds later are absent and keep their server slot via arrangeForums.
-            boardPreferences.update { it.copy(orderedFids = next) }
         }
     }
 

@@ -2,6 +2,7 @@
 package io.rune.mt.forum
 
 import android.graphics.Bitmap
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -72,6 +73,8 @@ import io.rune.mt.forum.ui.page.forum.REPLY_SHEET_TAG
 import io.rune.mt.forum.ui.page.forum.ReplyComposer
 import io.rune.mt.forum.ui.page.forum.ReplyComposerBody
 import io.rune.mt.forum.ui.page.forum.ReplyState
+import io.rune.mt.forum.ui.page.forum.replyMessageBody
+import io.rune.mt.forum.ui.page.forum.replyQuoteExcerpt
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBottomSheetCloseAction
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBottomSheetInsideMargin
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixComponentHost
@@ -94,6 +97,7 @@ import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import top.yukonga.miuix.kmp.nav.core.rememberNavBackStack
@@ -397,6 +401,112 @@ class ReplySheetTest {
             file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
             println("SCREENSHOT: ${file.absolutePath} (${bitmap.width}x${bitmap.height})")
         }.onFailure { println("SCREENSHOT skipped: ${it::class.java.name}: ${it.message}") }
+    }
+
+    // ---- Reply payload: only the generated quote may carry tags -------------
+    //
+    // Regression for the 机主 report「回复时输入的文字会被 BBCode 影响」. The excerpt used to be
+    // the quoted floor's plain text verbatim, so a floor that literally contained [/quote]
+    // closed the generated quote block early and the rest of the payload - the user's own text
+    // included - was re-parsed as BBCode by the site. These assertions pin the wire format itself
+    // (no composition involved), which is exactly what submitReply() posts.
+
+    @Test
+    fun `quote excerpt is one defused plain line`() {
+        val excerpt = replyQuoteExcerpt("<div>看这里[/quote]然后是[b]粗体字[/b]<br>第二行</div>")
+        assertEquals("看这里［/quote］然后是［b］粗体字［/b］ 第二行", excerpt)
+        assertFalse("the excerpt must not be able to close the quote", excerpt!!.contains("[/quote]"))
+    }
+
+    @Test
+    fun `payload keeps the user text outside the quote block verbatim`() {
+        val body = replyMessageBody("wuti", "有佬友知道目前靠谱的刷课软件吗？", "我打的是字面量 [b] 不是标签")
+        assertEquals(
+            "[quote][b]wuti[/b]\n有佬友知道目前靠谱的刷课软件吗？[/quote]\n我打的是字面量 [b] 不是标签",
+            body,
+        )
+        assertEquals("exactly one quote block opens", 1, Regex("\\[quote]").findAll(body).count())
+        assertEquals("exactly one quote block closes", 1, Regex("\\[/quote]").findAll(body).count())
+        assertTrue(
+            "the user's text follows the closing tag",
+            body.endsWith("[/quote]\n我打的是字面量 [b] 不是标签"),
+        )
+    }
+
+    @Test
+    fun `a quoted floor containing quote markers cannot break the block`() {
+        val excerpt = replyQuoteExcerpt("<div>他的原文里有[/quote][img]x.png[/img]和[code]b x[/code]</div>")
+        val body = replyMessageBody("wuti", excerpt, "我的回复")
+        assertEquals(1, Regex("\\[/quote]").findAll(body).count())
+        assertTrue("the reply stays after the quote block", body.endsWith("[/quote]\n我的回复"))
+    }
+
+    @Test
+    fun `reply without a quoted floor is the users own text alone`() {
+        assertEquals("纯文本 [i]字面量[/i]", replyMessageBody(null, null, "纯文本 [i]字面量[/i]"))
+    }
+
+    @Test
+    fun `quote excerpt stays one line and under the 120 char cap`() {
+        val long = buildString {
+            append("<div>")
+            repeat(40) { append("这一行比较长一些的文字内容<br>") }
+            append("</div>")
+        }
+        val excerpt = replyQuoteExcerpt(long)!!
+        assertTrue("cap", excerpt.length <= 120)
+        assertFalse("one line only", excerpt.contains('\n'))
+        assertFalse("no live tag survives", excerpt.contains('[') || excerpt.contains(']'))
+    }
+
+    /**
+     * End-to-end payload check through the real view model: 回复 on a floor that itself contains
+     * a quote marker must still produce one well-formed quote block, and the user's typed text
+     * must be posted after it, unchanged (this is what used to break: the floor's own [/quote]
+     * closed the block and the reply was re-parsed as BBCode).
+     */
+    @Test
+    fun `submitReply posts one quote block and the untouched user text`() {
+        // Robolectric runs the test body on the main thread and viewModelScope is Main.immediate,
+        // and the fakes below have no suspension points, so every hop completes inline.
+        // drainMainLooper() is only a safety net for the case where a hop does get posted.
+        val viewModel = ForumViewModel(repository, ReplyFakeDraftRepository(), ReplyFakeDraftService())
+        viewModel.openThread(177093, "Sample thread")
+        drainMainLooper()
+        assertTrue("the thread should load", viewModel.threadState.value.formhash != null)
+
+        viewModel.requestReply(
+            ForumPost(
+                pid = 2L,
+                tid = 177093,
+                authorName = "Other",
+                authorUid = 2,
+                contentHtml = "<div>原文里有[/quote]和[b]粗体[/b]</div>",
+                floor = 1,
+            ),
+        )
+        assertTrue(
+            "the chip shows the defused excerpt",
+            viewModel.replyState.value.quoteText.orEmpty().contains("［/quote］"),
+        )
+
+        viewModel.updateReplyText("我的回复，字面量 [b] 保持不动")
+        viewModel.submitReply()
+        drainMainLooper()
+
+        val body = repository.lastReplyBody.orEmpty()
+        assertEquals("exactly one quote closes", 1, Regex("\\[/quote]").findAll(body).count())
+        assertTrue("the quote block still opens", body.startsWith("[quote][b]Other[/b]\n"))
+        assertTrue(
+            "the user text follows the block verbatim",
+            body.endsWith("[/quote]\n我的回复，字面量 [b] 保持不动"),
+        )
+        assertFalse("the excerpt carries no live tag", body.substringBefore("[/quote]").contains("[b]粗体"))
+    }
+
+    /** Runs whatever the view model queued on the Robolectric main looper (no-op when inline). */
+    private fun drainMainLooper() {
+        shadowOf(Looper.getMainLooper()).idle()
     }
 
     /** Clicks the page's reply FAB and lets the window sheet's enter animation settle. */

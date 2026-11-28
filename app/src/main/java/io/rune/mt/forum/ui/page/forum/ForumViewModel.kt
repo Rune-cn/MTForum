@@ -127,20 +127,18 @@ data class ForumThreadState(
 /**
  * What the thread page actually renders after the comment filter is applied.
  *
- * [posts] is the *visible* floor list (filtered), [hiddenCount] is how many were matched and is
- * what the "N 条被屏蔽" footer reports, and [revealAvailable] drives the temporary reveal toggle.
- * The filtering itself lives in the ViewModel, not in the LazyColumn item loop: each rule's regex
- * is compiled once per settings revision and each floor's plain text is cached by pid, so the UI
- * list path only walks already-computed strings.
+ * [posts] is the *visible* floor list (filtered) and [hiddenCount] is how many floors the rules
+ * matched — that count is what the "N 条被屏蔽" footer reports. Matched floors are hidden
+ * permanently (the rules are a local setting), so there is no temporary "show blocked" state and
+ * no way to bring them back from the thread page; [hiddenCount] only explains the gap in floor
+ * numbering. The filtering itself lives in the ViewModel, not in the LazyColumn item loop: each
+ * rule's regex is compiled once per settings revision and each floor's plain text is cached by
+ * pid, so the UI list path only walks already-computed strings.
  */
 data class ThreadDisplayState(
     val posts: List<ForumPost> = emptyList(),
     val hiddenCount: Int = 0,
-    /** True while the temporary "show blocked floors" toggle is on. */
-    val revealed: Boolean = false,
-) {
-    val revealAvailable: Boolean get() = hiddenCount > 0
-}
+)
 
 /**
  * Backs the three forum screens.
@@ -180,7 +178,6 @@ class ForumViewModel(
     )
 
     private val _filterRuntime = MutableStateFlow(FilterRuntime(CommentFilterSettings(), CommentFilterMatcher.EMPTY))
-    private val _revealHidden = MutableStateFlow(false)
     /** Plain text of each floor, keyed by pid, so filtering never re-parses HTML. */
     private val plainTextCache = HashMap<Long, String>()
 
@@ -201,19 +198,13 @@ class ForumViewModel(
 
     /** The filtered floor list + the "N 条被屏蔽" count the thread page renders. */
     val threadDisplay: StateFlow<ThreadDisplayState> =
-        combine(_threadState, _filterRuntime, _revealHidden) { state, runtime, reveal ->
-            buildThreadDisplay(state.posts, runtime, reveal)
+        combine(_threadState, _filterRuntime) { state, runtime ->
+            buildThreadDisplay(state.posts, runtime)
         }.stateIn(viewModelScope, SharingStarted.Eagerly, ThreadDisplayState())
-
-    /** Toggles the temporary "show blocked floors" state for the open thread. */
-    fun toggleBlockedReveal() {
-        _revealHidden.value = !_revealHidden.value
-    }
 
     private fun buildThreadDisplay(
         posts: List<ForumPost>,
         runtime: FilterRuntime,
-        reveal: Boolean,
     ): ThreadDisplayState {
         val settings = runtime.settings
         val matcher = runtime.matcher
@@ -226,8 +217,9 @@ class ForumViewModel(
             if (post.isOp && !settings.filterOp) continue
             if (matcher.isBlocked(plainTextOf(post))) hiddenIds += post.pid
         }
-        val shown = if (reveal) posts else posts.filterNot { it.pid in hiddenIds }
-        return ThreadDisplayState(posts = shown, hiddenCount = hiddenIds.size, revealed = reveal)
+        // Blocked floors stay hidden: the rules are a local setting, not a per-view filter.
+        val shown = posts.filterNot { it.pid in hiddenIds }
+        return ThreadDisplayState(posts = shown, hiddenCount = hiddenIds.size)
     }
 
     private fun plainTextOf(post: ForumPost): String {
@@ -594,8 +586,6 @@ class ForumViewModel(
         val current = _threadState.value
         if (current.tid != tid) {
             _threadState.value = ForumThreadState(tid = tid, title = title)
-            // A reveal is per-thread; a new thread starts filtered again.
-            _revealHidden.value = false
         } else {
             _threadState.update { it.copy(title = title.ifBlank { it.title }) }
         }
@@ -672,7 +662,9 @@ class ForumViewModel(
             visible = true,
             tid = tid,
             quoteAuthor = quote?.authorName,
-            quoteText = quote?.contentHtml?.let { ForumBodyParser.plainText(it).take(120) },
+            // Already payload-ready: one plain line, nothing inside that the site could read as
+            // BBCode (see [replyQuoteExcerpt]). The chip shows exactly what the quote will send.
+            quoteText = replyQuoteExcerpt(quote?.contentHtml),
         )
     }
 
@@ -693,13 +685,8 @@ class ForumViewModel(
     }
 
     /** Full reply body (quote block included), identical to what [submitReply] posts. */
-    private fun replyBody(state: ReplyState): String = buildString {
-        if (state.quoteAuthor != null) {
-            append("[quote][b]").append(state.quoteAuthor).append("[/b]\n")
-            append(state.quoteText.orEmpty()).append("[/quote]\n")
-        }
-        append(state.text.trim())
-    }
+    private fun replyBody(state: ReplyState): String =
+        replyMessageBody(state.quoteAuthor, state.quoteText, state.text)
 
     fun updateReplyText(text: String) {
         _replyState.value = _replyState.value.copy(text = text, error = null, errorRes = null)
@@ -988,4 +975,96 @@ class ForumViewModel(
          */
         const val PLAIN_TEXT_CACHE_LIMIT = 400
     }
+}
+
+// ---- Reply payload (quote block + user text) --------------------------------
+//
+// The reply form posts a single "message" field that the site parses as BBCode, so the client
+// decides what is markup and what is prose. This used to be assembled inline from the quoted
+// floor's plain text verbatim, which the floor itself could break out of: a post that literally
+// contained [/quote] (or [b], [img], a code sample...) closed the quote block early, and
+// everything after it - including the text the user typed - was re-parsed as BBCode. That is the
+// reported bug "回复时输入的文字会被 BBCode 影响".
+//
+// Rules enforced here:
+//   * only the generated part carries tags: [quote][b]author[/b] + excerpt + [/quote];
+//   * the excerpt is one line of plain text whose square brackets are defused, so it can never
+//     open or close anything, and it never carries HTML (a floor body is HTML, not BBCode);
+//   * the user's own text is appended verbatim and always OUTSIDE the quote block - never wrapped
+//     in a second [quote], never HTML/BBCode escaped - so a literal [b] typed by the user leaves
+//     the app exactly as typed.
+
+/** Longest quoted excerpt embedded in [quote]; unchanged from the first implementation. */
+private const val REPLY_QUOTE_MAX_CHARS = 120
+
+/** Line breaks plus template whitespace (NBSP / full-width / zero-width) collapse to one space. */
+private val REPLY_WHITESPACE_RUN = Regex("[\\s\\u00A0\\u3000\\u200B\\uFEFF]+")
+
+/**
+ * Markup the body walker would have dropped, matched again for the fallback path where
+ * [ForumBodyParser.plainText] cannot parse the fragment and hands the raw source back.
+ */
+private val REPLY_HTML_TAG = Regex(
+    "</?(?:a|b|blockquote|br|code|dd|div|dl|dt|em|font|hr|i|iframe|img|li|ol|p|pre|script" +
+        "|small|span|strike|strong|table|tbody|td|th|thead|tr|u|ul)\\b[^>]*>",
+    RegexOption.IGNORE_CASE,
+)
+
+/** Entities left behind when the excerpt comes from unparsed source. */
+private val REPLY_ENTITIES = listOf(
+    "&nbsp;" to " ",
+    "&lt;" to "<",
+    "&gt;" to ">",
+    "&quot;" to "\"",
+    "&#39;" to "'",
+    "&amp;" to "&",
+)
+
+/**
+ * Defuses the square brackets of a *generated* quote excerpt by turning them into full-width
+ * look-alikes, so nothing inside the quote block can be parsed as a tag - [/quote] in particular,
+ * which would close the block and spill the rest of the payload (the user's reply included) into
+ * BBCode prose.
+ *
+ * Only generated text goes through this; the user's own input is never rewritten.
+ */
+private fun defuseQuoteBbcode(text: String): String = text.replace('[', '［').replace(']', '］')
+
+/**
+ * Flattens a floor's body HTML into the single plain-text line used as the quoted excerpt.
+ *
+ * HTML to text stays in [ForumBodyParser.plainText] (rule 25: body parsing lives there); this
+ * only normalises what that text may still carry: HTML entities, any tag that survives (the
+ * unparseable-fragment fallback, or a floor that displays HTML as source), and the line breaks /
+ * template whitespace that would otherwise show up as blank lines inside the quote. The
+ * historical 120-char cap is kept, and it is applied *after* the brackets are defused so
+ * truncation can never cut a tag in half.
+ *
+ * @return null when the floor has no text at all (image-only floor): the composer still quotes
+ *   the author line, but leaves the excerpt blank instead of inventing content.
+ */
+internal fun replyQuoteExcerpt(html: String?): String? {
+    if (html.isNullOrBlank()) return null
+    var text = ForumBodyParser.plainText(html)
+    REPLY_ENTITIES.forEach { (entity, replacement) -> text = text.replace(entity, replacement) }
+    if (REPLY_HTML_TAG.containsMatchIn(text)) text = REPLY_HTML_TAG.replace(text, " ")
+    text = REPLY_WHITESPACE_RUN.replace(text, " ")
+    return defuseQuoteBbcode(text).trim().take(REPLY_QUOTE_MAX_CHARS).trim().ifBlank { null }
+}
+
+/**
+ * The reply payload exactly as "forum.php?mod=post&action=reply" receives it.
+ *
+ * Shape: [quote][b]author[/b] newline {excerpt} [/quote] newline {user text} - the quote block is
+ * generated (and defused), the user's text is appended verbatim and always outside it. With no
+ * quoted floor the payload is just the user's text.
+ */
+internal fun replyMessageBody(quoteAuthor: String?, quoteText: String?, text: String): String = buildString {
+    val author = quoteAuthor?.trim().orEmpty()
+    if (author.isNotEmpty()) {
+        append("[quote][b]").append(defuseQuoteBbcode(author)).append("[/b]\n")
+        append(defuseQuoteBbcode(quoteText.orEmpty().trim()))
+        append("[/quote]\n")
+    }
+    append(text.trim())
 }
