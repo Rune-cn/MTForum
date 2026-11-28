@@ -37,6 +37,7 @@ import io.rune.mt.forum.ui.page.forum.ForumCommentFilterViewModel
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBackButton
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixConfirmDialog
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixHintTextField
+import io.rune.mt.forum.ui.page.miuix.widgets.MiuixStyleDialog
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixNavigationItemWidget
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixPageScaffold
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixSwitchWidget
@@ -49,7 +50,6 @@ import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.window.WindowDialog
 
 /**
  * The 评论屏蔽 settings screen: the master switch, the optional "也过滤楼主" opt-in, and the rule
@@ -182,7 +182,8 @@ fun ForumCommentFilterPage(
 
     // Add / edit dialog. Validation runs in the repository at save time; the dialog stays open and
     // shows the localized reason until the pattern is accepted.
-    WindowDialog(show = showEditor, onDismissRequest = { showEditor = false }) {
+    // Style-aware: OS4 gets the glass dialog, OS3 the classic window (rule 8).
+    MiuixStyleDialog(show = showEditor, onDismissRequest = { showEditor = false }) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(
                 text = stringResource(
