@@ -269,6 +269,23 @@ fun NewThreadPage(
                             previewOpen = previewOpen,
                             onTogglePreview = { previewOpen = !previewOpen },
                         )
+                        if (previewOpen && state.message.isNotBlank()) {
+                            Spacer(Modifier.height(6.dp))
+                            // Preview: the same ForumBodyParser/ForumHtmlText pipeline a received
+                            // post goes through, so [b]/[img]/[quote] show roughly how the site
+                            // will render them. Toggle only — never sends, never mutates the draft.
+                            Card(modifier = Modifier.fillMaxWidth()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 220.dp)
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(10.dp),
+                                ) {
+                                    ForumHtmlText(html = state.message, modifier = Modifier.fillMaxWidth())
+                                }
+                            }
+                        }
 
                         if (state.images.isNotEmpty()) {
                             Spacer(Modifier.height(10.dp))
