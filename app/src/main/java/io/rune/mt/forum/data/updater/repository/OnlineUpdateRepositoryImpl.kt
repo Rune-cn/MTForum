@@ -21,6 +21,10 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import timber.log.Timber
@@ -50,6 +54,11 @@ class OnlineUpdateRepositoryImpl internal constructor(
     private companion object {
         /** Extra slack on top of the engine deadline, for the mutex wait and the preference read. */
         const val DEADLINE_GRACE_MILLIS = 2_000L
+
+        /** Same coordinates as [UpdateCheckEngine]'s feed; the Atom fallback needs the web host. */
+        const val REPO_OWNER = "Rune-cn"
+        const val REPO_NAME = "MTForum"
+        const val TAG = "OnlineUpdateRepository"
     }
 
     private val engine = UpdateCheckEngine(json, environment)
@@ -147,10 +156,20 @@ class OnlineUpdateRepositoryImpl internal constructor(
      * The body is never logged (it is a release payload, not credentials, but the rule is "no
      * response dumps in logs"), and the error names the status code only.
      */
-    private fun fetchBody(url: String): String {
+    private fun fetchBody(url: String): String = try {
+        httpGet(url)
+    } catch (apiError: IOException) {
+        // api.github.com answers 403/429 once the anonymous quota (60/h per IP) is spent, and some
+        // networks are refused outright. The public Atom feed carries the same releases and has no
+        // quota, so a failed REST hop degrades to it instead of showing 「检查更新失败 403」.
+        Timber.tag(TAG).w("update REST hop failed (%s); falling back to the Atom feed", apiError.message)
+        atomFeedAsReleaseJson(httpGet("https://github.com/$REPO_OWNER/$REPO_NAME/releases.atom", "application/atom+xml"))
+    }
+
+    private fun httpGet(url: String, accept: String = "application/vnd.github+json"): String {
         val request = Request.Builder()
             .url(url)
-            .header("Accept", "application/vnd.github+json")
+            .header("Accept", accept)
             .header("User-Agent", "MTForum-updater")
             .build()
         checkClient.newCall(request).execute().use { response ->
@@ -158,10 +177,40 @@ class OnlineUpdateRepositoryImpl internal constructor(
             if (!response.isSuccessful) {
                 throw IOException("GitHub HTTP ${response.code} for $url")
             }
-            // Decoding happens outside (the engine owns the JSON schema); returning the raw body
-            // keeps this hop a plain fetch.
             return body
         }
+    }
+
+    /**
+     * Turns the newest `releases.atom` entry into the same JSON shape the REST hop returns, so the
+     * engine and the asset policy stay unchanged. The APK name is the one the release workflow
+     * publishes (`mtforum-stable-<tag>.apk`); if a release ever renames it the download still
+     * falls back to the release page.
+     */
+    private fun atomFeedAsReleaseJson(xml: String): String {
+        val entry = Regex("<entry>(.*?)</entry>", RegexOption.DOT_MATCHES_ALL)
+            .find(xml)?.groupValues?.get(1)
+            ?: throw IOException("Atom feed carried no release entry")
+        fun group(pattern: String, source: String = entry): String =
+            Regex(pattern, RegexOption.DOT_MATCHES_ALL).find(source)?.groupValues?.get(1).orEmpty().trim()
+        val tag = group("<title>(.*?)</title>")
+        if (tag.isBlank()) throw IOException("Atom entry carried no tag")
+        val htmlUrl = group("<link[^>]*href=\"([^\"]+)\"")
+        val notes = group("<content[^>]*>(.*?)</content>")
+        val apk = "mtforum-stable-$tag.apk"
+        val download = "https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$tag/$apk"
+        return buildJsonObject {
+            put("tag_name", tag)
+            put("name", "MT论坛 stable $tag")
+            put("html_url", htmlUrl)
+            put("body", notes)
+            putJsonArray("assets") {
+                addJsonObject {
+                    put("name", apk)
+                    put("browser_download_url", download)
+                }
+            }
+        }.toString()
     }
 
     override suspend fun downloadUpdate(url: String): Pair<InputStream, Long>? = withContext(Dispatchers.IO) {

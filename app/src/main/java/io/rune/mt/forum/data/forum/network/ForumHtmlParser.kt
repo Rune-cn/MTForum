@@ -562,6 +562,28 @@ object ForumHtmlParser {
         firstOrNull { it.startsWith(prefix) }?.filterDigits()?.toIntOrNull()
 
     /** Hidden credentials of the new-thread form. */
+    /**
+     * Reads the reply form (`forum.php?mod=post&action=reply&...`, optionally `&repquote=<pid>`).
+     *
+     * The hidden fields are per-request: `posttime` is the double-post guard, and a quote form
+     * arrives with `noticeauthor` / `noticetrimstr` already filled, so the server builds the
+     * quoted block. Missing them makes the site reject the POST with 「含有非法字符」.
+     */
+    fun parseReplyForm(html: String, tid: Int, fid: Int, page: Int): io.rune.mt.forum.domain.forum.model.ForumReplyForm {
+        val doc = Jsoup.parse(html)
+        fun input(name: String): String? =
+            doc.selectFirst("input[name=" + name + "]")?.attr("value")?.takeIf { it.isNotBlank() }
+        return io.rune.mt.forum.domain.forum.model.ForumReplyForm(
+            formhash = input("formhash") ?: parseFormhash(html).orEmpty(),
+            posttime = input("posttime").orEmpty(),
+            noticeAuthor = input("noticeauthor"),
+            noticeTrimStr = input("noticetrimstr"),
+            fid = input("fid")?.toIntOrNull() ?: fid,
+            tid = input("tid")?.toIntOrNull() ?: tid,
+            page = input("page")?.toIntOrNull() ?: page,
+        )
+    }
+
     fun parseNewThreadForm(html: String, fid: Int): io.rune.mt.forum.domain.forum.model.ForumNewThreadForm {
         val doc = Jsoup.parse(html)
         val formhash = doc.selectFirst("input[name=formhash]")?.attr("value")?.takeIf { it.isNotBlank() }

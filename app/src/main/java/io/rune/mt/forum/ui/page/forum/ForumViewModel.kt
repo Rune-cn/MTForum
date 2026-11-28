@@ -662,9 +662,10 @@ class ForumViewModel(
             visible = true,
             tid = tid,
             quoteAuthor = quote?.authorName,
-            // Already payload-ready: one plain line, nothing inside that the site could read as
-            // BBCode (see [replyQuoteExcerpt]). The chip shows exactly what the quote will send.
+            // One plain line for the chip; the server builds the quoted block itself from the
+            // reply form's noticetrimstr, so nothing hand-built is sent (see replyWithQuote).
             quoteText = replyQuoteExcerpt(quote?.contentHtml),
+            quotePid = quote?.pid,
         )
     }
 
@@ -684,10 +685,6 @@ class ForumViewModel(
         )
     }
 
-    /** Full reply body (quote block included), identical to what [submitReply] posts. */
-    private fun replyBody(state: ReplyState): String =
-        replyMessageBody(state.quoteAuthor, state.quoteText, state.text)
-
     fun updateReplyText(text: String) {
         _replyState.value = _replyState.value.copy(text = text, error = null, errorRes = null)
     }
@@ -700,12 +697,16 @@ class ForumViewModel(
         viewModelScope.launch {
             _replyState.value = composer.copy(isSubmitting = true, error = null, errorRes = null)
             val result = runCatching {
-                repository.reply(
+                // The user's text goes out verbatim; Discuz generates the quote block from the
+                // form's noticetrimstr, so the client never hand-builds BBCode (which used to let
+                // a quoted floor containing [/quote] swallow the user's own text).
+                repository.replyWithQuote(
                     tid = thread.tid,
                     fid = thread.fid ?: 0,
-                    message = replyBody(composer),
-                    formhash = formhash,
-                    noticeAuthor = thread.noticeAuthor,
+                    message = composer.text,
+                    page = 1,
+                    quotePid = composer.quotePid,
+                    fallbackFormhash = formhash,
                 )
             }
             result.onSuccess {
@@ -1049,7 +1050,7 @@ internal fun replyQuoteExcerpt(html: String?): String? {
     REPLY_ENTITIES.forEach { (entity, replacement) -> text = text.replace(entity, replacement) }
     if (REPLY_HTML_TAG.containsMatchIn(text)) text = REPLY_HTML_TAG.replace(text, " ")
     text = REPLY_WHITESPACE_RUN.replace(text, " ")
-    return defuseQuoteBbcode(text).trim().take(REPLY_QUOTE_MAX_CHARS).trim().ifBlank { null }
+    return text.trim().take(REPLY_QUOTE_MAX_CHARS).trim().ifBlank { null }
 }
 
 /**

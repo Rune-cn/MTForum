@@ -24,6 +24,8 @@ data class ReplyState(
     val error: String? = null,
     /** Author of the floor being quoted, when the composer was opened from a 回复 tap. */
     val quoteAuthor: String? = null,
-    /** Plain-text excerpt of the quoted floor, capped so the payload stays small. */
+    /** Plain-text excerpt of the quoted floor, shown in the chip (the site builds the quote). */
     val quoteText: String? = null,
+    /** pid of the quoted floor; the reply form is fetched with `&repquote=<pid>`. */
+    val quotePid: Long? = null,
 )

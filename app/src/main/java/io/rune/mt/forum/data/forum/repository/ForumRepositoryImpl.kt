@@ -190,6 +190,40 @@ class ForumRepositoryImpl(
     private fun searchPagePath(searchid: String, page: Int): String =
         "search.php?mod=forum&searchid=$searchid&orderby=lastpost&ascdesc=desc&searchsubmit=yes&page=$page&mobile=2"
 
+    /**
+     * Fetches the per-request reply form (it carries a one-shot `posttime`, plus
+     * `noticeauthor`/`noticetrimstr` when opened with `&repquote=<pid>`) and posts the reply with
+     * those hidden fields. `message` is the user's text only; the quote block is built by the site.
+     */
+    override suspend fun replyWithQuote(
+        tid: Int,
+        fid: Int,
+        message: String,
+        page: Int,
+        quotePid: Long?,
+        fallbackFormhash: String,
+    ): String = withContext(Dispatchers.IO) {
+        val formUrl = buildString {
+            append("forum.php?mod=post&action=reply&fid=").append(fid)
+            append("&tid=").append(tid)
+            append("&page=").append(page)
+            if (quotePid != null) append("&repquote=").append(quotePid)
+            append("&mobile=2")
+        }
+        val form = ForumHtmlParser.parseReplyForm(http.getHtml(formUrl), tid, fid, page)
+        val fields = buildMap {
+            put("formhash", form.formhash.ifBlank { fallbackFormhash })
+            if (form.posttime.isNotBlank()) put("posttime", form.posttime)
+            put("message", message)
+            put("replysubmit", "yes")
+            put("usesig", "1")
+            put("htmlon", "0")
+            form.noticeAuthor?.takeIf { it.isNotBlank() }?.let { put("noticeauthor", it) }
+            form.noticeTrimStr?.takeIf { it.isNotBlank() }?.let { put("noticetrimstr", it) }
+        }
+        http.postForm(formUrl, fields)
+    }
+
     override suspend fun reply(
         tid: Int,
         fid: Int,

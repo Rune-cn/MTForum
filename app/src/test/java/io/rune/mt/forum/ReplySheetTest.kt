@@ -412,10 +412,12 @@ class ReplySheetTest {
     // (no composition involved), which is exactly what submitReply() posts.
 
     @Test
-    fun `quote excerpt is one defused plain line`() {
+    fun `quote excerpt is one plain line`() {
+        // The excerpt only feeds the chip; the site builds the quoted block from the reply form's
+        // noticetrimstr, so the client no longer has to defuse brackets here.
         val excerpt = replyQuoteExcerpt("<div>看这里[/quote]然后是[b]粗体字[/b]<br>第二行</div>")
-        assertEquals("看这里［/quote］然后是［b］粗体字［/b］ 第二行", excerpt)
-        assertFalse("the excerpt must not be able to close the quote", excerpt!!.contains("[/quote]"))
+        assertEquals("看这里[/quote]然后是[b]粗体字[/b] 第二行", excerpt)
+        assertFalse("one line only", excerpt!!.contains('\n'))
     }
 
     @Test
@@ -486,22 +488,20 @@ class ReplySheetTest {
             ),
         )
         assertTrue(
-            "the chip shows the defused excerpt",
-            viewModel.replyState.value.quoteText.orEmpty().contains("［/quote］"),
+            "the chip shows the quoted floor's plain text",
+            viewModel.replyState.value.quoteText.orEmpty().contains("原文里有"),
         )
 
         viewModel.updateReplyText("我的回复，字面量 [b] 保持不动")
         viewModel.submitReply()
         drainMainLooper()
 
+        // The wire format changed: message is the user's text only. The quote is produced by the
+        // site from the reply form's noticetrimstr (see replyWithQuote), so nothing here can
+        // re-parse the user's text as BBCode.
         val body = repository.lastReplyBody.orEmpty()
-        assertEquals("exactly one quote closes", 1, Regex("\\[/quote]").findAll(body).count())
-        assertTrue("the quote block still opens", body.startsWith("[quote][b]Other[/b]\n"))
-        assertTrue(
-            "the user text follows the block verbatim",
-            body.endsWith("[/quote]\n我的回复，字面量 [b] 保持不动"),
-        )
-        assertFalse("the excerpt carries no live tag", body.substringBefore("[/quote]").contains("[b]粗体"))
+        assertEquals("我的回复，字面量 [b] 保持不动", body)
+        assertFalse("no hand-built quote block", body.contains("[quote]"))
     }
 
     /** Runs whatever the view model queued on the Robolectric main looper (no-op when inline). */
