@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Adaptive launcher icon (API 26+). The cat lives in the foreground, the deep green field in the
-  background, and the monochrome layer feeds Android 13+ themed icons.
+  Adaptive launcher icon (API 26+). The black cat lives in the foreground, the bottle-green field
+  (#034C2E) in the background, and the monochrome layer feeds Android 13+ themed icons.
 -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@drawable/ic_launcher_background" />

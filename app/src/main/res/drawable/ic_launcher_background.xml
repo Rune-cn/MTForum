@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Deep brand-green field: the bright cat (#4ADE80) reads instantly at 48dp. -->
+<!-- Deep bottle-green field (#034C2E) from the master art; the black cat reads on it at 48dp. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:fillColor="#FF0E2A20"
+        android:fillColor="#FF034C2E"
         android:pathData="M0,0h108v108h-108z" />
 </vector>

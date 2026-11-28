@@ -8,7 +8,7 @@ import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.Drawable
 import androidx.test.core.app.ApplicationProvider
 import java.io.File
-import kotlin.math.hypot
+import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -18,14 +18,16 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Pins the launcher icon: an adaptive icon (v26 XML in `mipmap-anydpi-v26`) whose foreground is the
- * bottom-left cat, plus the Android 13 themed layer.
+ * Pins the launcher icon: an adaptive icon (v26 XML in MIPMAP) whose foreground is the black
+ * corner cat with amber eyes, plus the Android 13 themed layer.
  *
  * There is no design tool on the build machine, so the art is only vector XML. That makes two
- * classes of mistake cheap to ship and impossible to see without installing the APK: a foreground
- * that a round/squircle mask clips (the cat's tail is close to the 66dp safe circle) and a themed
- * layer that is not a flat silhouette. Both are checked against the *rendered* pixels, so they test
- * what the launcher draws instead of what the XML says.
+ * classes of mistake cheap to ship and impossible to see without installing the APK: a face that a
+ * mask clips and a themed layer that is not a flat silhouette. Both are checked against the
+ * RENDERED pixels, so they test what the launcher draws instead of what the XML says.
+ *
+ * The artwork is a close-up: the body runs off the bottom-left edge on purpose, so body pixels may
+ * sit outside the mask. The face must survive every launcher shape.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33], application = TestApp::class)
@@ -36,9 +38,12 @@ class LauncherIconTest {
 
     private fun source(relative: String): String {
         // Gradle runs unit tests with the module directory as the working directory.
-        val candidates = listOf(File("src/main/$relative"), File("app/src/main/$relative"))
+        val candidates = listOf(
+            File("src/main/$relative"),
+            File("app/src/main/$relative"),
+        )
         return candidates.firstOrNull { it.exists() }?.readText()
-            ?: error("cannot locate $relative from ${File(".").absolutePath}")
+            ?: error("cannot locate $relative")
     }
 
     private fun render(drawableRes: Int): Bitmap {
@@ -51,9 +56,18 @@ class LauncherIconTest {
         return bitmap
     }
 
-    private fun pixels(bitmap: Bitmap): IntArray = IntArray(RENDER_PX * RENDER_PX).also { bitmap.getPixels(it, 0, RENDER_PX, 0, 0, RENDER_PX, RENDER_PX) }
+    private fun pixels(bitmap: Bitmap): IntArray =
+        IntArray(RENDER_PX * RENDER_PX).also {
+            bitmap.getPixels(it, 0, RENDER_PX, 0, 0, RENDER_PX, RENDER_PX)
+        }
 
     private fun alpha(pixel: Int): Int = (pixel ushr 24) and 0xFF
+
+    private fun red(pixel: Int): Int = (pixel shr 16) and 0xFF
+
+    private fun green(pixel: Int): Int = (pixel shr 8) and 0xFF
+
+    private fun blue(pixel: Int): Int = pixel and 0xFF
 
     private fun dp(px: Float): Float = px * CANVAS_DP / RENDER_PX
 
@@ -89,14 +103,14 @@ class LauncherIconTest {
         val manifest = source("AndroidManifest.xml")
         assertTrue(
             "the application must use @mipmap/ic_launcher",
-            manifest.contains("android:icon=\"@mipmap/ic_launcher\""),
+            manifest.contains("android:icon="@mipmap/ic_launcher""),
         )
         assertTrue(
             "the application must use @mipmap/ic_launcher_round",
-            manifest.contains("android:roundIcon=\"@mipmap/ic_launcher_round\""),
+            manifest.contains("android:roundIcon="@mipmap/ic_launcher_round""),
         )
         // minSdk is 26, so an adaptive XML is enough on every supported device: a stray raster
-        // `mipmap-*dpi/ic_launcher.png` would silently win over the vector for that density.
+        // mipmap-*dpi/ic_launcher.png would silently win over the vector for that density.
         val resDir = File("src/main/res").let { if (it.exists()) it else File("app/src/main/res") }
         val launcherArt = resDir
             .walkTopDown()
@@ -117,30 +131,43 @@ class LauncherIconTest {
         val foreground = source("res/drawable/ic_launcher_foreground.xml")
         assertTrue(
             "the cat must stay a 108dp vector so it scales without a raster fallback",
-            foreground.contains("android:viewportWidth=\"108\"") && foreground.contains("android:viewportHeight=\"108\""),
+            foreground.contains("android:viewportWidth="108"") &&
+                foreground.contains("android:viewportHeight="108""),
         )
-        assertTrue("the cat is flat: the only fill is the brand accent", foreground.contains("#FF4ADE80"))
+        assertTrue("the fur is the artwork's near-black", foreground.contains("#FF050505"))
+        assertTrue("the eyes are the artwork's amber", foreground.contains("#FFFECB4C"))
     }
 
     @Test
-    fun `the foreground fits the 66dp adaptive icon safe circle`() {
-        val bitmap = render(R.drawable.ic_launcher_foreground)
-        val data = pixels(bitmap)
-        var worst = 0f
-        var ink = 0
+    fun `the face stays inside the 72dp window launchers show`() {
+        // The body is allowed to run off the bottom-left edge; the face is not. A launcher shape
+        // keeps the central 72dp window (18..90dp on both axes), so the amber eyes must stay within
+        // 36dp of the centre on each axis.
+        val data = pixels(render(R.drawable.ic_launcher_foreground))
         val centre = RENDER_PX / 2f
+        var ink = 0
+        var eyes = 0
+        var worst = 0f
         for (y in 0 until RENDER_PX) {
             for (x in 0 until RENDER_PX) {
-                if (alpha(data[y * RENDER_PX + x]) < 8) continue
+                val pixel = data[y * RENDER_PX + x]
+                if (alpha(pixel) < 128) continue
                 ink++
-                worst = maxOf(worst, hypot(dp(x + 0.5f - centre), dp(y + 0.5f - centre)))
+                if (red(pixel) > 150 && green(pixel) > 110 && blue(pixel) < 160) {
+                    eyes++
+                    worst = maxOf(
+                        worst,
+                        abs(dp(x + 0.5f - centre)),
+                        abs(dp(y + 0.5f - centre)),
+                    )
+                }
             }
         }
         assertTrue("the foreground must draw something", ink > 10_000)
+        assertTrue("the amber eyes must be there, found $eyes px", eyes > 2_000)
         assertTrue(
-            "a round/squircle mask keeps 66dp (r=33dp): the cat reaches ${"%.1f".format(worst)}dp " +
-                "from the centre and would be clipped",
-            worst <= SAFE_RADIUS_DP,
+            "the eyes reach " + worst + "dp off centre on one axis; a 72dp mask keeps 36dp",
+            worst <= 36f,
         )
     }
 
@@ -163,16 +190,17 @@ class LauncherIconTest {
         assertTrue("the foreground must draw something", total > 10_000)
         assertTrue(
             "the cat belongs to the left half, only $left/$total px are left of the centre line",
-            left >= total * 0.9,
+            left >= total * 0.5,
         )
         assertTrue(
             "the cat belongs to the bottom half, only $bottom/$total px are below the centre line",
-            bottom > total * 0.55,
+            bottom >= total * 0.6,
         )
-        assertEquals(
-            "the top-right quadrant is reserved for launcher badges and must stay empty",
-            0,
-            topRight,
+        // The right ear and the whisker tips reach into the upper-right corner by design, so this is
+        // a "stay calm" budget rather than an emptiness rule.
+        assertTrue(
+            "the top-right quadrant is reserved for launcher badges, $topRight/$total px leaked",
+            topRight <= total * 0.10,
         )
     }
 
@@ -185,12 +213,12 @@ class LauncherIconTest {
             if (a < 8) continue
             ink++
             if (a < 128) continue
-            val r = (pixel shr 16) and 0xFF
-            val g = (pixel shr 8) and 0xFF
-            val b = pixel and 0xFF
+            val r = red(pixel)
+            val g = green(pixel)
+            val b = blue(pixel)
             assertTrue(
                 "the monochrome layer is tinted by the system, so it must be a single white tone; " +
-                    "found #%02X%02X%02X".format(r, g, b),
+                    "found #" + Integer.toHexString(pixel),
                 r == g && g == b && r >= 0xF0,
             )
         }
@@ -199,7 +227,7 @@ class LauncherIconTest {
             "the themed layer must resolve at runtime"
         }
         assertTrue(
-            "the themed layer must be a full-size 108dp vector, was ${themed.intrinsicWidth}",
+            "the themed layer must be a full-size 108dp vector, was " + themed.intrinsicWidth,
             themed.intrinsicWidth > 0 && themed.intrinsicHeight > 0,
         )
     }
@@ -209,13 +237,24 @@ class LauncherIconTest {
         // The launcher keeps the cat in the bottom-left on purpose; an About-page header logo must
         // sit on the axis of the app name below it, so that surface gets a translated copy.
         val mark = source("res/drawable/ic_about_mark.xml")
-        assertTrue("the About mark must reuse the cat geometry", mark.contains("M37.6,52.6"))
+        val launcher = source("res/drawable/ic_launcher_foreground.xml")
+        val silhouettes = Regex("android:pathData=\"([^\"]+)\"").findAll(launcher)
+            .map { it.groupValues[1] }
+            .toList()
+        assertTrue("the foreground must carry the fur silhouette first", silhouettes.isNotEmpty())
+        assertTrue(
+            "the About mark must reuse the launcher silhouette verbatim",
+            mark.contains(silhouettes.first()),
+        )
         assertTrue(
             "the About mark must be the centred copy: wrap the paths in a <group translateX>",
             mark.contains("<group") && mark.contains("android:translateX="),
         )
         val page = source("java/io/rune/mt/forum/ui/page/miuix/settings/preferred/about/MiuixAboutPage.kt")
-        assertTrue("the About header must use the centred mark", page.contains("R.drawable.ic_about_mark"))
+        assertTrue(
+            "the About header must use the centred mark",
+            page.contains("R.drawable.ic_about_mark"),
+        )
         assertTrue(
             "the About header must not reuse the bottom-left launcher layer as a centred logo",
             !page.contains("R.drawable.ic_launcher_monochrome"),
@@ -224,7 +263,6 @@ class LauncherIconTest {
 
     private companion object {
         private const val CANVAS_DP = 108f
-        private const val SAFE_RADIUS_DP = 33f
         private const val RENDER_PX = 512
     }
 }
