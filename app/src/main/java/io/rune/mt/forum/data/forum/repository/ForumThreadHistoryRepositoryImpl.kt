@@ -59,16 +59,17 @@ class ForumThreadHistoryRepositoryImpl(
             }
         }
 
-    override suspend fun remove(tid: Int) = withContext(Dispatchers.IO) {
+    override suspend fun remove(tid: Int): Unit = withContext(Dispatchers.IO) {
         dataStore.edit { prefs ->
             val current = decode(prefs[KEY])
             if (current.any { it.tid == tid }) {
                 prefs[KEY] = json.encodeToString(SERIALIZER, current.filterNot { it.tid == tid })
             }
         }
+        Unit
     }
 
-    override suspend fun clear() = withContext(Dispatchers.IO) {
+    override suspend fun clear(): Unit = withContext(Dispatchers.IO) {
         dataStore.edit { prefs -> prefs.remove(KEY) }
         Unit
     }
