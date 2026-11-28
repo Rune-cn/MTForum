@@ -3,6 +3,8 @@ package io.rune.mt.forum.ui.page.miuix.settings
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -35,9 +37,9 @@ import io.rune.mt.forum.domain.forum.model.MAX_COMMENT_FILTER_RULES
 import io.rune.mt.forum.ui.navigation.LocalNavigator
 import io.rune.mt.forum.ui.page.forum.ForumCommentFilterViewModel
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBackButton
+import io.rune.mt.forum.ui.page.miuix.widgets.MiuixBottomSheet
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixConfirmDialog
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixHintTextField
-import io.rune.mt.forum.ui.page.miuix.widgets.MiuixStyleDialog
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixNavigationItemWidget
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixPageScaffold
 import io.rune.mt.forum.ui.page.miuix.widgets.MiuixSwitchWidget
@@ -90,9 +92,12 @@ fun ForumCommentFilterPage(
         showEditor = true
     }
 
+    val chrome = rememberMiuixPageChrome(enableBlur)
+
+    Box(modifier = Modifier.fillMaxSize()) {
     MiuixPageScaffold(
         title = stringResource(R.string.forum_comment_filter_title),
-        chrome = rememberMiuixPageChrome(enableBlur),
+        chrome = chrome,
         navigationIcon = { MiuixBackButton(onClick = { navigator.pop() }) },
         outerPadding = outerPadding,
     ) {
@@ -180,20 +185,28 @@ fun ForumCommentFilterPage(
         item { Spacer(Modifier.height(8.dp)) }
     }
 
-    // Add / edit dialog. Validation runs in the repository at save time; the dialog stays open and
-    // shows the localized reason until the pattern is accepted.
-    // Style-aware: OS4 gets the glass dialog, OS3 the classic window (rule 8).
-    MiuixStyleDialog(show = showEditor, onDismissRequest = { showEditor = false }) {
+    // Add / edit sheet: the same shared surface as 每日签到 and the reply composer
+    // (`MiuixBottomSheet`), so the OS4 glass / OS3 window split, corner radius, drag handle and
+    // dismiss gestures come from one implementation. Validation happens at save time and the
+    // sheet stays open showing the localized reason until the pattern is accepted.
+    MiuixBottomSheet(
+        show = showEditor,
+        onDismissRequest = { showEditor = false },
+        title = stringResource(
+            if (editing == null) R.string.forum_comment_filter_add_title
+            else R.string.forum_comment_filter_edit_title,
+        ),
+        backdrop = chrome.backdrop,
+    ) {
         Column(modifier = Modifier.fillMaxWidth()) {
+            // Persistent label instead of only the field placeholder: the hint stays readable after
+            // the field is focused and typed into (owner request).
             Text(
-                text = stringResource(
-                    if (editing == null) R.string.forum_comment_filter_add_title
-                    else R.string.forum_comment_filter_edit_title,
-                ),
-                fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold,
+                text = stringResource(R.string.forum_comment_filter_pattern_hint),
+                fontSize = 12.sp,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(6.dp))
             MiuixHintTextField(
                 value = pattern,
                 onValueChange = { pattern = it },
@@ -253,7 +266,6 @@ fun ForumCommentFilterPage(
             }
         }
     }
-
     MiuixConfirmDialog(
         visible = pendingDelete != null,
         title = stringResource(R.string.forum_comment_filter_delete_title),
@@ -266,6 +278,7 @@ fun ForumCommentFilterPage(
         },
         onDismiss = { pendingDelete = null },
     )
+    }
 }
 
 @Composable
