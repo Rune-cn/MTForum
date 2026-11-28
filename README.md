@@ -1,133 +1,182 @@
 # MT论坛 客户端
 
-**bbs.binmt.cc** 的第三方 Android 客户端。Jetpack Compose + Miuix，原生 Kotlin。
+<p align="center">
+  <img src="docs/screenshots/app-icon.png" alt="应用图标" width="120" />
+</p>
 
-## 功能
+<p align="center">
+  <b>bbs.binmt.cc</b> 的第三方 Android 客户端 · Jetpack Compose + Miuix · 原生 Kotlin
+</p>
+
+## 应用图标
+
+启动图标只有 vector，没有一张位图：`res/drawable/ic_launcher_{background,foreground,monochrome}.xml`
+加 `res/mipmap-anydpi-v26/ic_launcher{,_round}.xml`。图案是一只坐在**左下角**的简易猫，
+右上留白给角标；猫的最远像素压在 33dp 安全区半径内（实测 30.6dp），Android 13+ 的主题图标
+复用同一份几何走 `<monochrome>`。预览由 `python tools/render_app_icon.py` 直接渲染这些 XML
+生成，不经过任何设计工具：
+
+<p align="center">
+  <img src="docs/screenshots/app-icon.png" alt="应用图标" width="96" />
+  <img src="docs/screenshots/app-icon-round.png" alt="圆形遮罩" width="96" />
+  <img src="docs/screenshots/app-icon-sizes.png" alt="48 / 72 / 96 / 144dp" width="240" />
+</p>
+
+## 简介
+
+`MT论坛`（包名 `io.rune.mt.forum`）是 [bbs.binmt.cc](https://bbs.binmt.cc/forum.php)
+的第三方 Android 客户端，用它看帖、发帖、回帖和收私信，界面跟着 HyperOS 走：
+OS3 窗口 / OS4 玻璃两套风格、动态取色、模糊与预测式返回。
+
+站点的官方移动 API 已经下线（一律 502），所以客户端不调 API，而是**解析 HTML**；
+帖子正文由模板在服务端渲染成 HTML，客户端用 Compose `AnnotatedString` 忠实还原，
+不套 WebView。
+
+### 功能
 
 | 模块 | 说明 |
 |---|---|
 | 论坛首页 | 版块宫格、站点原生「热帖排行」Top-10（与论坛主页同序）、可分页的「最新主题」帖子流 |
-| 搜索 | 论坛内关键词搜索（登录后使用）：**入口只有首页顶栏放大镜**，覆盖层带最近搜索（本地保存、可清除、一键复搜），结果分页 |
-| 提醒 | 系统提醒 / 坛友互动 / 我的帖子，点行进对应帖子 |
-| 个人主页 | 头像、等级、积分、统计与最近发表（`do=profile`） |
-| 我的收藏 | 收藏列表 + 取消收藏（登录后） |
-| 每日签到 | 首页右上角入口（登录后）：今日排名 / 连续签到 / 累计签到，已签到置灰，服务器文案原样提示 |
-| 版块与分类 | 首页宫格全量版块（12 个）+ 版块主题分类筛选 |
-| 评论屏蔽 / 板块管理 | 帖子按**关键词或正则**屏蔽回复（默认保留楼主，可临时显示、页脚显示屏蔽数）；设置板块**顺序与隐藏**，首页宫格与发帖板块选择器即时生效（本机设置） |
-| 帖子页 | 楼层卡片重做、正文可选取文字、显示所属版块、OP 卡片显示**推荐（赞）人数**、回复面板改为与签到同款底部面板 |
-| 首页顶栏 | 搜索放大镜（Miuix 搜索覆盖层 + 最近搜索）/ 发帖（先选板块）/ 每日签到 |
-| 消息 | 私信 + 系统提醒 / 回复我的 / 我的帖子 四个页签（标签按内容定宽，窄屏横向滚动而不是省略号） |
 | 导读 | 最新 / 热门 / 精华 / 回复 / 抢沙发 五个视图，各自分页 |
-| 版块列表 | 置顶/推荐/有图/热门标签、缩略图、作者头像、分页 |
-| 帖子详情 | 楼层（楼主/回复区分）、正文富文本渲染（代码块/标题/引用/表格/附件/表情/块级对齐/表头与合并列/可点击链接）、**附件可选择「下载到本机 / 浏览器打开 / 复制链接」**（付费附件先提示「下载将扣除 N 金币」，下载走 attachcredit 两跳）、楼层内引用回复 |
-| 回复 | 右下角悬浮按钮、引用上一楼、论坛表情选择器（3 组 257 个）、与签到同款的底部面板（OS4 玻璃 / OS3 窗口），关闭即丢弃（回复无草稿） |
-| 登录 | 账号密码登录、会话持久化、退出二次确认 |
-| 私信 | 会话列表、会话气泡、收发消息（`home.php?mod=space&do=pm`）；正文支持 **BBCode**（共享 BBCode 工具栏 b/i/u/引用/链接/列表/代码 + 预览），`添加图片` 走 MT 图床插入 `[img]` |
-| 收藏 / 关注 / 顶 | 帖子页溢出菜单一键收藏、关注楼主、推荐本帖（成功后刷新 OP 赞数），以及复制链接、在浏览器打开、系统分享 |
-| 深链 | `thread-*.html` / `forum-*.html` / `forum.php?mod=` / **`forum.php` 与 `mtforum://home` 回首页「论坛」页签** / `mtforum://` 直接在应用内打开 |
-| 发新帖 | 标题 + 正文 + 表情 + 图片（**MT 图床** `img.binmt.cc`：原图直传并插入 `[img]…[/img]`，默认；或站点附件 multipart `Filedata`，1MB/张）、**服务器草稿**（`save=1`；草稿列表、编辑、发表、删除，见 `docs/REVERSE_SPEC.md` §16.1 与 §24） |
+| 版块列表 | 置顶/推荐/有图/热门标签、缩略图、作者头像、分页；主题分类筛选 |
+| 帖子详情 | 楼层（楼主/回复区分）、富文本正文（代码块/标题/引用/表格/附件/表情/块级对齐/表头与合并列/可点击链接）、正文可选文字、OP 推荐数 |
+| 附件 | 「下载到本机 / 浏览器打开 / 复制链接」三选；付费附件先提示「下载将扣除 N 金币」，下载走 attachcredit 两跳 |
+| 回复 | 悬浮按钮、引用上一楼、论坛表情（3 组 257 个）、OS4 玻璃 / OS3 窗口底部面板（关闭即丢弃，无草稿） |
+| 发新帖 | 标题 + 正文 + 表情 + 图片：**MT 图床**（`img.binmt.cc`，原图直传并插入 `[img]`）默认，或站点附件 1MB/张；**服务器草稿**（`save=1`）可列表、编辑、发表、删除 |
+| 私信 | 会话列表、气泡、收发消息；正文支持 BBCode（共享工具栏 + 预览），`添加图片` 走图床 |
+| 收藏 / 关注 / 顶 | 帖子页溢出菜单一键收藏、关注楼主、推荐本帖（成功后刷新 OP 赞数）；复制链接、浏览器打开、系统分享 |
+| 个人主页 / 我的收藏 | 头像、等级、积分、统计与最近发表；收藏列表 + 取消收藏（登录后） |
+| 搜索 | 论坛内关键词搜索（登录后）：**入口只有首页顶栏放大镜**，覆盖层带最近搜索（本地保存、可清除） |
+| 消息 / 提醒 | 私信 + 系统提醒 / 回复我的 / 我的帖子，点行进对应帖子 |
+| 每日签到 | 首页右上角入口（登录后）：今日排名 / 连续 / 累计，已签到置灰，服务器文案原样提示 |
+| 评论屏蔽 / 板块管理 | 关键词屏蔽回复（默认保留楼主，可临时显示、页脚显示屏蔽数）；板块**顺序与隐藏**即时生效（本机设置） |
 | 图片查看 | 帖子内图片点击全屏，双指缩放、拖动、双击复位 |
-| 主题 | OS3 / OS4 双风格、动态取色、模糊与玻璃效果、HyperOS 风格预测式返回；主题模式用示例应用的「浅色/深色预览卡片 + 跟随系统开关」 |
-| MCP 服务 | 设置里开关的本机回环 MCP 服务器（`POST /mcp`，JSON-RPC 2.0）：向 AI 客户端提供**只读**的版块 / 主题列表 / 帖子楼层（纯文本 + 附件）/ 搜索；无鉴权、无任何写操作，见 [docs/MCP.md](docs/MCP.md) |
+| 深链 | `thread-*.html` / `forum-*.html` / `forum.php?mod=` / `forum.php` 与 `mtforum://home` 回首页 / `mtforum://` |
+| MCP 服务 | 设置里开关的本机回环 MCP 服务器（`POST /mcp`，JSON-RPC 2.0）：只读的版块 / 主题 / 楼层 / 搜索，见 [docs/MCP.md](docs/MCP.md) |
+| 主题 | OS3 / OS4 双风格、动态取色、HyperOS 预测式返回；主题模式用示例应用的「预览卡片 + 跟随系统」 |
 
-## 技术要点
+### 尚未实现
 
-### 反爬（acw_sc__v2）
+- **评论正则屏蔽**：规则入口（关键词 / 正则切换）已经存在，但正则匹配目前不生效，按关键词屏蔽是可靠的；
+  这是已知缺陷，后续修复。
+- 会话过期自动重登（现在表现为只读：能看帖，不能回帖）
+- 编辑 / 删除自己的帖子
+- 提醒页未读态（站点当前不输出未读标记）
+- 图片上传的进度与多图压缩
 
-站点对无签名请求返回 4 KB JS 挑战页。客户端在 OkHttp 拦截器里检测挑战页、计算签名并重放请求。
-算法实现在 `data/forum/network/AcwSignature.kt`，逆向记录见 [docs/REVERSE_SPEC.md](docs/REVERSE_SPEC.md)。
+## 具体架构
 
-### 数据获取
+### 数据流
 
-站点是 Discuz! X + Comiis 模板，官方移动 API 已下线（502），全部走 HTML 解析（jsoup）。
-选择器集中在 `data/forum/network/ForumHtmlParser.kt`，有真实页面样本作为回归测试。
+```
+             ┌──────────────────────────────┐
+ bbs.binmt.cc│ ForumHttpClient              │  OkHttp
+ ───────────▶│  ├ AcwInterceptor            │  挑战页 → 签名 → 重放
+             │  └ Dispatchers.IO            │  阻塞调用切线程
+             └───────────────┬──────────────┘
+                             │ HTML
+             ┌───────────────▼──────────────┐
+             │ ForumHtmlParser (jsoup)      │  版块 / 列表 / 帖子 / 楼层 / 分页
+             └───────────────┬──────────────┘
+                             │ 领域模型
+             ┌───────────────▼──────────────┐
+             │ ForumRepositoryImpl          │
+             │  ├ ForumCookieJar            │  内存会话
+             │  ├ ForumSessionStore         │  DataStore 持久化
+             │  └ ForumPasswordAuthenticator│  账号密码登录
+             └───────────────┬──────────────┘
+                             │ StateFlow
+             ┌───────────────▼──────────────┐
+             │ ForumViewModel               │  首页 / 列表 / 帖子 / 导读 / 回复
+             └───────────────┬──────────────┘
+                             │ Compose State
+             ┌───────────────▼──────────────┐
+             │ Miuix 页面（OS3 / OS4 自适应）│
+             └──────────────────────────────┘
+```
+
+分层依赖是单向的：**网络层不认识 UI，UI 层不拼 DOM**。三个关注点各自独立，任一出问题先定位层次
+（抓 `ForumHttpClient` 的日志，看拿到的是不是真实页面）：
+
+1. **反爬** — `AcwSignature` + `AcwInterceptor`：无签名请求会拿到 4 KB 的 JS 挑战页，拦截器识别后
+   计算 `acw_sc__v2`（`hexXor(unsbox(arg1), KEY)`）、下发 Cookie 并重放，上层无感。
+2. **解析** — `ForumHtmlParser`：站点 DOM 的唯一知识来源，选择器改动必须同步
+   `app/src/test/resources/forum/` 的真实页面样本。
+3. **渲染** — `ForumBodyParser` + `ForumHtmlText`：HTML → Compose 块（代码块、表格按内容加权列宽、
+   相册列表、附件卡、可点链接），行内样式映射为 `SpanStyle`。
+
+### 代码地图
+
+| 路径 | 职责 |
+|---|---|
+| `data/forum/network/` | 反爬、HTTP、multipart、HTML 解析、URL 规则、附件下载 |
+| `data/forum/repository/` | 仓库实现：会话、登录、草稿、签到、评论屏蔽、板块偏好 |
+| `domain/forum/` | 领域模型、仓库接口、纯函数（匹配器、板块合并） |
+| `ui/page/forum/` | 首页 / 列表 / 帖子 / 导读 / 私信 / 发帖 / 登录 / 正文渲染 |
+| `ui/page/miuix/` | 设置、主题、关于、共享组件（顶栏、底部面板、对话框、卡片） |
+| `data/mcp/` + `domain/mcp/` | 应用内 MCP：JSON-RPC 分发、回环 socket、工具目录 |
+| `docs/` | 交接、逆向规格、架构、构建环境、MCP 规格 |
 
 ### 正文渲染
 
-站点把帖子存成 BBCode、由 Comiis 模板在服务端渲染成 HTML，所以客户端拿到的是 HTML，任务是
-忠实还原它。渲染用 Compose `AnnotatedString`，无需 WebView：行内 `strong`/`i`/`u`/`s`/`a`/
-`font color` 映射为 `SpanStyle`；`font[size]` 变成标题层级；`div.comiis_blockcode` 整块保留
-行结构与等宽排版（可复制）；`div.comiis_quote` 带作者页眉并保留体内列表/表格/图片；`ul/ol`（不限层数）、`table/tr/th|td`（表头 + `colspan`）、块级 `[align]` 容器、可点击 `<a>`、附件卡片（含下载选择；付费附件显示「下载将扣除 N 金币」并走 attachcredit 握手）
-`div.comiis_attach`、`hr`、`i.pstatus`、`div.comiis_modact` 各有专属块；`[#xxx]` 表情 token
-解析成图片。按论坛自带教程（thread 161119）补的保真度：`[list=1]`/`[list=a]` 的有序列表（服务端是
-`<ul type>`）显示数字/字母；`[media]`/`[audio]`/`[flash]` 的 iframe/脚本播放器改为带 URL 的诚实
-媒体卡；`[email]` 的 `mailto:` 链接可点；`[qq]` 是可点聊天行。完整审计见
+站点把帖子存成 BBCode、由 Comiis 模板在服务端渲染成 HTML，客户端拿到的是 HTML，任务是忠实还原：
+行内 `strong`/`i`/`u`/`s`/`a`/`font color` 映射为 `SpanStyle`；`font[size]` 变成标题层级；
+`div.comiis_blockcode` 整块保留行结构与等宽排版（可复制）；`div.comiis_quote` 带作者页眉；
+`ul/ol`（不限层数）、`table/tr/th|td`（表头 + `colspan`、列宽按内容加权）、块级 `[align]`、
+可点击 `<a>`、附件卡片各有专属块。按论坛自带教程（thread 161119）补的保真度：
+`[list=1]`/`[list=a]` 的有序列表（服务端是 `<ul type>`）、`[media]`/`[audio]`/`[flash]` 的
+诚实媒体卡、`[email]` 的 `mailto:` 可点、`[qq]` 聊天行。完整审计见
 [docs/BBCODE_TUTORIAL_AUDIT.md](docs/BBCODE_TUTORIAL_AUDIT.md)。
 
-### 线程
+### 线程与风格
 
 所有网络与解析都在 `Dispatchers.IO` 上执行，`MainThreadSafetyTest` 是静态回归守卫。
+UI 只用 Miuix：唯一风格开关是 `AppTheme.useMiuixOs4`（OS4 还要 `isRenderEffectSupported()` 守卫），
+`MiuixStyleGuardTest` 扫描源码防止玻璃 / 窗口组件的跨风格泄漏。界面细节对齐官方示例应用
+（`example/`）：玻璃顶栏只采样页面内容层、长列表叠滚动条、连续行画成一张分组卡片。
 
-### 界面
+### 构建与验证
 
-UI 对齐 Miuix 官方示例应用（`example/`）：OS4 玻璃顶栏只采样页面内容层（`barBackdrop` 守卫，
-不会采到包含顶栏自身的宿主层）、长列表叠 `VerticalScrollBar`、连续行用一组
-`Card`/`MiuixCardSegment` 画成一张卡片。细节与前后对比见
-[docs/HANDOVER_CN.md §17](docs/HANDOVER_CN.md)。
-
-## 构建
+构建交给 GitHub Actions（`.github/workflows/build.yml` 每次 push 出 APK，
+`manual-stable-release.yml` 手动发 stable 版），本地不需要配环境：
 
 ```bash
-bash tools/build.sh                              # debug APK
-bash tools/build.sh :app:testStableDebugUnitTest  # 473 tests
-bash tools/build.sh :app:testStableDebugUnitTest  # 481 tests
-bash tools/build.sh :app:assembleStableRelease
-bash tools/build.sh :app:lintVitalStableRelease
+bash tools/build.sh :app:testStableDebugUnitTest   # 全量单测
+bash tools/build.sh :app:lintVitalStableRelease    # 改字符串 / 资源后必跑
 ```
 
-环境要求见 [docs/BUILD_ENV.md](docs/BUILD_ENV.md)（JDK 25、Android SDK 37.2、Gradle 9.8.1）。
+当前基线：**78 个 suite / 481 个用例**，覆盖 acw 签名（与 JS 参考实现交叉验证）、页面解析、
+登录表单、正文富文本、Compose 真实渲染、主线程安全、图片会话隔离、图床两步上传、MCP JSON-RPC 等。
+本机跑不了模拟器，UI 用 Robolectric 截成 PNG 验证（产物在 `app/build/ui-screenshots/`），
+样例见 [docs/screenshots/](docs/screenshots/)。环境要求见 [docs/BUILD_ENV.md](docs/BUILD_ENV.md)
+（JDK 25、Android SDK 37.2、Gradle 9.8.1）。
 
-## 验证
-
-```
-:app:testStableDebugUnitTest    473 tests, 0 failures
-:app:testStableDebugUnitTest    481 tests, 0 failures
-:app:assembleStableRelease      BUILD SUCCESSFUL  (2.3 MB)
-:app:lintVitalStableRelease     BUILD SUCCESSFUL
-```
-
-测试覆盖：acw 签名（与 JS 参考实现交叉验证）、版块/列表/帖子/楼层解析、导读解析、
-登录表单与失败响应、正文富文本、帖子卡片 Compose 真实渲染、主线程安全、
-私信会话/收藏/发帖表单解析、图片 URL 规范化/解码器路由/会话 Cookie 隔离、
-MT 图床两步上传（令牌 → 上传、419 刷新重试、`status:false`、坏 JSON，均对本机回环 server）、
-两个编辑器的图床插入（光标位置/失败不丢字）、OS4 玻璃菜单像素级锚定、
-应用内 MCP 服务（JSON-RPC 分发、回环 socket 往返/405/413/429、设置持久化与设置页渲染）。
-帖子 OP 推荐数（`rich_156696.html`=47 / `thread_177093.html`=0）、
-OS3/OS4 风格泄漏源码契约（`MiuixStyleGuardTest`：玻璃/窗口组件与 Material3 颜色）。
-
-无模拟器时可以直接「看」UI（Robolectric 截图，产物在 `app/build/ui-screenshots/`）：
-`ThreadActionsPopupLayoutTest`（OS4 菜单）、`ForumImageScreenshotTest`（卡片+正文图片）、
-`ForumRichBodyScreenshotTest`（代码块/表格/附件/引用等富文本块），样例见 [docs/screenshots/](docs/screenshots/)。
-
-### 应用图标
-
-启动图标全在 vector 里（`res/drawable/ic_launcher_{background,foreground,monochrome}.xml` +
-`res/mipmap-anydpi-v26/ic_launcher{,_round}.xml`）：一只坐在**左下角**的简易猫，
-右侧留白，Android 13+ 主题图标复用同一份几何走 `<monochrome>`。预览由
-`python tools/render_app_icon.py` 直接渲染这些 XML 生成（不经过设计工具）：
-
-![应用图标](docs/screenshots/app-icon.png)
-![圆形遮罩](docs/screenshots/app-icon-round.png)
-![48 / 72 / 96 / 144dp](docs/screenshots/app-icon-sizes.png)
-
-## 文档
+### 文档
 
 - [docs/HANDOVER_CN.md](docs/HANDOVER_CN.md) — 交接文档（架构、约定、已知问题）
 - [docs/REVERSE_SPEC.md](docs/REVERSE_SPEC.md) — 站点逆向规格
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 代码地图
 - [docs/MCP.md](docs/MCP.md) — 应用内 MCP 服务（端点、JSON-RPC、工具、安全边界）
 - [docs/BUILD_ENV.md](docs/BUILD_ENV.md) — 构建与测试环境
-- [docs/screenshots/](docs/screenshots/) — JVM 截图样例（OS4 菜单 / 图片渲染 / 应用图标）
 - [AGENTS.md](AGENTS.md) — 面向 AI 代理的开发约定
 
-## 许可
+## 免责声明
 
-GPL-3.0（见 [LICENSE](LICENSE)）。
+- 本项目是**个人开发的第三方客户端**，与 MT论坛（bbs.binmt.cc）及其运营方没有任何隶属、授权或合作关系，
+  不代表站点立场，也不承担站点的任何服务责任。
+- 客户端只做「请求站点页面 + 解析展示」：账号与密码由用户直接提交给站点本身，**App 不落盘任何凭据**；
+  会话 Cookie 仅保存在本机，用于维持登录。论坛数据、内容与版权的归属仍属于站点与原作者。
+- 站点随时可能改版、加验证或调整限制，届时部分功能会失效；因使用本客户端导致的账号异常、数据丢失或
+  其他损失，由使用者自行承担。
+- 「MT论坛」「MT」等名称与标识归其权利人所有，本项目仅在描述用途时提及。
+- 本项目以 **GPL-3.0** 发布（见 [LICENSE](LICENSE)），按「现状」提供，不附带任何明示或暗示的担保。
 
-## Sponsorship
+## 赞赏
 
-Thanks for supporting this project, meow! If it has been useful to you, you can use the WeChat reward code below, meow!
+感谢您对此项目的支持喵！如果此项目对您有帮助，可以通过微信赞赏码进行赞赏喵！
 
-<img src="docs/sponsor/wechat-sponsor-qr.png" alt="WeChat reward code" width="240" />
+<p align="center">
+  <img src="docs/sponsor/wechat-sponsor-qr.png" alt="微信赞赏码" width="240" />
+</p>
 
-Donations are voluntary and unlock nothing — every feature stays free.
+赞赏完全自愿，不影响任何功能——所有功能都是免费的。
