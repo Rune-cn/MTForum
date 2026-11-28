@@ -372,6 +372,44 @@ GET home.php?mod=space&uid={uid}&do=thread&view=me&from=space&mobile=2  # 最近
 `i.pstatus`（「本帖最后由 X 于 … 编辑」）。正文图片 `span.comiis_postimg img` 的真实地址在
 `comiis_loadimages`（`src` 是 `none.png` 占位）。
 
+### 21.1a BBCode 标签 → 模板 HTML（教程 thread 161119 实测）
+
+样本 `app/src/test/resources/forum/bbcode_tutorial_161119.html` 是论坛官方教程《mt论坛语法总汇
+（bbcode）》。它的「使用示例」是 BBCode、「➽渲染效果」是服务端产出的 HTML，是逐标签核对
+**服务端输出形态**的权威依据（比社区研究帖更系统）。下表同时给出客户端支持状态；完整
+「前→后→证据」审计见 `docs/BBCODE_TUTORIAL_AUDIT.md`。
+
+| 标签 | 教程渲染 HTML | 客户端 |
+|---|---|---|
+| `[b]`/`[i]`/`[u]`/`[s]` | `<strong>/<i>/<u>/<strike>` | 支持（SpanStyle） |
+| `[color=red]` | `<font color="red">` | 支持 |
+| `[backcolor=green]` | `<font style="background-color:green">` | 支持（读 `style` 背景色） |
+| `[size=6\|5\|4\|2]` | `<font size=…>` | 支持（标题层级；包块时保留结构） |
+| `[font=微软雅黑]` | `<font face="…">` | 部分（文字在、字族丢） |
+| `[img]` | `<img src>` | 支持 |
+| `[audio]` | `div.media` + 「如果无法播放」`<a>` 兜底 | 支持（诚实媒体卡） |
+| `[media=x,500,375]` | `ignore_js_op` 内 `<script>` 注入 `<iframe src=…>` | 支持（诚实媒体卡，B 站重写观看页） |
+| `[flash]` | iframe/embed/object（教程未演示） | 支持（诚实媒体卡） |
+| `[attach]` | `div.comiis_attach`（块级卡） | 支持 |
+| `[attachimg]` | `span.comiis_postimg > img` | 支持 |
+| `[quote]` | `div.comiis_quote > blockquote` | 支持 |
+| `[hr]` | `<hr class="l">` | 支持 |
+| `[list]` | `<ul><li>` | 支持（圆点） |
+| `[list=1]` | **`<ul type="1" class="litype_1">`** | 支持（`1.`/`2.`…，读 `type`/`litype_*`） |
+| `[list=a]` | **`<ul type="a" class="litype_2">`** | 支持（`a.`/`b.`…） |
+| `[align=center]` | `<div align="center">` | 支持（块级容器） |
+| `[hide]` | 服务端门禁，内容不下发 | 支持（草稿显示占位、不泄露） |
+| `[url=…]` | `<a href target=_blank>` | 支持（可点） |
+| `[code]` | `div.comiis_blockcode > .b_l > ol > li` | 支持（逐行等宽） |
+| `[free]` | `div.comiis_quote > blockquote`（免费内容框） | 支持（渲染为引用） |
+| `[email=…]` | `<a href="mailto:…">` | 支持（可点，`ForumUrls.navigable`） |
+| `[qq]` | `<a href="…wpa.qq.com…"><img qq_big.gif></a>` | 支持（可点「QQ <uin>」行） |
+| `[md]` / `[rate]` / `[postbg]` / `[groupid]` | 教程未演示 / 无真实正文样本 | 诚实缺口（草稿链只剥标记） |
+
+关键修正（2026-11-28）：有序列表服务端用 `<ul type=1|a>`（不是 `<ol>`）；`mailto:` 必须走
+`ForumUrls.navigable()` 而非只认图片的 `absolute()`；媒体 `<iframe>`/脚本播放器改为诚实媒体卡，
+不再被 `SKIP_TAGS` 静默丢弃。
+
 ### 21.1b 相册图片列表（`ul.comiis_img_list`）— 2026-11-27 实测
 
 OP 只发相册附件时，正文里**没有** `span.comiis_postimg`：模板把整组图片渲染在消息末尾的

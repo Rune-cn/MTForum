@@ -21,7 +21,7 @@
 | 帖子详情 | 楼层（楼主/回复区分）、正文富文本渲染（代码块/标题/引用/表格/附件/表情/块级对齐/表头与合并列/可点击链接）、**附件可选择「下载到本机 / 浏览器打开 / 复制链接」**（付费附件先提示「下载将扣除 N 金币」，下载走 attachcredit 两跳）、楼层内引用回复 |
 | 回复 | 右下角悬浮按钮、引用上一楼、论坛表情选择器（3 组 257 个）、与签到同款的底部面板（OS4 玻璃 / OS3 窗口），关闭即丢弃（回复无草稿） |
 | 发帖 | 标题+正文（BBCode/表情/图片）、服务器草稿（站点自带草稿，见交接 §16） |
-| 私信 | 会话列表、会话气泡、收发消息；正文支持 **BBCode**（b/i/u/引用/链接工具栏 + 预览），`添加图片` 走 MT 图床插入 `[img]` |
+| 私信 | 会话列表、会话气泡、收发消息；正文支持 **BBCode**（共享 BBCode 工具栏 b/i/u/引用/链接/列表/代码 + 预览），`添加图片` 走 MT 图床插入 `[img]` |
 | 收藏 / 关注 / 顶 | 帖子页溢出菜单：收藏、关注楼主、推荐本帖，以及复制链接、在浏览器打开、系统分享 |
 | 深链 | `thread-*.html` / `forum-*.html` / `forum.php?mod=` / **`forum.php` 与 `mtforum://home` 回首页「论坛」页签** / `mtforum://` 直接在应用内打开 |
 | 发新帖 | 标题 + 正文 + 表情 + 图片（**MT 图床** `img.binmt.cc`：原图直传并插入 `[img]…[/img]`，默认；或站点附件 1MB/张）、**服务器草稿**（`save=1`；列表/编辑/发表/删除，见 `docs/REVERSE_SPEC.md` §16.1 与 §24） |
@@ -48,7 +48,10 @@
 `font color` 映射为 `SpanStyle`；`font[size]` 变成标题层级；`div.comiis_blockcode` 整块保留
 行结构与等宽排版（可复制）；`div.comiis_quote` 带作者页眉并保留体内列表/表格/图片；`ul/ol`（不限层数）、`table/tr/th|td`（表头 + `colspan`）、块级 `[align]` 容器、可点击 `<a>`、附件卡片（含下载选择；付费附件显示「下载将扣除 N 金币」并走 attachcredit 握手）
 `div.comiis_attach`、`hr`、`i.pstatus`、`div.comiis_modact` 各有专属块；`[#xxx]` 表情 token
-解析成图片。
+解析成图片。按论坛自带教程（thread 161119）补的保真度：`[list=1]`/`[list=a]` 的有序列表（服务端是
+`<ul type>`）显示数字/字母；`[media]`/`[audio]`/`[flash]` 的 iframe/脚本播放器改为带 URL 的诚实
+媒体卡；`[email]` 的 `mailto:` 链接可点；`[qq]` 是可点聊天行。完整审计见
+[BBCODE_TUTORIAL_AUDIT.md](BBCODE_TUTORIAL_AUDIT.md)。
 
 ### 线程
 
